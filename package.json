@@ -1,17 +1,19 @@
 {
   "name": "remart-bbs-chat",
-  "version": "0.1.0",
-  "description": "Remart BBS chat - modern web prototype with char-by-char typing (part of Remart BBS)",
+  "version": "0.2.0",
+  "description": "Remart BBS chat - modern web prototype with char-by-char typing (part of Remart BBS) — full client+server export",
   "type": "module",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js",
+    "start": "node server/index.js",
+    "dev": "node server/index.js",
     "test": "node --test test-*.js"
   },
   "dependencies": {
     "ws": "^8.18.0",
     "express": "^4.21.0",
-    "cors": "^2.8.5"
+    "cors": "^2.8.5",
+    "drizzle-orm": "^0.45.2",
+    "better-sqlite3": "^9.0.0"
   },
   "engines": { "node": ">=18" }
 }

@@ -1,0 +1,539 @@
+@import "tailwindcss";
+@import "tailwindcss-safe-area";
+
+:root {
+  color-scheme: dark;
+  --bg: #000000;
+  --surface: #000000;
+  --text: #cccccc;
+  --dim: #777777;
+  --border: #333333;
+  --accent: #55ffff;
+  --radius: 0;
+  --space-surface: var(--surface);
+  --space-surface-alt: var(--surface);
+  --space-muted: var(--dim);
+  --space-border: var(--border);
+  --space-accent: var(--accent);
+  --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  font-family: var(--mono);
+  background: #000000;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+[data-generated-space-root],
+.hatch-space-root[data-hatch-space-root] {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  overflow: hidden;
+  background: #000000;
+  color: #cccccc;
+  font-family: var(--mono);
+}
+
+body {
+  margin: 0;
+  background: #000000;
+  color: #cccccc;
+}
+
+#container {
+  display: flex;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  min-height: 0;
+  padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px)
+    env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+  background: #000000;
+}
+
+/* The fixed cell grid is the interface: one shared vertical scrollback, no
+   wrapping or horizontal scroll, and server-enforced 80-character lines. */
+#chat-area {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 8px;
+  white-space: pre;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+    "Liberation Mono", "Courier New", monospace;
+  scrollbar-color: #555555 #000000;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+  outline: none;
+}
+
+#chat-area:focus-within {
+  box-shadow: inset 0 0 0 1px #555555;
+}
+
+/* A real text control is required for Firefox and mobile browsers to open the
+   software keyboard. The shared line remains the visible editor; this tiny
+   capture control only receives keyboard input. */
+.keyboard-capture {
+  position: fixed;
+  left: 2px;
+  bottom: max(2px, env(safe-area-inset-bottom, 0px));
+  z-index: 1;
+  width: 2px;
+  height: 2px;
+  min-height: 0;
+  overflow: hidden;
+  border: 0;
+  padding: 0;
+  opacity: 0.01;
+  background: transparent;
+  color: transparent;
+  caret-color: transparent;
+  resize: none;
+}
+
+#roster {
+  position: sticky;
+  top: 0;
+  align-self: flex-start;
+  display: flex;
+  flex-direction: column;
+  width: 160px;
+  height: 100%;
+  min-height: 0;
+  flex: 0 0 160px;
+  overflow: hidden;
+  border-left: 1px solid #333333;
+  padding: 8px;
+  background: #000000;
+}
+
+.roster-heading {
+  flex: 0 0 auto;
+  color: #888888;
+  font-size: 0.72rem;
+  line-height: 1.2rem;
+  letter-spacing: 0.08em;
+}
+
+.roster-empty {
+  color: #666666;
+  font-size: 0.82rem;
+  line-height: 1.4rem;
+}
+
+.roster-entry {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 0.45rem;
+  overflow: hidden;
+  font-size: 0.82rem;
+  line-height: 1.4rem;
+  white-space: nowrap;
+}
+
+.roster-color-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex: 0 0 8px;
+  margin-right: 6px;
+  vertical-align: middle;
+}
+
+.roster-handle {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.join-form {
+  display: grid;
+  width: min(26rem, 100%);
+  gap: 0.6rem;
+  color: var(--text);
+  white-space: normal;
+}
+
+.join-form label {
+  color: var(--dim);
+}
+
+.join-form input,
+.join-form button,
+.leave-button {
+  min-height: 2.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+}
+
+.join-form input {
+  padding: 0.45rem 0.6rem;
+  outline: none;
+}
+
+.join-form input:focus {
+  border-color: var(--accent);
+}
+
+.join-form button,
+.leave-button {
+  cursor: pointer;
+}
+
+.join-form button:disabled {
+  cursor: default;
+  color: var(--dim);
+}
+
+.leave-button {
+  width: 100%;
+  min-height: 2rem;
+  margin-top: auto;
+  color: var(--dim);
+}
+
+.error-line {
+  color: #ff8080;
+  white-space: normal;
+}
+
+.chat-line {
+  min-height: 1.2em;
+  font-family: ui-monospace, Menlo, Monaco, monospace;
+  overflow: hidden;
+  color: #cccccc;
+  line-height: 1.2em;
+  text-overflow: clip;
+  white-space: pre;
+}
+
+.system-line {
+  margin-bottom: 0.6em;
+  color: #888888;
+  font-style: italic;
+}
+
+.caret {
+  display: inline-block;
+  width: 0.62em;
+  height: 1.05em;
+  vertical-align: -0.16em;
+  background: #cccccc;
+  animation: blink 1s step-start infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .caret {
+    animation: none;
+  }
+}
+
+@media (max-width: 420px) {
+  #chat-area {
+    padding: 6px;
+  }
+
+  #roster {
+    width: 128px;
+    flex-basis: 128px;
+    padding: 6px;
+  }
+
+  .roster-heading {
+    letter-spacing: 0.03em;
+  }
+}
+
+.roster-footer {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: auto;
+}
+
+.char-counter {
+  color: #888888;
+  font-size: 0.72rem;
+  line-height: 1.25;
+  text-align: right;
+}
+
+.char-counter.at-limit {
+  color: #ffff00;
+}
+
+.paste-warning {
+  color: #ffb000;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.command-buttons {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.25rem;
+}
+
+.command-button,
+.keyboard-button,
+.help-close {
+  min-height: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 0;
+  background: var(--surface);
+  color: var(--dim);
+  cursor: pointer;
+  font: inherit;
+}
+
+.keyboard-button {
+  width: 100%;
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.command-button:focus-visible,
+.command-button:hover,
+.keyboard-button:focus-visible,
+.keyboard-button:hover,
+.help-close:focus-visible,
+.help-close:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  outline: none;
+}
+
+.help-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgb(0 0 0 / 80%);
+}
+
+.help-dialog {
+  width: min(420px, 100%);
+  max-height: calc(100dvh - 2rem);
+  overflow-y: auto;
+  border: 1px solid #555555;
+  padding: 16px;
+  background: #111111;
+  color: var(--text);
+  font-family: var(--mono);
+  line-height: 1.45;
+}
+
+.help-heading {
+  margin-bottom: 0.75rem;
+  color: var(--accent);
+}
+
+.help-list {
+  display: grid;
+  gap: 0.25rem;
+  margin: 0;
+}
+
+.help-list div {
+  display: grid;
+  grid-template-columns: 7rem minmax(0, 1fr);
+  gap: 0.5rem;
+}
+
+.help-list dt,
+.help-list dd {
+  margin: 0;
+}
+
+.help-list dt {
+  color: #ffff00;
+}
+
+.help-dialog p {
+  color: var(--dim);
+  white-space: normal;
+}
+
+.help-dialog code {
+  color: #00ff80;
+  font: inherit;
+}
+
+.help-close {
+  width: 100%;
+  margin-top: 0.25rem;
+  color: var(--text);
+}
+
+@media (max-width: 420px) {
+  .help-dialog {
+    padding: 0.75rem;
+    font-size: 0.82rem;
+  }
+
+  .help-list div {
+    grid-template-columns: 5.5rem minmax(0, 1fr);
+  }
+}
+
+
+/* Lobby keeps the same terminal vocabulary while making room selection clear
+   before a caller occupies a participant line. */
+#chat-area.lobby-shell {
+  overflow-y: auto;
+  white-space: normal;
+}
+
+.lobby {
+  display: flex;
+  width: 100%;
+  max-width: 480px;
+  min-height: 100%;
+  margin: 0 auto;
+  padding: 24px;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+}
+
+.lobby-heading {
+  color: var(--dim);
+  font-size: 0.76rem;
+  letter-spacing: 0.08em;
+}
+
+.handle-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.handle-row input {
+  min-width: 0;
+}
+
+.handle-row button {
+  padding-inline: 12px;
+}
+
+.lobby-rooms {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lobby-room {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid #333333;
+  padding: 8px;
+}
+
+.lobby-room.full {
+  opacity: 0.5;
+}
+
+.lobby-room-details {
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  overflow-wrap: anywhere;
+}
+
+.lobby-flag {
+  color: #ffff00;
+  font-size: 0.75rem;
+}
+
+.lobby-status,
+.lobby-empty {
+  color: var(--dim);
+}
+
+.lobby-join-button,
+.lobby-new-room {
+  min-height: 2.5rem;
+  border-radius: 0;
+  cursor: pointer;
+  font: inherit;
+}
+
+.lobby-join-button {
+  min-width: 5.25rem;
+  border: 1px solid #333333;
+  padding-inline: 10px;
+  background: #111111;
+  color: #55ffff;
+}
+
+.lobby-new-room {
+  width: 100%;
+  border: 1px solid #55ffff;
+  background: #000000;
+  color: #55ffff;
+}
+
+.lobby-join-button:hover:not(:disabled),
+.lobby-join-button:focus-visible,
+.lobby-new-room:hover:not(:disabled),
+.lobby-new-room:focus-visible {
+  border-color: var(--accent);
+  color: var(--accent);
+  outline: none;
+}
+
+.lobby-join-button:disabled,
+.lobby-new-room:disabled {
+  cursor: default;
+  color: var(--dim);
+}
+
+@media (max-width: 420px) {
+  .lobby {
+    justify-content: flex-start;
+    padding: 18px 12px;
+  }
+
+  .handle-row {
+    grid-template-columns: 1fr;
+  }
+
+  .lobby-room {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .lobby-join-button {
+    width: 100%;
+  }
+}
+
