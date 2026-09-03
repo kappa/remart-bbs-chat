@@ -567,13 +567,24 @@ export function App() {
       return;
     }
     // Allow empty lines: multiple Enters should insert empty lines
-    setOptimisticContent("");
-    enqueue(() =>
-      api.commitLine({
+    // Do not clear the current line visually — keep it in place until server confirms commit.
+    // Only the new empty active line at bottom should get the caret.
+    const contentAtCommit = activeContent;
+    enqueue(async () => {
+      await api.commitLine({
         roomId: session.roomId,
         participantId: session.participantId,
-      }),
-    );
+      });
+      // Clear optimistic after commit succeeds; if we had optimistic content equal to what we just committed,
+      // drop it so the fresh empty active line shows.
+      if (optimisticContentRef.current === contentAtCommit) {
+        setOptimisticContent(null);
+      } else if (optimisticContentRef.current === "") {
+        // We didn't set it early, but if something else cleared it, keep null
+        setOptimisticContent(null);
+      }
+    });
+    // Keep current optimistic content visible as committed line in place — do not blank it here.
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
