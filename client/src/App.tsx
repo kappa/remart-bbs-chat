@@ -20,8 +20,17 @@ type Session = {
 
 const SESSION_KEY = "remart-bbs-chat.session";
 const HANDLE_KEY = "remart-bbs-chat.handle";
-const MAX_LINE_LENGTH = 80;
-const PRINTABLE_ASCII = /^[\x20-\x7E]$/;
+
+function isValidChar(char: string): boolean {
+  if (typeof char !== 'string') return false;
+  const arr = Array.from(char);
+  if (arr.length !== 1) return false;
+  if (char === '\n' || char === '\r') return false;
+  const code = char.charCodeAt(0);
+  if (code < 32 && char !== ' ' && char !== '\t') return false;
+  if (code === 127) return false;
+  return true;
+}
 
 /*
  * Desktop hosts may load the artifact in a third-party or privacy-restricted
@@ -90,7 +99,6 @@ export function App() {
   const queueRef = useRef<Promise<unknown>>(Promise.resolve());
   const optimisticContentRef = useRef<string | null>(null);
   const pendingActionsRef = useRef(0);
-  const sentCharTimestampsRef = useRef<number[]>([]);
   const wasNearBottomRef = useRef(true);
   const autoJoinAttemptRef = useRef("");
 
@@ -256,13 +264,15 @@ export function App() {
     const activeRows = participants.map((participant) => ({
       kind: "active" as const,
       key: `active:${participant.id}`,
-      order: participant.activeLineIdx,
+      // Ownership assigned on first char, not on Enter: null means not yet reserved, show at bottom
+      order: participant.activeLineIdx ?? Number.MAX_SAFE_INTEGER,
       participant,
     }));
 
     // Committed history and live lines are one document. A line's order key,
     // never its type, determines where it renders. Enter therefore changes a
-    // row from active to committed without moving the text.
+    // row from active to committed without moving the text, and deferred
+    // ownership ensures first typer comes first.
     return [...committedRows, ...activeRows].sort((left, right) => {
       if (left.order !== right.order) return left.order - right.order;
       return left.key.localeCompare(right.key);
@@ -317,32 +327,6 @@ export function App() {
         pendingActionsRef.current = Math.max(0, pendingActionsRef.current - 1);
         setPendingActions(pendingActionsRef.current);
       });
-  };
-
-  const sendCharThrottled = async (
-    activeSession: Session,
-    char: string,
-  ) => {
-    // Smooth paste bursts client-side. The server independently enforces the
-    // same ceiling and remains the source of truth.
-    while (true) {
-      const now = Date.now();
-      sentCharTimestampsRef.current = sentCharTimestampsRef.current.filter(
-        (timestamp) => now - timestamp < 1000,
-      );
-      if (sentCharTimestampsRef.current.length < 10) break;
-      const oldestTimestamp = sentCharTimestampsRef.current[0] ?? now;
-      const waitMs = Math.max(1, 1001 - (now - oldestTimestamp));
-      setWarning("Typing throttled to 10 characters per second");
-      await new Promise<void>((resolve) => window.setTimeout(resolve, waitMs));
-    }
-
-    sentCharTimestampsRef.current.push(Date.now());
-    return api.sendChar({
-      roomId: activeSession.roomId,
-      participantId: activeSession.participantId,
-      char,
-    });
   };
 
   const rememberHandle = (cleanHandle: string) => {
@@ -498,57 +482,52 @@ export function App() {
     const clipboardCharacters = Array.from(
       event.clipboardData.getData("text"),
     );
-    const limitedCharacters = clipboardCharacters.slice(0, 20);
-    // V1 is ASCII-only so every character occupies exactly one terminal cell.
-    // A future Unicode version should calculate display width with wcwidth.
-    const printableCharacters = limitedCharacters.filter(
-      (char) => char.length === 1 && PRINTABLE_ASCII.test(char),
+    const limitedCharacters = clipboardCharacters.slice(0, 100);
+    const validCharacters = limitedCharacters.filter(
+      (char) => isValidChar(char) || char === ' ' ,
     );
     const baseContent =
       optimisticContentRef.current ?? ownParticipant?.activeContent ?? "";
-    const remainingCells = Math.max(0, MAX_LINE_LENGTH - baseContent.length);
-    const acceptedCharacters = printableCharacters.slice(0, remainingCells);
+    const acceptedCharacters = validCharacters;
     const messages: string[] = [];
 
-    if (clipboardCharacters.length > 20) {
-      messages.push("Paste limited to 20 characters");
-    }
-    if (printableCharacters.length !== limitedCharacters.length) {
-      messages.push("Unicode/wide chars not supported in V1");
-    }
-    if (printableCharacters.length > remainingCells) {
-      messages.push("80/80 limit");
+    if (clipboardCharacters.length > 100) {
+      messages.push("Paste limited to 100 characters");
     }
     if (messages.length > 0) setWarning(messages.join(" · "));
     if (acceptedCharacters.length === 0) {
-      if (remainingCells === 0) setWarning("80/80 limit");
       return;
     }
 
     setOptimisticContent(`${baseContent}${acceptedCharacters.join("")}`);
     const activeSession = session;
     for (const char of acceptedCharacters) {
-      enqueue(() => sendCharThrottled(activeSession, char));
+      enqueue(() => api.sendChar({
+        roomId: activeSession.roomId,
+        participantId: activeSession.participantId,
+        char,
+      }));
     }
   };
 
   const appendCharacter = (char: string) => {
     if (!session) return;
+
+    if (!isValidChar(char) && char !== ' ') {
+      // Allow space explicitly, and any Unicode letter
+      if (Array.from(char).length !== 1) return;
+      if (char === '\n' || char === '\r') return;
+    }
+
     const activeContent =
       optimisticContentRef.current ?? ownParticipant?.activeContent ?? "";
-
-    if (char.length !== 1 || !PRINTABLE_ASCII.test(char)) {
-      setWarning("Unicode/wide chars not supported in V1");
-      return;
-    }
-    if (activeContent.length >= MAX_LINE_LENGTH) {
-      setWarning("80/80 limit");
-      return;
-    }
-
     setOptimisticContent(`${activeContent}${char}`);
     const activeSession = session;
-    enqueue(() => sendCharThrottled(activeSession, char));
+    enqueue(() => api.sendChar({
+      roomId: activeSession.roomId,
+      participantId: activeSession.participantId,
+      char,
+    }));
   };
 
   const eraseCharacter = () => {
@@ -587,9 +566,7 @@ export function App() {
       leave(activeContent.length);
       return;
     }
-    // Empty Enter is ignored: no blank history row and no line-slot churn.
-    if (command.length === 0) return;
-
+    // Allow empty lines: multiple Enters should insert empty lines
     setOptimisticContent("");
     enqueue(() =>
       api.commitLine({
@@ -777,6 +754,7 @@ export function App() {
           if (row.kind === "committed") {
             const { line } = row;
             const isSystemLine = line.content.startsWith("* ");
+            const systemColor = (line as any).color ?? colorByHandle.get(line.handle) ?? "var(--dim)";
             return (
               <div
                 className={`chat-line committed-line${
@@ -786,7 +764,7 @@ export function App() {
                 data-document-order={row.order}
                 style={{
                   color: isSystemLine
-                    ? "var(--dim)"
+                    ? systemColor
                     : (colorByHandle.get(line.handle) ?? "var(--text)"),
                 }}
               >
@@ -853,12 +831,10 @@ export function App() {
         )}
         <div className="roster-footer">
           <div
-            className={`char-counter${
-              currentContent.length >= MAX_LINE_LENGTH ? " at-limit" : ""
-            }`}
+            className="char-counter"
             aria-live="polite"
           >
-            {currentContent.length}/80
+            {currentContent.length} chars
           </div>
           {warning ? (
             <div className="paste-warning" role="status">
@@ -915,7 +891,7 @@ export function App() {
               <div><dt>Enter</dt><dd>commit your line and assign a new empty line</dd></div>
               <div><dt>Backspace</dt><dd>remove one character, visibly and in order</dd></div>
             </dl>
-            <p>Lines stop at 80 characters: no wrapping and no horizontal scroll.</p>
+            <p>Unicode supported, including Cyrillic. No character limit.</p>
             <p>
               For per-tab testing, use <code>?name=Alice</code> and <code>?name=Bob</code>.
               Overrides do not overwrite the handle remembered in localStorage.

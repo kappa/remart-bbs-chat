@@ -10,9 +10,19 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const ANSI_COLORS = ["#00FFFF","#FFFF00","#FF00FF","#00FF00","#FF8000","#80FF00","#FF0080","#00FF80","#8080FF","#FF8080"];
-const MAX_LINE_LENGTH = 80;
 const HEARTBEAT_TIMEOUT_MS = 40000;
-const PRINTABLE_ASCII = /^[\x20-\x7E]$/;
+
+function isValidChar(char){
+  if(typeof char !== 'string') return false;
+  const arr = Array.from(char);
+  if(arr.length !== 1) return false;
+  if(char === '\n' || char === '\r') return false;
+  // Allow any printable Unicode (including Cyrillic), exclude C0 controls except space
+  const code = char.charCodeAt(0);
+  if(code < 32 && char !== ' ' && char !== '\t') return false;
+  if(code === 127) return false;
+  return true;
+}
 
 let nextRoomId = 1;
 let nextParticipantId = 1;
@@ -60,7 +70,9 @@ function getOrCreateRoom(preferredId, forceNew){
 function greatestLineIdx(room){
   let max=-1;
   for(const l of room.lines) if(l.lineIdx>max) max=l.lineIdx;
-  for(const p of room.participants.values()) if(p.activeLineIdx>max) max=p.activeLineIdx;
+  for(const p of room.participants.values()){
+    if(p.activeLineIdx != null && p.activeLineIdx>max) max=p.activeLineIdx;
+  }
   return max;
 }
 
@@ -77,16 +89,24 @@ function cleanupStaleInRoom(room, excludeId=null){
   for(const s of stale){
     // Spec 3.4 + 10: nonempty active line remains as committed text; empty disappears
     if(s.activeContent && s.activeContent.length>0){
+      const commitIdx = s.activeLineIdx != null ? s.activeLineIdx : nextIdx++;
       room.lines.push({
         id:`line-${s.id}-${Date.now()}`,
         handle:s.handle,
         content:s.activeContent,
         committed:true,
-        lineIdx:s.activeLineIdx,
+        lineIdx:commitIdx,
         createdAt:new Date(s.lastSeen.getTime()),
         committedAt:s.lastSeen.getTime(),
         colorSnapshot:s.color
       });
+      // keep nextIdx in sync if we used it
+      if(s.activeLineIdx == null) {
+        // nextIdx already incremented
+      } else {
+        // ensure nextIdx stays ahead
+        if(commitIdx >= nextIdx) nextIdx = commitIdx+1;
+      }
     }
     room.lines.push({
       id:`leave-${s.id}-${Date.now()}-${nextIdx}`,
@@ -231,12 +251,13 @@ app.post('/api/leave', (req,res)=>{
   const now = new Date();
 
   if(participant.activeContent && participant.activeContent.length>0){
+    const commitIdx = participant.activeLineIdx != null ? participant.activeLineIdx : gIdx+1;
     room.lines.push({
       id:`line-${participant.id}-${Date.now()}`,
       handle:participant.handle,
       content:participant.activeContent,
       committed:true,
-      lineIdx:participant.activeLineIdx,
+      lineIdx:commitIdx,
       createdAt:now,
       committedAt:now.getTime(),
       colorSnapshot:participant.color
@@ -293,22 +314,16 @@ app.post('/api/char', (req,res)=>{
   const participant = room.participants.get(Number(participantId));
   if(!participant) return res.status(404).json({error:'user not in room'});
 
-  const current = participant.activeContent;
-  if(current.length >= MAX_LINE_LENGTH){
-    return res.json({content:current, lineIdx:participant.activeLineIdx, position:current.length-1, participantId:participant.id});
-  }
-  if(typeof char!=='string' || char.length!==1 || !PRINTABLE_ASCII.test(char)){
+  if(!isValidChar(char)){
     return res.status(400).json({error:'invalid char'});
   }
 
-  // 10 cps throttling per spec
-  const oneSecAgo = Date.now()-1000;
-  const recent = room.charEvents.filter(e=>e.handle===participant.handle && e.createdAt.getTime()>oneSecAgo);
-  if(recent.length>=10){
-    return res.json({content:current, lineIdx:participant.activeLineIdx, position:Math.max(0,current.length-1), participantId:participant.id});
+  // Ownership is assigned on first character, not on Enter
+  if(participant.activeLineIdx == null){
+    participant.activeLineIdx = greatestLineIdx(room)+1;
   }
 
-  const content = current + char;
+  const content = participant.activeContent + char;
   participant.activeContent = content;
   participant.lastSeen = new Date();
   room.charEvents.push({handle:participant.handle, char, lineIdx:participant.activeLineIdx, position:content.length-1, createdAt:new Date()});
@@ -351,12 +366,8 @@ app.post('/api/commit', (req,res)=>{
   const participant = room.participants.get(Number(participantId));
   if(!participant) return res.status(404).json({error:'user not in room'});
 
-  if(participant.activeContent.trim().length===0){
-    return res.json({newLineIdx:participant.activeLineIdx, committedContent:'', committedAt:Date.now()});
-  }
-
-  const gIdx = greatestLineIdx(room);
-  const newLineIdx = gIdx+1;
+  // Allow empty lines: multiple Enters should insert empty lines
+  const commitLineIdx = participant.activeLineIdx != null ? participant.activeLineIdx : greatestLineIdx(room)+1;
   const committedAt = new Date();
   const committedContent = participant.activeContent;
 
@@ -365,18 +376,19 @@ app.post('/api/commit', (req,res)=>{
     handle:participant.handle,
     content:committedContent,
     committed:true,
-    lineIdx:participant.activeLineIdx,
+    lineIdx:commitLineIdx,
     createdAt:committedAt,
     committedAt:committedAt.getTime(),
     colorSnapshot:participant.color
   });
 
+  // Ownership deferred: new active line has no reserved index until first char
   participant.activeContent = '';
-  participant.activeLineIdx = newLineIdx;
+  participant.activeLineIdx = null;
   participant.lastSeen = committedAt;
 
   broadcastRoom(room);
-  res.json({newLineIdx, committedContent, committedAt:committedAt.getTime()});
+  res.json({newLineIdx:null, committedContent, committedAt:committedAt.getTime()});
 });
 
 // room state
