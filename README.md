@@ -39,3 +39,4 @@ Fly.io: `fly launch && fly deploy`
 ## GitHub
 
 https://github.com/kappa/remart-bbs-chat
+# trigger deploy 2026-09-03T03:05:21Z
