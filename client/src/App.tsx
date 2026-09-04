@@ -135,6 +135,12 @@ export function App() {
   // shared row. When neither exists we are idle: no shared row, only a local
   // cursor preview below the transcript on our own client.
   const [draftLineIdx, setDraftLineIdx] = useState<number|null>(null);
+  // Indices of our own drafts finished via Enter. A delayed pre-commit
+  // snapshot — or an out-of-order poll arriving after the pending commit was
+  // cleaned — may still report our activeLineIdx for one of these; it must
+  // never render as an active row again. Server line indices are never reused,
+  // so remembering a finished index is safe.
+  const finishedDraftIdxsRef = useRef<Set<number>>(new Set());
   const chatRef = useRef<HTMLElement>(null);
   const keyboardRef = useRef<HTMLTextAreaElement>(null);
   const queueRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -201,6 +207,7 @@ export function App() {
       seqRef.current = 1;
       setPendingCommits([]);
       setDraftLineIdx(null);
+      finishedDraftIdxsRef.current.clear();
       setOptimisticContent(null);
       optimisticContentRef.current = null;
     }
@@ -417,12 +424,15 @@ export function App() {
   // current end of the transcript, matching the server's greatest+1 rule.
   // No-ops when the draft is already allocated or the server has allocated one.
   // (The server's idx is stale while its line is still in pendingCommits —
-  // we committed it locally — so staleness counts as unallocated here too.)
+  // we committed it locally — or while it names a finished draft, e.g. from a
+  // delayed pre-commit snapshot. Either way it counts as unallocated here.)
   const ensureDraftAllocated = () => {
     if (draftLineIdx != null) return;
     const serverIdx = (ownParticipant as any)?.activeLineIdx ?? null;
     const stale =
-      serverIdx != null && pendingCommits.some((pc) => pc.lineIdx === serverIdx);
+      serverIdx != null &&
+      (pendingCommits.some((pc) => pc.lineIdx === serverIdx) ||
+        finishedDraftIdxsRef.current.has(serverIdx));
     if (!stale && serverIdx != null) return;
     let maxKnown = -1;
     for (const h of visibleHistory) if ((h as any).lineIdx > maxKnown) maxKnown = (h as any).lineIdx;
@@ -525,11 +535,14 @@ export function App() {
     const activeRows = participants.flatMap((participant) => {
       const isOwn = session != null && participant.id === session.participantId;
       const serverIdx: number | null = (participant as any).activeLineIdx ?? null;
-      // Our own server allocation is stale while its line sits in pendingCommits:
-      // we already committed that line locally, so it must not render as active.
+      // Our own server allocation is stale while its line sits in pendingCommits
+      // (we already committed that line locally), or while it names a draft we
+      // finished via Enter (delayed pre-commit snapshot / out-of-order poll):
+      // it must not render as an active row again.
       const staleOwn =
         isOwn && serverIdx != null &&
-        pendingCommits.some((pc) => pc.lineIdx === serverIdx);
+        (pendingCommits.some((pc) => pc.lineIdx === serverIdx) ||
+          finishedDraftIdxsRef.current.has(serverIdx));
       // A shared active row exists only for an allocated line: the server's
       // activeLineIdx, or our own optimistic draft (first char typed, server
       // hasn't allocated yet). An idle participant — no allocation — renders no
@@ -906,27 +919,29 @@ export function App() {
     // Allow empty lines: multiple Enters should insert empty lines
     // Separate responsibilities: keep finished line visible (pendingCommits) AND start fresh buffer (optimisticContent="")
     const contentAtCommit = activeContent;
-    // Compute commit lineIdx robustly for rapid Enter without waiting for ack:
-    // - If we have an activeLineIdx from server, that's the line we're committing (in-place)
-    // - Otherwise, allocate after max known (visibleHistory + pendingCommits + other participants)
-    // - If we already have pending commits (previous Enter not yet acked), allocate after them
+    // The line being committed is the line currently being edited. The server's
+    // activeLineIdx is authoritative when known; otherwise keep the optimistic
+    // draftLineIdx allocated on the first character. Recomputing here would
+    // lose the draft's allocation if a remote line arrived in the meantime,
+    // and a delayed pre-commit snapshot would then resurrect the finished
+    // draft as a second active row. Only with neither (Enter on an untouched
+    // buffer) allocate after max known.
     let commitLineIdx: number;
     if (ownParticipant?.activeLineIdx != null && pendingCommits.length === 0) {
       commitLineIdx = ownParticipant.activeLineIdx;
+    } else if (draftLineIdx != null) {
+      commitLineIdx = draftLineIdx;
     } else {
       let maxKnown = -1;
       for (const h of visibleHistory) if (h.lineIdx > maxKnown) maxKnown = h.lineIdx;
       for (const pc of pendingCommits) if (pc.lineIdx > maxKnown) maxKnown = pc.lineIdx;
       for (const p of participants) if (p.activeLineIdx != null && p.activeLineIdx > maxKnown) maxKnown = p.activeLineIdx;
-      if (ownParticipant?.activeLineIdx != null && ownParticipant.activeLineIdx > maxKnown) maxKnown = ownParticipant.activeLineIdx;
-      // If we have pending, next commit should be after maxKnown; otherwise use activeLineIdx or maxKnown+1
-      if (pendingCommits.length > 0) {
-        commitLineIdx = maxKnown + 1;
-      } else {
-        commitLineIdx = ownParticipant?.activeLineIdx ?? (maxKnown + 1);
-        if (visibleHistory.length === 0 && pendingCommits.length === 0 && commitLineIdx < 0) commitLineIdx = 0;
-      }
+      commitLineIdx = maxKnown + 1;
+      if (visibleHistory.length === 0 && pendingCommits.length === 0 && commitLineIdx < 0) commitLineIdx = 0;
     }
+    // This draft is finished: even a delayed pre-commit snapshot reporting our
+    // activeLineIdx must not render it as an active row again.
+    finishedDraftIdxsRef.current.add(commitLineIdx);
     const pendingId = `pending-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
     // Immediately start fresh local buffer for new line. The draft lineIdx is
     // cleared: until the next first character there is no allocated line, so

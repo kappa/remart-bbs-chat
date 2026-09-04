@@ -348,3 +348,103 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
     });
   });
 });
+
+describe('Regression: Enter keeps the optimistic draft allocation under latency', ()=>{
+  const alice = (over: any = {}) => ({id:10, handle:'Alice', color:'#fff', lineSlot:0, activeLineIdx:null, activeContent:'', joinedAt:1, nextExpectedSeq:1, ...over});
+  const bob = (over: any = {}) => ({id:20, handle:'Bob', color:'#0ff', lineSlot:1, activeLineIdx:null, activeContent:'', joinedAt:1, nextExpectedSeq:1, ...over});
+  const roster = [{handle:'Alice', color:'#fff', lineSlot:0},{handle:'Bob', color:'#0ff', lineSlot:1}];
+
+  it('delayed pre-commit snapshot cannot resurrect the finished draft', async ()=>{
+    const { act } = await import('react');
+    const user = userEvent.setup();
+    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice'};
+    sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
+    const client = qc();
+
+    // Start: Alice idle, Bob idle.
+    (api.getRoomState as any).mockResolvedValue({roomId:1, history:[], participants:[alice(), bob()], roster});
+    (api.sendChar as any).mockResolvedValue({content:'A', lineIdx:0, position:0, participantId:10});
+    // commitLine never resolves: the Enter acknowledgement is delayed.
+    (api.commitLine as any).mockImplementation(()=> new Promise(()=>{}));
+
+    render(<QueryClientProvider client={client}><App /></QueryClientProvider>);
+    const chatArea = await screen.findByLabelText('Shared chat area');
+    await user.click(chatArea);
+
+    // 1. Alice types A: draft allocated optimistically at 0, server ack delayed.
+    await user.keyboard('A');
+    await waitFor(()=>{
+      const row = document.querySelector('.active-line[data-line-slot="0"]');
+      expect(row).not.toBeNull();
+      expect(row?.textContent).toContain('A');
+      expect(row?.getAttribute('data-document-order')).toBe('0');
+    });
+
+    // 2. Bob starts a line at 1; Alice's own allocation ack still hasn't arrived.
+    (api.getRoomState as any).mockResolvedValue({
+      roomId:1, history:[],
+      participants:[alice({nextExpectedSeq:2}), bob({activeLineIdx:1, activeContent:'X'})],
+      roster,
+    });
+    await act(async ()=>{ await client.invalidateQueries({queryKey:['room-state',1]}); });
+    await waitFor(()=>{ expect(screen.getByText('X')).toBeInTheDocument(); });
+
+    // 3. Alice presses Enter before receiving her own allocation acknowledgement.
+    await user.keyboard('{Enter}');
+
+    // The pending commit keeps the draft's allocation (0) — it must NOT be
+    // recomputed after Bob's line (2).
+    await waitFor(()=>{
+      const pending = document.querySelector('.committed-line[data-document-order="0"]');
+      expect(pending).not.toBeNull();
+      expect(pending?.textContent).toContain('A');
+    });
+    // No second A anywhere yet.
+    expect(screen.getAllByText('A')).toHaveLength(1);
+
+    // 4. Delayed pre-commit snapshot: the server finally reports Alice's
+    // active line at 0. It must not render as an active row again.
+    (api.getRoomState as any).mockResolvedValue({
+      roomId:1, history:[],
+      participants:[alice({activeLineIdx:0, activeContent:'A', nextExpectedSeq:3}), bob({activeLineIdx:1, activeContent:'X'})],
+      roster,
+    });
+    await act(async ()=>{ await client.invalidateQueries({queryKey:['room-state',1]}); });
+
+    await waitFor(()=>{
+      // Still exactly one A — the pending commit. No resurrected active row.
+      expect(screen.getAllByText('A')).toHaveLength(1);
+      expect(document.querySelector('.active-line[data-line-slot="0"]')).toBeNull();
+      // Idle Alice keeps only her local cursor preview.
+      expect(document.querySelector('.local-cursor-preview')).not.toBeNull();
+    });
+
+    // 5. Server confirms: history carries A at 0, Alice idle. Pending cleans up.
+    const committedAt = Date.now();
+    const confirmed = {
+      roomId:1,
+      history:[{id:'h1', handle:'Alice', content:'A', lineIdx:0, committed:true, committedAt, color:'#fff'}],
+      participants:[alice({nextExpectedSeq:4}), bob({activeLineIdx:1, activeContent:'X'})],
+      roster,
+    };
+    (api.getRoomState as any).mockResolvedValue(confirmed);
+    await act(async ()=>{ await client.invalidateQueries({queryKey:['room-state',1]}); });
+    await waitFor(()=>{
+      expect(screen.getAllByText('A')).toHaveLength(1);
+      expect(document.querySelector('.active-line[data-line-slot="0"]')).toBeNull();
+    });
+
+    // 6. Out-of-order poll: a stale pre-commit snapshot arrives AFTER the
+    // pending commit was already cleaned. The finished draft must stay dead.
+    (api.getRoomState as any).mockResolvedValue({
+      ...confirmed,
+      participants:[alice({activeLineIdx:0, activeContent:'A', nextExpectedSeq:4}), bob({activeLineIdx:1, activeContent:'X'})],
+    });
+    await act(async ()=>{ await client.invalidateQueries({queryKey:['room-state',1]}); });
+    await waitFor(()=>{
+      expect(screen.getAllByText('A')).toHaveLength(1);
+      expect(document.querySelector('.active-line[data-line-slot="0"]')).toBeNull();
+      expect(document.querySelector('.local-cursor-preview')).not.toBeNull();
+    });
+  });
+});
