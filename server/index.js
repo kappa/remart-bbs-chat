@@ -209,7 +209,7 @@ app.post('/api/join', (req,res)=>{
   const now = new Date();
   const gIdx = greatestLineIdx(room);
   const joinLineIdx = gIdx+1;
-  const activeLineIdx = joinLineIdx+1;
+  const activeLineIdx = null;
 
   const participant = {
     id: nextParticipantId++,

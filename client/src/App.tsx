@@ -150,7 +150,7 @@ export function App() {
     queryKey: ["room-state", session?.roomId],
     queryFn: () => api.getRoomState({ roomId: session!.roomId }),
     enabled: session !== null,
-    refetchInterval: 250,
+    refetchInterval: 2000,
     retry: false,
   });
 
@@ -233,6 +233,63 @@ export function App() {
       active = false;
       window.clearInterval(heartbeatTimer);
       window.removeEventListener("pagehide", leaveOnPageHide);
+    };
+  }, [queryClient, session]);
+
+  // WebSocket live updates: use server broadcasts instead of relying only on polling
+  useEffect(() => {
+    if (!session) return;
+    let ws: WebSocket | null = null;
+    let closed = false;
+    let reconnectTimer: number | null = null;
+
+    const connect = () => {
+      if (closed) return;
+      try {
+        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+        const url = `${protocol}//${window.location.host}`;
+        ws = new WebSocket(url);
+      } catch {
+        // Fallback to polling only if WS unavailable
+        return;
+      }
+
+      ws.onopen = () => {
+        try {
+          ws?.send(JSON.stringify({ type: "subscribe", roomId: session.roomId }));
+        } catch {}
+      };
+
+      ws.onmessage = (event) => {
+        try {
+          const msg = JSON.parse(event.data);
+          if (msg.roomId && msg.roomId !== session.roomId) return;
+          if (msg.type === "room-update" || msg.type === "char" || msg.type === "backspace") {
+            // Immediate refetch — much faster than 250ms poll, avoids char bunching
+            void queryClient.invalidateQueries({ queryKey: ["room-state", session.roomId] });
+          }
+        } catch {
+          // Non-JSON or ping — ignore, still triggers faster poll via invalidate on any message
+        }
+      };
+
+      ws.onclose = () => {
+        if (closed) return;
+        // Reconnect with backoff
+        reconnectTimer = window.setTimeout(connect, 1200) as unknown as number;
+      };
+
+      ws.onerror = () => {
+        try { ws?.close(); } catch {}
+      };
+    };
+
+    connect();
+
+    return () => {
+      closed = true;
+      if (reconnectTimer) window.clearTimeout(reconnectTimer);
+      try { ws?.close(); } catch {}
     };
   }, [queryClient, session]);
 
@@ -565,12 +622,17 @@ export function App() {
 
     setOptimisticContent(`${baseContent}${acceptedCharacters.join("")}`);
     const activeSession = session;
+    // Fire each char without queueing through the serial enqueue — avoids backlog under latency
     for (const char of acceptedCharacters) {
-      enqueue(() => api.sendChar({
+      api.sendChar({
         roomId: activeSession.roomId,
         participantId: activeSession.participantId,
         char,
-      }));
+      }).then(() => {
+        void queryClient.invalidateQueries({ queryKey: ["room-state", activeSession.roomId] });
+      }).catch((reason: unknown) => {
+        setError(reason instanceof Error ? reason.message : "Send failed");
+      });
     }
   };
 
@@ -587,11 +649,19 @@ export function App() {
       optimisticContentRef.current ?? ownParticipant?.activeContent ?? "";
     setOptimisticContent(`${activeContent}${char}`);
     const activeSession = session;
-    enqueue(() => api.sendChar({
+    // Immediate send, not queued — local typing stays immediate, remote sees chars via WS without 250ms bunching
+    api.sendChar({
       roomId: activeSession.roomId,
       participantId: activeSession.participantId,
       char,
-    }));
+    }).then(() => {
+      // Server will broadcast via WS, but invalidate as fallback
+      void queryClient.invalidateQueries({ queryKey: ["room-state", activeSession.roomId] });
+    }).catch((reason: unknown) => {
+      // Roll back optimistic on failure
+      setOptimisticContent(optimisticContentRef.current?.slice(0, -1) ?? null);
+      setError(reason instanceof Error ? reason.message : "Send failed");
+    });
   };
 
   const eraseCharacter = () => {
@@ -601,12 +671,14 @@ export function App() {
     if (activeContent.length === 0) return;
 
     setOptimisticContent(activeContent.slice(0, -1));
-    enqueue(() =>
-      api.sendBackspace({
-        roomId: session.roomId,
-        participantId: session.participantId,
-      }),
-    );
+    api.sendBackspace({
+      roomId: session.roomId,
+      participantId: session.participantId,
+    }).then(() => {
+      void queryClient.invalidateQueries({ queryKey: ["room-state", session.roomId] });
+    }).catch((reason: unknown) => {
+      setError(reason instanceof Error ? reason.message : "Backspace failed");
+    });
   };
 
   const submitActiveLine = () => {
@@ -829,7 +901,8 @@ export function App() {
           if (row.kind === "committed") {
             const { line } = row;
             const isSystemLine = line.content.startsWith("* ");
-            const systemColor = (line as any).color ?? colorByHandle.get(line.handle) ?? "var(--dim)";
+            // Preserve author's color even after they leave — use stored snapshot first
+            const lineColor = (line as any).color ?? colorByHandle.get(line.handle) ?? (isSystemLine ? "var(--dim)" : "var(--text)");
             return (
               <div
                 className={`chat-line committed-line${
@@ -838,9 +911,7 @@ export function App() {
                 key={row.key}
                 data-document-order={row.order}
                 style={{
-                  color: isSystemLine
-                    ? systemColor
-                    : (colorByHandle.get(line.handle) ?? "var(--text)"),
+                  color: lineColor,
                 }}
               >
                 {line.content || " "}

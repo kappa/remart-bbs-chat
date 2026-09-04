@@ -15,9 +15,18 @@ export const ANSI_COLORS = [
   "#FF8080",
 ] as const;
 
-const MAX_LINE_LENGTH = 80;
 const HEARTBEAT_TIMEOUT_MS = 40_000;
-const PRINTABLE_ASCII = /^[\x20-\x7E]$/;
+
+function isValidChar(char: string): boolean {
+  if (typeof char !== 'string') return false;
+  const arr = Array.from(char);
+  if (arr.length !== 1) return false;
+  if (char === '\n' || char === '\r') return false;
+  const code = char.charCodeAt(0);
+  if (code < 32 && char !== ' ' && char !== '\t') return false;
+  if (code === 127) return false;
+  return true;
+}
 
 const roomShape = z.object({
   id: z.number(),
@@ -40,7 +49,7 @@ const rosterEntryShape = z.object({
 
 const activeParticipantShape = rosterEntryShape.extend({
   id: z.number(),
-  activeLineIdx: z.number(),
+  activeLineIdx: z.number().nullable(),
   activeContent: z.string(),
   joinedAt: z.number(),
 });
@@ -52,6 +61,7 @@ const historyLineShape = z.object({
   lineIdx: z.number(),
   committed: z.boolean(),
   committedAt: z.number(),
+  color: z.string().optional(),
 });
 
 export const Actions = {
@@ -237,6 +247,7 @@ export const Actions = {
             content: `* ${stale.handle} left`,
             committed: true,
             lineIdx: leaveLineIdx,
+            color: stale.color,
           }),
           db
             .delete(schema.charEvents)
@@ -318,11 +329,12 @@ export const Actions = {
 
         // The document order is independent of the fixed roster/color slot.
         // A join notice is appended, followed immediately by the caller's one
-        // active line. From then on Enter replaces that active row in place.
+        // active line. Ownership deferred until first character typed to avoid
+        // reserving order prematurely.
         const greatestLineIdx = Math.max(
           -1,
           ...roomLines.map((line) => line.lineIdx),
-          ...roomParticipants.map((current) => current.activeLineIdx),
+          ...roomParticipants.map((current) => current.activeLineIdx ?? -1),
         );
         joinLineIdx = greatestLineIdx + 1;
 
@@ -335,7 +347,7 @@ export const Actions = {
               handle: args.handle,
               color,
               lineSlot,
-              activeLineIdx: joinLineIdx + 1,
+              activeLineIdx: null,
               activeContent: "",
               joinedAt,
               lastSeen: joinedAt,
@@ -379,6 +391,7 @@ export const Actions = {
         content: `* ${participant.handle} joined`,
         committed: true,
         lineIdx: joinLineIdx,
+        color: participant.color,
         createdAt: joinedAt,
       });
 
@@ -436,7 +449,7 @@ export const Actions = {
       const greatestLineIdx = Math.max(
         -1,
         ...roomLines.map((line) => line.lineIdx),
-        ...roomParticipants.map((current) => current.activeLineIdx),
+        ...roomParticipants.map((current) => current.activeLineIdx ?? -1),
       );
       const leftAt = new Date();
       const leaveLine = db.insert(schema.lines).values({
@@ -445,6 +458,7 @@ export const Actions = {
         content: `* ${participant.handle} left`,
         committed: true,
         lineIdx: greatestLineIdx + 1,
+        color: participant.color,
         createdAt: leftAt,
       });
       const deleteParticipant = db
@@ -460,7 +474,8 @@ export const Actions = {
             handle: participant.handle,
             content: participant.activeContent,
             committed: true,
-            lineIdx: participant.activeLineIdx,
+            lineIdx: participant.activeLineIdx ?? greatestLineIdx + 1,
+            color: participant.color,
             createdAt: leftAt,
           }),
           leaveLine,
@@ -565,7 +580,7 @@ export const Actions = {
         Math.max(
           -1,
           ...roomLines.map((line) => line.lineIdx),
-          ...roomParticipants.map((current) => current.activeLineIdx),
+          ...roomParticipants.map((current) => current.activeLineIdx ?? -1),
         ) + 1;
 
       for (const stale of staleParticipants) {
@@ -576,6 +591,7 @@ export const Actions = {
             content: `* ${stale.handle} left`,
             committed: true,
             lineIdx: nextLineIdx,
+            color: stale.color,
           }),
           db
             .delete(schema.charEvents)
@@ -605,7 +621,7 @@ export const Actions = {
     }),
     response: z.object({
       content: z.string(),
-      lineIdx: z.number(),
+      lineIdx: z.number().nullable(),
       position: z.number(),
       participantId: z.number(),
     }),
@@ -625,53 +641,32 @@ export const Actions = {
         throw new Error("user not in room");
       }
 
-      const current = participant.activeContent;
-      // V1 deliberately uses an 80-cell fixed width: historical behavior at
-      // different terminal widths is unresolved. ASCII keeps every accepted
-      // character single-width; a future Unicode version should use wcwidth.
-      if (current.length >= MAX_LINE_LENGTH) {
-        return {
-          content: current,
-          lineIdx: participant.activeLineIdx,
-          position: current.length - 1,
-          participantId: participant.id,
-        };
-      }
-      if (args.char.length !== 1 || !PRINTABLE_ASCII.test(args.char)) {
+      if (!isValidChar(args.char)) {
         throw new Error("invalid char");
       }
 
-      const oneSecondAgo = new Date(Date.now() - 1000);
-      const recentEvents = await db
-        .select({ id: schema.charEvents.id })
-        .from(schema.charEvents)
-        .where(
-          and(
-            eq(schema.charEvents.roomId, participant.roomId),
-            eq(schema.charEvents.handle, participant.handle),
-            gt(schema.charEvents.createdAt, oneSecondAgo),
-          ),
-        );
-      if (recentEvents.length >= 10) {
-        return {
-          content: current,
-          lineIdx: participant.activeLineIdx,
-          position: current.length - 1,
-          participantId: participant.id,
-        };
+      const current = participant.activeContent;
+      // Deferred ownership: assign lineIdx on first character if not yet assigned
+      let activeLineIdx = participant.activeLineIdx;
+      if (activeLineIdx == null) {
+        const [roomLines, roomParticipants] = await Promise.all([
+          db.select({ lineIdx: schema.lines.lineIdx }).from(schema.lines).where(eq(schema.lines.roomId, participant.roomId)),
+          db.select({ activeLineIdx: schema.participants.activeLineIdx }).from(schema.participants).where(eq(schema.participants.roomId, participant.roomId)),
+        ]);
+        activeLineIdx = Math.max(-1, ...roomLines.map(l => l.lineIdx), ...roomParticipants.map(p => p.activeLineIdx ?? -1)) + 1;
       }
 
       const content = `${current}${args.char}`;
       await db.batch([
         db
           .update(schema.participants)
-          .set({ activeContent: content, lastSeen: new Date() })
+          .set({ activeContent: content, activeLineIdx, lastSeen: new Date() })
           .where(eq(schema.participants.id, participant.id)),
         db.insert(schema.charEvents).values({
           roomId: participant.roomId,
           handle: participant.handle,
           char: args.char,
-          lineIdx: participant.activeLineIdx,
+          lineIdx: activeLineIdx,
           position: content.length - 1,
         }),
       ]);
@@ -679,7 +674,7 @@ export const Actions = {
       ctx.invalidateQueries();
       return {
         content,
-        lineIdx: participant.activeLineIdx,
+        lineIdx: activeLineIdx,
         position: content.length - 1,
         participantId: participant.id,
       };
@@ -770,14 +765,7 @@ export const Actions = {
         throw new Error("user not in room");
       }
 
-      if (participant.activeContent.trim().length === 0) {
-        return {
-          newLineIdx: participant.activeLineIdx,
-          committedContent: "",
-          committedAt: Date.now(),
-        };
-      }
-
+      // Allow empty lines: multiple Enters should insert empty lines
       const [roomLines, roomParticipants] = await Promise.all([
         db
           .select({ lineIdx: schema.lines.lineIdx })
@@ -789,30 +777,31 @@ export const Actions = {
           .where(eq(schema.participants.roomId, participant.roomId)),
       ]);
       const greatestLineIdx = Math.max(
-        participant.activeLineIdx,
+        participant.activeLineIdx ?? -1,
         ...roomLines.map((line) => line.lineIdx),
-        ...roomParticipants.map((current) => current.activeLineIdx),
+        ...roomParticipants.map((current) => current.activeLineIdx ?? -1),
       );
+      const effectiveCommitIdx = participant.activeLineIdx ?? greatestLineIdx + 1;
       const newLineIdx = greatestLineIdx + 1;
       const committedAt = new Date();
       // Enter converts the caller's one active row into history at the exact
-      // same document position. The replacement active row is assigned only
-      // after every currently visible line, so it never jumps above another
-      // participant who was already typing below it.
+      // same document position. The replacement active row is deferred (null)
+      // so first typer gets earliest order.
       await db.batch([
         db.insert(schema.lines).values({
           roomId: participant.roomId,
           handle: participant.handle,
           content: participant.activeContent,
           committed: true,
-          lineIdx: participant.activeLineIdx,
+          lineIdx: effectiveCommitIdx,
+          color: participant.color,
           createdAt: committedAt,
         }),
         db
           .update(schema.participants)
           .set({
             activeContent: "",
-            activeLineIdx: newLineIdx,
+            activeLineIdx: null,
             lastSeen: committedAt,
           })
           .where(eq(schema.participants.id, participant.id)),
@@ -870,6 +859,7 @@ export const Actions = {
           lineIdx: line.lineIdx,
           committed: line.committed,
           committedAt: line.createdAt.getTime(),
+          color: (line as any).color,
         })),
         participants: participantRows.map((participant) => ({
           id: participant.id,

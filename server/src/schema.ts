@@ -36,7 +36,8 @@ export const participants = sqliteTable(
     lineSlot: integer("line_slot").notNull(),
     // Stable participant/color slot is separate from the active line's place
     // in the shared vertical stream. Enter advances only activeLineIdx.
-    activeLineIdx: integer("active_line_idx").notNull().default(0),
+    // Null means ownership deferred until first character typed.
+    activeLineIdx: integer("active_line_idx"),
     activeContent: text("active_content").notNull().default(""),
     joinedAt: integer("joined_at", { mode: "timestamp_ms" })
       .notNull()
@@ -80,6 +81,7 @@ export const lines = sqliteTable("lines", {
     .notNull()
     .default(true),
   lineIdx: integer("line_idx").notNull(),
+  color: text("color"),
   createdAt: integer("created_at", { mode: "timestamp_ms" })
     .notNull()
     .$defaultFn(() => new Date()),
