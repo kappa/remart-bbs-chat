@@ -1,3 +1,7 @@
+> **OUT OF DATE — 2026-09-04** — Historical intent only. Current implementation is in `server/index.js` + `client/src/App.tsx` + `README.md`. See `docs/SPECS_STATUS.md` for authoritative behavior. Do not use this doc as source of truth for new work.
+
+---
+
 # Remart BBS Chat Prototype Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers: subagent-driven-development (recommended) or superpowers: executing-plans to implement this plan task-by-task. Steps use checkbox (` - [ ] `) syntax for tracking.

@@ -1,3 +1,7 @@
+> **EVOLVED — 2026-09-04** — This spec is approved product intent with explicit uncertainties, but Section 7 V1 decisions (80-cell, ASCII-only, paste 20 chars, 10 cps) have been superseded by current implementation (Unicode including Cyrillic, no 80-cell limit, paste up to 100, no throttling, deferred ownership, empty Enters, WS live updates, typing-hint hidden desktop). See `docs/SPECS_STATUS.md` and `README.md` for current truth.
+
+---
+
 # Remart BBS Chat — final specification
 
 **Status:** Approved for prototype, with explicit historical uncertainties  
