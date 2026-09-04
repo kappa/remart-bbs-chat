@@ -893,7 +893,7 @@ export function App() {
           spellCheck={false}
           onInput={onKeyboardInput}
         />
-        <div className="chat-line system-line">
+        <div className="chat-line system-line typing-hint">
           {session.roomName} — tap or click here to type · Enter sends
         </div>
 
