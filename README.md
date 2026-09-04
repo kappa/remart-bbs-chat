@@ -1,42 +1,40 @@
-# Remart BBS Chat — Full Stack Export
+# Remart BBS Chat
 
-> Modern web prototype of Remart BBS chat — char-by-char typing, visible Backspace, concurrent lines, color-coded roster. This repo contains **both client and server** for external hosting.
+Modern web prototype of Remart BBS chat — char-by-char typing, visible Backspace, concurrent lines, color-coded roster, DOS-authentic feel.
 
-This is part of Remart BBS — not just chat, but chat is the first prototype module.
+Live: `https://remart-bbs-chat.fly.dev/`
 
 ## Structure
 
-- `client/src/App.tsx` (936 lines) — main UI, rooms, typing, heartbeat 12s, Enter semantics
-- `client/src/api.ts` — typed RPC client
-- `client/src/theme.css` — monospace theme
-- `server/src/actions.ts` (891 lines) — authoritative actions
-- `server/src/schema.ts` — Drizzle: rooms, participants, lines, charEvents
-- `server/index.js` — standalone Express+WS for Render/Fly.io
-- `artifact/` — original Hatch TS-space with drizzle migrations 0001..0006
-- `rooms.js`, `char-broadcast.js` — legacy prototype logic
-- `test-*.js` — tests
+- `client/src/App.tsx` — main UI, rooms, typing, WebSocket live updates, heartbeat 12s, Enter semantics
+- `client/src/api.ts` — typed REST client for `/api/*`
+- `client/src/theme.css` — monospace theme, 1.55em line height
+- `server/index.js` — standalone Express + WS server, in-memory rooms, authoritative char order
 
-## Behavior (from final spec)
+## Behavior
 
-- Monospace mandatory, one shared scrolling area, color identifies author
-- Each participant owns active line, 80-cell limit, ASCII only, paste capped 20, 10 cps throttling
-- Enter commits in place, new empty line appears below all lines (per 2026-09-02 clarification)
-- Backspace col0 ignored, no whole-line delete
-- Commands l/?/q only when trimmed line == single char + Enter
-- Heartbeat 12s client, 40s server timeout, stale cleanup with leave line
-- `?name=Alice&room=1` per-tab override, doesn't overwrite localStorage
+- Monospace mandatory, one shared scrolling document, color identifies author
+- One active line per participant, characters and Backspace appear immediately (optimistic + WS broadcast)
+- WebSocket push for remote updates, 2s polling fallback
+- Unicode (including Cyrillic) allowed, no 80-char limit
+- Enter commits in place without redrawing line, allows empty lines, ownership deferred to first typed char
+- Join/leave lines use author's assigned color, history preserves color after leave
+- Join chirp via Web Audio when new participant appears
+- Commands `l` / `?` / `q` only when trimmed line is exactly that single char + Enter
+- Heartbeat 12s client, 40s server timeout, stale cleanup preserves nonempty active text
+- `?name=Alice` per-tab override, doesn't overwrite remembered default
+- Pinned roster, ~10 participants per room, ephemeral rooms
 
 ## Run standalone
 
 ```bash
 npm install
-npm start   # PORT env, default 3000
+npm run build --workspace=client  # builds client/dist
+npm start  # PORT env, default 3000
 ```
 
-Render: Web Service, build `npm install`, start `node server/index.js`, single instance (in-memory rooms).
-Fly.io: `fly launch && fly deploy`
+Fly.io: `fly deploy` using included `Dockerfile` and `fly.toml` — single cheapest Machine, shared IPv4.
 
-## GitHub
+## Repo
 
 https://github.com/kappa/remart-bbs-chat
-# trigger deploy 2026-09-03T03:05:21Z
