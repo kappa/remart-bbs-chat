@@ -129,6 +129,7 @@ export function App() {
   );
   const [pendingActions, setPendingActions] = useState(0);
   const [pendingCommits, setPendingCommits] = useState<Array<{id:string, content:string, committedAt:number, handle:string, color:string, lineIdx:number}>>([]);
+  const [provisionalActiveIdx, setProvisionalActiveIdx] = useState<number|null>(null);
   const chatRef = useRef<HTMLElement>(null);
   const keyboardRef = useRef<HTMLTextAreaElement>(null);
   const queueRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -194,6 +195,7 @@ export function App() {
     if (session) {
       seqRef.current = 1;
       setPendingCommits([]);
+      setProvisionalActiveIdx(null);
       setOptimisticContent(null);
       optimisticContentRef.current = null;
     }
@@ -405,6 +407,15 @@ export function App() {
       seqRef.current = serverExpected;
     }
   }, [ownParticipant]);
+
+  // Clear provisional active idx once server has allocated a real one (>= provisional)
+  useEffect(() => {
+    if (provisionalActiveIdx == null || !ownParticipant) return;
+    const realIdx = (ownParticipant as any).activeLineIdx;
+    if (realIdx != null && realIdx >= provisionalActiveIdx) {
+      setProvisionalActiveIdx(null);
+    }
+  }, [ownParticipant, provisionalActiveIdx]);
   // --- Scrollback belongs to the viewer, not the snapshot ---
   // Server returns only last 100 committed lines as bounded recovery snapshot.
   // Viewer accumulates everything seen since join so upward reading never loses text.
@@ -495,13 +506,26 @@ export function App() {
         color: pc.color,
       },
     }));
-    const activeRows = participants.map((participant) => ({
-      kind: "active" as const,
-      key: `active:${participant.id}`,
-      // Ownership assigned on first char, not on Enter: null means not yet reserved, show at bottom
-      order: participant.activeLineIdx ?? Number.MAX_SAFE_INTEGER,
-      participant,
-    }));
+
+    const activeRows = participants.map((participant) => {
+      let order = participant.activeLineIdx ?? Number.MAX_SAFE_INTEGER;
+      // After Enter, fresh buffer must be logically separate immediately and stay put
+      // until server allocates a new lineIdx. Use provisional idx set at commit time,
+      // not just while pendingCommits exist, to avoid jumping down then back.
+      if (session && participant.id === session.participantId && provisionalActiveIdx != null) {
+        if (participant.activeLineIdx == null || participant.activeLineIdx < provisionalActiveIdx) {
+          order = provisionalActiveIdx;
+        }
+      }
+      return {
+        kind: "active" as const,
+        key: `active:${participant.id}`,
+        // Ownership assigned on first char, not on Enter: null means not yet reserved, show at bottom
+        // (but provisional keeps it stable right after Enter)
+        order,
+        participant,
+      };
+    });
 
     // Committed history and live lines are one document. A line's order key,
     // never its type, determines where it renders. Enter therefore changes a
@@ -511,7 +535,7 @@ export function App() {
       if (left.order !== right.order) return left.order - right.order;
       return left.key.localeCompare(right.key);
     });
-  }, [participants, visibleHistory, pendingCommits]);
+  }, [participants, visibleHistory, pendingCommits, session, provisionalActiveIdx]);
   const documentSignature = documentLines
     .map((row) =>
       row.kind === "active"
@@ -861,10 +885,39 @@ export function App() {
     // Allow empty lines: multiple Enters should insert empty lines
     // Separate responsibilities: keep finished line visible (pendingCommits) AND start fresh buffer (optimisticContent="")
     const contentAtCommit = activeContent;
-    const commitLineIdx = ownParticipant?.activeLineIdx ?? (visibleHistory.length ? Math.max(...visibleHistory.map(l=>l.lineIdx))+1 + pendingCommits.length : pendingCommits.length);
+    // Compute commit lineIdx robustly for rapid Enter without waiting for ack:
+    // - If we have an activeLineIdx from server, that's the line we're committing (in-place)
+    // - Otherwise, allocate after max known (visibleHistory + pendingCommits + other participants)
+    // - If we already have pending commits (previous Enter not yet acked), allocate after them
+    let commitLineIdx: number;
+    if (ownParticipant?.activeLineIdx != null && pendingCommits.length === 0) {
+      commitLineIdx = ownParticipant.activeLineIdx;
+    } else {
+      let maxKnown = -1;
+      for (const h of visibleHistory) if (h.lineIdx > maxKnown) maxKnown = h.lineIdx;
+      for (const pc of pendingCommits) if (pc.lineIdx > maxKnown) maxKnown = pc.lineIdx;
+      for (const p of participants) if (p.activeLineIdx != null && p.activeLineIdx > maxKnown) maxKnown = p.activeLineIdx;
+      if (ownParticipant?.activeLineIdx != null && ownParticipant.activeLineIdx > maxKnown) maxKnown = ownParticipant.activeLineIdx;
+      // If we have pending, next commit should be after maxKnown; otherwise use activeLineIdx or maxKnown+1
+      if (pendingCommits.length > 0) {
+        commitLineIdx = maxKnown + 1;
+      } else {
+        commitLineIdx = ownParticipant?.activeLineIdx ?? (maxKnown + 1);
+        if (visibleHistory.length === 0 && pendingCommits.length === 0 && commitLineIdx < 0) commitLineIdx = 0;
+      }
+    }
     const pendingId = `pending-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
     // Immediately start fresh local buffer for new line
     setOptimisticContent("");
+    // Provisional idx for the fresh buffer: stays stable until server allocates real idx, avoids jump-down-then-back
+    {
+      let maxKnown = commitLineIdx;
+      for (const h of visibleHistory) if (h.lineIdx > maxKnown) maxKnown = h.lineIdx;
+      for (const pc of pendingCommits) if (pc.lineIdx > maxKnown) maxKnown = pc.lineIdx;
+      for (const p of participants) if (p.activeLineIdx != null && p.activeLineIdx > maxKnown) maxKnown = p.activeLineIdx;
+      if (provisionalActiveIdx != null && provisionalActiveIdx > maxKnown) maxKnown = provisionalActiveIdx;
+      setProvisionalActiveIdx(maxKnown + 1);
+    }
     // Keep finished line visible optimistically until server confirms
     setPendingCommits((prev) => [...prev, {
       id: pendingId,
