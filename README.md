@@ -1,31 +1,31 @@
 # Remart BBS Chat
 
-Modern web prototype of Remart BBS chat — char-by-char typing, visible Backspace, concurrent lines, color-coded roster, DOS-authentic feel.
+Char-by-char shared chat with a DOS-terminal feel: everyone's typing appears
+live, including the backspaces. One shared transcript, color-coded authors,
+ephemeral rooms.
 
-Live: `https://remart-bbs-chat.fly.dev/`
+## Testing deployment
+
+Live for testing: **https://remart-bbs-chat.fly.dev/**
+
+Deployed via the Fly.io dashboard (no image builds involved) — one Machine,
+shared IPv4.
+
+## Docs
+
+- [`docs/USER_EXPERIENCE.md`](docs/USER_EXPERIENCE.md) — what using it is
+  like, treating the system as a black box.
+- [`docs/DESIGN.md`](docs/DESIGN.md) — design decisions: why it behaves that
+  way.
+- [`docs/SPECS_STATUS.md`](docs/SPECS_STATUS.md) — which older specs are
+  historical and which docs are authoritative.
 
 ## Structure
 
-- `client/src/App.tsx` — main UI, rooms, typing, WebSocket live updates, viewer-accumulated scrollback, heartbeat 12s, Enter semantics
+- `client/src/App.tsx` — UI: rooms, typing, live updates, scrollback
 - `client/src/api.ts` — typed REST client for `/api/*`
-- `client/src/theme.css` — monospace theme, 1.55em line height
-- `server/index.js` — standalone Express + WS server, in-memory rooms, seq-ordered ops with buffering, authoritative char order, bounded recovery snapshot (last 100)
-
-## Behavior
-
-- Monospace mandatory, one shared scrolling document, color identifies author
-- One active line per participant, characters and Backspace appear immediately (optimistic + WS broadcast)
-- WebSocket push for remote updates, 2s polling fallback, direct cache apply (no missed transient char-then-backspace)
-- Viewer-accumulated scrollback: server returns bounded last-100 snapshot for recovery, client keeps everything seen since join so upward reading never loses text
-- Unicode (including Cyrillic) allowed, no 80-char limit
-- Seq-ordered ops: per-participant seq, duplicate detection, out-of-order buffering preserves order (x then Backspace ends empty; A Enter B commits only A)
-- Enter commits in place without redrawing line, immediately creates fresh local buffer (typing B after Enter shows B not HiB), allows empty lines, ownership deferred to first typed char
-- Join/leave lines use author's assigned color, history preserves color after leave
-- Join chirp via Web Audio when new participant appears
-- Commands `l` / `?` / `q` only when trimmed line is exactly that single char + Enter
-- Heartbeat 12s client, 40s server timeout, stale cleanup preserves nonempty active text
-- `?name=Alice` per-tab override, doesn't overwrite remembered default
-- Pinned roster, ~10 participants per room, ephemeral rooms
+- `client/src/theme.css` — monospace terminal theme
+- `server/index.js` — Express + WebSocket server, in-memory rooms
 
 ## Run standalone
 
@@ -34,8 +34,6 @@ npm install
 npm run build --workspace=client  # builds client/dist
 npm start  # PORT env, default 3000
 ```
-
-Fly.io: `fly deploy` using included `Dockerfile` and `fly.toml` — single cheapest Machine, shared IPv4.
 
 ## Repo
 
