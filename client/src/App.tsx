@@ -21,6 +21,40 @@ type Session = {
 const SESSION_KEY = "remart-bbs-chat.session";
 const HANDLE_KEY = "remart-bbs-chat.handle";
 
+function playJoinSound() {
+  try {
+    const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+    if (!AudioCtx) return;
+    const ctx = new AudioCtx();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "square";
+    osc.frequency.value = 880;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0, ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+    // Second chirp for BBS-style da-ding
+    const osc2 = ctx.createOscillator();
+    const gain2 = ctx.createGain();
+    osc2.type = "square";
+    osc2.frequency.value = 1320;
+    osc2.connect(gain2);
+    gain2.connect(ctx.destination);
+    gain2.gain.setValueAtTime(0, ctx.currentTime + 0.12);
+    gain2.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.13);
+    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.38);
+    osc2.start(ctx.currentTime + 0.12);
+    osc2.stop(ctx.currentTime + 0.4);
+    setTimeout(() => { try { ctx.close(); } catch {} }, 600);
+  } catch {
+    // Audio blocked or unavailable — silent fail, chat remains usable
+  }
+}
+
 function isValidChar(char: string): boolean {
   if (typeof char !== 'string') return false;
   const arr = Array.from(char);
@@ -101,6 +135,8 @@ export function App() {
   const pendingActionsRef = useRef(0);
   const wasNearBottomRef = useRef(true);
   const autoJoinAttemptRef = useRef("");
+  const prevParticipantIdsRef = useRef<Set<number>>(new Set());
+  const hasInitializedParticipantsRef = useRef(false);
 
   const lobbyRooms = useQuery({
     queryKey: ["rooms"],
@@ -285,6 +321,34 @@ export function App() {
         : `${row.key}:${row.order}`,
     )
     .join("\u0000");
+
+  useEffect(() => {
+    if (!roomState.data?.participants) return;
+    const currentIds = new Set(roomState.data.participants.map(p => p.id));
+    if (!hasInitializedParticipantsRef.current) {
+      // First load — don't beep, just remember
+      hasInitializedParticipantsRef.current = true;
+      prevParticipantIdsRef.current = currentIds;
+      return;
+    }
+    // Someone new arrived who wasn't there before, and it's not just us
+    let hasNewcomer = false;
+    for (const id of currentIds) {
+      if (!prevParticipantIdsRef.current.has(id)) {
+        // Ignore our own initial join (already in prev after first load)
+        if (id !== session?.participantId || prevParticipantIdsRef.current.size > 0) {
+          // Only beep if it's someone else, or second+ person
+          if (id !== session?.participantId) {
+            hasNewcomer = true;
+          }
+        }
+      }
+    }
+    prevParticipantIdsRef.current = currentIds;
+    if (hasNewcomer) {
+      playJoinSound();
+    }
+  }, [roomState.data?.participants, session?.participantId]);
 
   useEffect(() => {
     if (
