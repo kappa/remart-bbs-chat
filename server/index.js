@@ -156,6 +156,115 @@ function broadcastChar(room, participantId, type, data){
   }
 }
 
+// --- Ordered operation helpers with seq buffering ---
+function applyCharOperation(participant, room, char, seqForBroadcast){
+  if(participant.activeLineIdx == null){
+    participant.activeLineIdx = greatestLineIdx(room)+1;
+  }
+  const content = participant.activeContent + char;
+  participant.activeContent = content;
+  participant.lastSeen = new Date();
+  room.charEvents.push({handle:participant.handle, char, lineIdx:participant.activeLineIdx, position:content.length-1, createdAt:new Date()});
+  if(room.charEvents.length>1000) room.charEvents = room.charEvents.slice(-800);
+  broadcastChar(room, participant.id, 'char', {char, lineIdx:participant.activeLineIdx, position:content.length-1, handle:participant.handle, seq:seqForBroadcast});
+  broadcastRoom(room);
+  return {content, lineIdx:participant.activeLineIdx, position:content.length-1, participantId:participant.id};
+}
+
+function applyBackspaceOperation(participant, room, seqForBroadcast){
+  if(participant.activeContent.length===0){
+    participant.lastSeen = new Date();
+    return {content:'', lineIdx:participant.activeLineIdx, participantId:participant.id};
+  }
+  const content = participant.activeContent.slice(0,-1);
+  participant.activeContent = content;
+  participant.lastSeen = new Date();
+  room.charEvents.push({handle:participant.handle, char:'\b', lineIdx:participant.activeLineIdx, position:content.length, createdAt:new Date()});
+  if(room.charEvents.length>1000) room.charEvents = room.charEvents.slice(-800);
+  broadcastChar(room, participant.id, 'backspace', {lineIdx:participant.activeLineIdx, position:content.length, handle:participant.handle, seq:seqForBroadcast});
+  broadcastRoom(room);
+  return {content, lineIdx:participant.activeLineIdx, participantId:participant.id};
+}
+
+function applyCommitOperation(participant, room, seqForBroadcast){
+  const commitLineIdx = participant.activeLineIdx != null ? participant.activeLineIdx : greatestLineIdx(room)+1;
+  const committedAt = new Date();
+  const committedContent = participant.activeContent;
+  room.lines.push({
+    id:`line-${participant.id}-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
+    handle:participant.handle,
+    content:committedContent,
+    committed:true,
+    lineIdx:commitLineIdx,
+    createdAt:committedAt,
+    committedAt:committedAt.getTime(),
+    colorSnapshot:participant.color
+  });
+  participant.activeContent = '';
+  participant.activeLineIdx = null;
+  participant.lastSeen = committedAt;
+  broadcastRoom(room);
+  if(seqForBroadcast != null){
+    // also broadcast commit as room-update with seq for ordering visibility
+    broadcastChar(room, participant.id, 'commit', {lineIdx:commitLineIdx, committedContent, seq:seqForBroadcast});
+  }
+  return {newLineIdx:null, committedContent, committedAt:committedAt.getTime()};
+}
+
+function drainBufferedOps(participant, room){
+  // Apply any buffered ops that are now in order
+  while(participant.opBuffer.has(participant.nextExpectedSeq)){
+    const op = participant.opBuffer.get(participant.nextExpectedSeq);
+    participant.opBuffer.delete(participant.nextExpectedSeq);
+    const seq = participant.nextExpectedSeq;
+    participant.nextExpectedSeq++;
+    if(op.type==='char'){
+      applyCharOperation(participant, room, op.char, seq);
+    } else if(op.type==='backspace'){
+      applyBackspaceOperation(participant, room, seq);
+    } else if(op.type==='commit'){
+      applyCommitOperation(participant, room, seq);
+    }
+  }
+}
+
+function handleSeqOp(participant, room, seq, opType, payload){
+  // Returns {status: 'applied'|'buffered'|'duplicate'|'legacy', result, expected}
+  if(seq == null){
+    // legacy client without seq — apply immediately
+    let result;
+    if(opType==='char') result = applyCharOperation(participant, room, payload.char, null);
+    else if(opType==='backspace') result = applyBackspaceOperation(participant, room, null);
+    else if(opType==='commit') result = applyCommitOperation(participant, room, null);
+    return {status:'legacy', result};
+  }
+  const expected = participant.nextExpectedSeq || 1;
+  if(seq < expected){
+    // duplicate/retry — return current state without re-applying
+    let cur;
+    if(opType==='char' || opType==='backspace'){
+      cur = {content: participant.activeContent, lineIdx: participant.activeLineIdx, participantId: participant.id};
+    } else {
+      cur = {newLineIdx:null, committedContent:'', committedAt:Date.now()};
+    }
+    return {status:'duplicate', result:cur, expected};
+  }
+  if(seq === expected){
+    // apply immediately, then drain
+    let result;
+    if(opType==='char') result = applyCharOperation(participant, room, payload.char, seq);
+    else if(opType==='backspace') result = applyBackspaceOperation(participant, room, seq);
+    else if(opType==='commit') result = applyCommitOperation(participant, room, seq);
+    participant.nextExpectedSeq++;
+    drainBufferedOps(participant, room);
+    return {status:'applied', result, expected:participant.nextExpectedSeq};
+  }
+  // seq > expected -> buffer
+  participant.opBuffer.set(seq, {type:opType, ...payload});
+  participant.lastSeen = new Date();
+  return {status:'buffered', result:null, expected, received:seq};
+}
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -220,7 +329,9 @@ app.post('/api/join', (req,res)=>{
     activeLineIdx,
     activeContent: '',
     joinedAt: now,
-    lastSeen: now
+    lastSeen: now,
+    nextExpectedSeq: 1,
+    opBuffer: new Map()
   };
   room.participants.set(participant.id, participant);
   room.lines.push({
@@ -308,7 +419,7 @@ app.post('/api/heartbeat', (req,res)=>{
 
 // send char
 app.post('/api/char', (req,res)=>{
-  const {roomId, participantId, char}=req.body||{};
+  const {roomId, participantId, char, seq}=req.body||{};
   const room = getRoom(roomId);
   if(!room) return res.status(404).json({error:'room not found'});
   const participant = room.participants.get(Number(participantId));
@@ -318,77 +429,75 @@ app.post('/api/char', (req,res)=>{
     return res.status(400).json({error:'invalid char'});
   }
 
-  // Ownership is assigned on first character, not on Enter
-  if(participant.activeLineIdx == null){
-    participant.activeLineIdx = greatestLineIdx(room)+1;
+  // ensure seq tracking fields exist for legacy participants (e.g., from old code or tests)
+  if(participant.nextExpectedSeq == null) participant.nextExpectedSeq = 1;
+  if(!participant.opBuffer) participant.opBuffer = new Map();
+
+  const outcome = handleSeqOp(participant, room, seq, 'char', {char});
+  if(outcome.status === 'buffered'){
+    return res.status(202).json({buffered:true, expected:outcome.expected, received:outcome.received, participantId:participant.id});
   }
-
-  const content = participant.activeContent + char;
-  participant.activeContent = content;
-  participant.lastSeen = new Date();
-  room.charEvents.push({handle:participant.handle, char, lineIdx:participant.activeLineIdx, position:content.length-1, createdAt:new Date()});
-  // keep charEvents bounded
-  if(room.charEvents.length>1000) room.charEvents = room.charEvents.slice(-800);
-
-  broadcastChar(room, participant.id, 'char', {char, lineIdx:participant.activeLineIdx, position:content.length-1, handle:participant.handle});
-  // also broadcast room for polling clients
-  broadcastRoom(room);
-  res.json({content, lineIdx:participant.activeLineIdx, position:content.length-1, participantId:participant.id});
+  if(outcome.status === 'duplicate'){
+    return res.json({...outcome.result, duplicate:true, expected:outcome.expected});
+  }
+  // applied or legacy
+  res.json(outcome.result);
 });
 
 // backspace
 app.post('/api/backspace', (req,res)=>{
-  const {roomId, participantId}=req.body||{};
+  const {roomId, participantId, seq}=req.body||{};
   const room = getRoom(roomId);
   if(!room) return res.status(404).json({error:'room not found'});
   const participant = room.participants.get(Number(participantId));
   if(!participant) return res.status(404).json({error:'user not in room'});
 
-  if(participant.activeContent.length===0){
-    return res.json({content:'', lineIdx:participant.activeLineIdx, participantId:participant.id});
-  }
-  const content = participant.activeContent.slice(0,-1);
-  participant.activeContent = content;
-  participant.lastSeen = new Date();
-  room.charEvents.push({handle:participant.handle, char:'\b', lineIdx:participant.activeLineIdx, position:content.length, createdAt:new Date()});
-  if(room.charEvents.length>1000) room.charEvents = room.charEvents.slice(-800);
+  if(participant.nextExpectedSeq == null) participant.nextExpectedSeq = 1;
+  if(!participant.opBuffer) participant.opBuffer = new Map();
 
-  broadcastChar(room, participant.id, 'backspace', {lineIdx:participant.activeLineIdx, position:content.length, handle:participant.handle});
-  broadcastRoom(room);
-  res.json({content, lineIdx:participant.activeLineIdx, participantId:participant.id});
+  // If empty, still need seq ordering to preserve x then Backspace case
+  // If activeContent empty and we are at expected seq, we return empty without broadcasting, but still advance seq
+  if(participant.activeContent.length===0 && (seq == null || seq === participant.nextExpectedSeq)){
+    const outcome = handleSeqOp(participant, room, seq, 'backspace', {});
+    if(outcome.status === 'buffered'){
+      return res.status(202).json({buffered:true, expected:outcome.expected, received:outcome.received});
+    }
+    if(outcome.status === 'duplicate'){
+      return res.json({...outcome.result, duplicate:true});
+    }
+    // For empty, applyBackspace returns empty; but handleSeqOp already applied and would return empty
+    return res.json(outcome.result || {content:'', lineIdx:participant.activeLineIdx, participantId:participant.id});
+  }
+
+  const outcome = handleSeqOp(participant, room, seq, 'backspace', {});
+  if(outcome.status === 'buffered'){
+    return res.status(202).json({buffered:true, expected:outcome.expected, received:outcome.received, participantId:participant.id});
+  }
+  if(outcome.status === 'duplicate'){
+    return res.json({...outcome.result, duplicate:true, expected:outcome.expected});
+  }
+  res.json(outcome.result);
 });
 
 // commit
 app.post('/api/commit', (req,res)=>{
-  const {roomId, participantId}=req.body||{};
+  const {roomId, participantId, seq}=req.body||{};
   const room = getRoom(roomId);
   if(!room) return res.status(404).json({error:'room not found'});
   const participant = room.participants.get(Number(participantId));
   if(!participant) return res.status(404).json({error:'user not in room'});
 
-  // Allow empty lines: multiple Enters should insert empty lines
-  const commitLineIdx = participant.activeLineIdx != null ? participant.activeLineIdx : greatestLineIdx(room)+1;
-  const committedAt = new Date();
-  const committedContent = participant.activeContent;
+  if(participant.nextExpectedSeq == null) participant.nextExpectedSeq = 1;
+  if(!participant.opBuffer) participant.opBuffer = new Map();
 
-  room.lines.push({
-    id:`line-${participant.id}-${Date.now()}`,
-    handle:participant.handle,
-    content:committedContent,
-    committed:true,
-    lineIdx:commitLineIdx,
-    createdAt:committedAt,
-    committedAt:committedAt.getTime(),
-    colorSnapshot:participant.color
-  });
-
-  // Ownership deferred: new active line has no reserved index until first char
-  participant.activeContent = '';
-  participant.activeLineIdx = null;
-  participant.lastSeen = committedAt;
-
-  broadcastRoom(room);
-  res.json({newLineIdx:null, committedContent, committedAt:committedAt.getTime()});
+  const outcome = handleSeqOp(participant, room, seq, 'commit', {});
+  if(outcome.status === 'buffered'){
+    return res.status(202).json({buffered:true, expected:outcome.expected, received:outcome.received, participantId:participant.id});
+  }
+  if(outcome.status === 'duplicate'){
+    return res.json({...outcome.result, duplicate:true, expected:outcome.expected});
+  }
+  res.json(outcome.result);
 });
 
 // room state
@@ -397,7 +506,9 @@ app.get('/api/room-state', (req,res)=>{
   const room = getRoom(roomId);
   if(!room) return res.status(404).json({error:'room not found'});
 
-  // return last 100 lines sorted by lineIdx
+  // Bounded recovery snapshot: last 100 committed lines only.
+  // Viewer scrollback is accumulated client-side from snapshots seen since join,
+  // so truncation here does not delete text the viewer already has.
   const history = room.lines.slice(-100).sort((a,b)=>a.lineIdx-b.lineIdx).map(l=>({
     id:l.id,
     handle:l.handle,
@@ -416,7 +527,8 @@ app.get('/api/room-state', (req,res)=>{
     activeLineIdx:p.activeLineIdx,
     activeContent:p.activeContent,
     joinedAt:p.joinedAt.getTime(),
-    lastSeen:p.lastSeen.getTime()
+    lastSeen:p.lastSeen.getTime(),
+    nextExpectedSeq:p.nextExpectedSeq ?? 1
   })).sort((a,b)=>a.lineSlot-b.lineSlot);
 
   const roster = participants.map(p=>({handle:p.handle, color:p.color, lineSlot:p.lineSlot}));
@@ -465,11 +577,51 @@ wss.on('connection', (ws)=>{
 });
 
 // periodic stale sweep every 15s
-setInterval(()=>{
-  for(const room of Array.from(rooms.values())){
-    cleanupStaleInRoom(room);
-  }
-}, 15000);
+let sweepInterval = null;
+if (process.env.NODE_ENV !== 'test') {
+  sweepInterval = setInterval(()=>{
+    for(const room of Array.from(rooms.values())){
+      cleanupStaleInRoom(room);
+    }
+  }, 15000);
+}
 
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, ()=> console.log(`Remart BBS standalone server listening on ${PORT}`));
+if (process.env.NODE_ENV !== 'test') {
+  server.listen(PORT, ()=> console.log(`Remart BBS standalone server listening on ${PORT}`));
+}
+
+export {
+  sweepInterval,
+  app,
+  server,
+  wss,
+  rooms,
+  ANSI_COLORS,
+  HEARTBEAT_TIMEOUT_MS,
+  isValidChar,
+  getRoom,
+  listRooms,
+  getOrCreateRoom,
+  greatestLineIdx,
+  cleanupStaleInRoom,
+  globalHandleExists,
+  broadcastRoom,
+  broadcastChar,
+  handleSeqOp,
+  applyCharOperation,
+  applyBackspaceOperation,
+  applyCommitOperation,
+  drainBufferedOps,
+};
+
+// Test helpers
+export function resetForTests(){
+  rooms.clear();
+  nextRoomId = 1;
+  nextParticipantId = 1;
+}
+export function setNextIds(roomId, participantId){
+  if(roomId != null) nextRoomId = roomId;
+  if(participantId != null) nextParticipantId = participantId;
+}

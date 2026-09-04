@@ -128,6 +128,7 @@ export function App() {
     null,
   );
   const [pendingActions, setPendingActions] = useState(0);
+  const [pendingCommits, setPendingCommits] = useState<Array<{id:string, content:string, committedAt:number, handle:string, color:string, lineIdx:number}>>([]);
   const chatRef = useRef<HTMLElement>(null);
   const keyboardRef = useRef<HTMLTextAreaElement>(null);
   const queueRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -137,6 +138,7 @@ export function App() {
   const autoJoinAttemptRef = useRef("");
   const prevParticipantIdsRef = useRef<Set<number>>(new Set());
   const hasInitializedParticipantsRef = useRef(false);
+  const seqRef = useRef(1);
 
   const lobbyRooms = useQuery({
     queryKey: ["rooms"],
@@ -187,6 +189,38 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [session]);
 
+  // Reset seq and pending commits on new session
+  useEffect(() => {
+    if (session) {
+      seqRef.current = 1;
+      setPendingCommits([]);
+      setOptimisticContent(null);
+      optimisticContentRef.current = null;
+    }
+  }, [session?.participantId]);
+
+  // Clean pendingCommits when server history includes them
+  useEffect(() => {
+    if (!roomState.data?.history || pendingCommits.length === 0) return;
+    const history = roomState.data.history;
+    setPendingCommits((prev) => {
+      const remaining = prev.filter((pc) => {
+        // Keep if not yet in history: check for matching content+handle
+        // For empty commits, match by time proximity since multiple empties can exist
+        const found = history.some((h) => {
+          if (h.handle !== pc.handle) return false;
+          if (h.content !== pc.content) return false;
+          // If content matches and committedAt is after our optimistic commit (within reasonable window)
+          // For empty string, ensure at least one matching empty exists with committedAt >= our commit time - 1s
+          const histTime = h.committedAt || 0;
+          return histTime >= pc.committedAt - 1000;
+        });
+        return !found; // keep only if not found in server history
+      });
+      return remaining.length === prev.length ? prev : remaining;
+    });
+  }, [roomState.data?.history]);
+
   useEffect(() => {
     if (!session) return;
     let active = true;
@@ -236,7 +270,7 @@ export function App() {
     };
   }, [queryClient, session]);
 
-  // WebSocket live updates: use server broadcasts instead of relying only on polling
+  // WebSocket live updates: apply char/backspace directly, room-update triggers refetch
   useEffect(() => {
     if (!session) return;
     let ws: WebSocket | null = null;
@@ -264,18 +298,59 @@ export function App() {
         try {
           const msg = JSON.parse(event.data);
           if (msg.roomId && msg.roomId !== session.roomId) return;
-          if (msg.type === "room-update" || msg.type === "char" || msg.type === "backspace") {
-            // Immediate refetch — much faster than 250ms poll, avoids char bunching
+          if (msg.type === "char") {
+            // Don't apply own chars optimistically again (avoid duplication)
+            if (msg.participantId === session.participantId) {
+              // Still ensure server will eventually reconcile via room-state, but no immediate duplicate
+              return;
+            }
+            // Directly apply to query cache to preserve transient corrections
+            queryClient.setQueryData(["room-state", session.roomId], (old: any) => {
+              if (!old) return old;
+              const participants = old.participants?.map((p: any) => {
+                if (p.id !== msg.participantId) return p;
+                // If server sends position, we could reconstruct, but simple append is sufficient
+                // Check if content already ends with this char to avoid double-apply on reconnect
+                const current = p.activeContent || "";
+                // If position matches current length, append; otherwise trust server and append if not duplicate
+                if (msg.char && typeof msg.char === "string") {
+                  // Avoid duplicating if already present at expected position
+                  if (msg.position != null && msg.position < current.length) {
+                    // If char already at position, don't duplicate
+                    if (current[msg.position] === msg.char) return p;
+                  }
+                  return {...p, activeContent: current + msg.char, activeLineIdx: msg.lineIdx ?? p.activeLineIdx};
+                }
+                return p;
+              });
+              return {...old, participants};
+            });
+            return;
+          }
+          if (msg.type === "backspace") {
+            if (msg.participantId === session.participantId) return;
+            queryClient.setQueryData(["room-state", session.roomId], (old: any) => {
+              if (!old) return old;
+              const participants = old.participants?.map((p: any) => {
+                if (p.id !== msg.participantId) return p;
+                const current = p.activeContent || "";
+                if (current.length === 0) return p;
+                return {...p, activeContent: current.slice(0,-1), activeLineIdx: msg.lineIdx ?? p.activeLineIdx};
+              });
+              return {...old, participants};
+            });
+            return;
+          }
+          if (msg.type === "room-update" || msg.type === "commit") {
             void queryClient.invalidateQueries({ queryKey: ["room-state", session.roomId] });
           }
         } catch {
-          // Non-JSON or ping — ignore, still triggers faster poll via invalidate on any message
+          // Non-JSON or ping — ignore
         }
       };
 
       ws.onclose = () => {
         if (closed) return;
-        // Reconnect with backoff
         reconnectTimer = window.setTimeout(connect, 1200) as unknown as number;
       };
 
@@ -321,18 +396,69 @@ export function App() {
   const ownParticipant = participants.find(
     (participant) => participant.id === session?.participantId,
   );
+
+  // Sync seqRef from server's expected seq to handle reloads
+  useEffect(() => {
+    if (!ownParticipant) return;
+    const serverExpected = (ownParticipant as any).nextExpectedSeq;
+    if (typeof serverExpected === "number" && serverExpected > seqRef.current) {
+      seqRef.current = serverExpected;
+    }
+  }, [ownParticipant]);
+  // --- Scrollback belongs to the viewer, not the snapshot ---
+  // Server returns only last 100 committed lines as bounded recovery snapshot.
+  // Viewer accumulates everything seen since join so upward reading never loses text.
+  const [historyAccum, setHistoryAccum] = useState<Map<string, any>>(new Map());
+
+  // Clear accum on session switch
+  useEffect(() => {
+    setHistoryAccum(new Map());
+  }, [session?.participantId]);
+
+  // Merge latest snapshot into accum, filtered by joinedAt (no pre-join history)
+  useEffect(() => {
+    if (!roomState.data?.history || !ownParticipant) return;
+    const joinedAt = (ownParticipant as any).joinedAt;
+    if (!joinedAt) return;
+    setHistoryAccum((prev) => {
+      let changed = false;
+      const next = new Map(prev);
+      for (const line of roomState.data.history) {
+        if ((line as any).committedAt < joinedAt) continue;
+        const existing = next.get(line.id);
+        if (!existing) {
+          next.set(line.id, line as any);
+          changed = true;
+        } else if (
+          existing.content !== (line as any).content ||
+          existing.lineIdx !== (line as any).lineIdx ||
+          (existing as any).color !== (line as any).color
+        ) {
+          next.set(line.id, line as any);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [roomState.data?.history, (ownParticipant as any)?.joinedAt]);
+
   // Active content is real chat content: every visible character is already
   // legitimate, even before Enter commits the line to scrollback.
   const currentContent =
     optimisticContent ?? ownParticipant?.activeContent ?? "";
   const visibleHistory = useMemo(() => {
-    if (!roomState.data || !ownParticipant) return [];
-    // Seeing only lines committed after arrival recreates terminal-side scrollback:
-    // no earlier room history appears when a caller joins.
-    return roomState.data.history.filter(
-      (line) => line.committedAt >= ownParticipant.joinedAt,
-    );
-  }, [ownParticipant, roomState.data]);
+    if (!ownParticipant) return [];
+    // Accumulated scrollback since arrival, sorted by server-assigned order.
+    // Snapshot cutoff does not delete viewer history.
+    // Include current snapshot immediately so first paint isn't empty before accum effect runs.
+    const map = new Map(historyAccum);
+    for (const line of roomState.data?.history ?? []) {
+      if ((line as any).committedAt < (ownParticipant as any).joinedAt) continue;
+      if (!map.has(line.id)) map.set(line.id, line as any);
+    }
+    const all = Array.from(map.values()) as any[];
+    return all.sort((a, b) => a.lineIdx - b.lineIdx);
+  }, [historyAccum, ownParticipant, roomState.data?.history]);
   const colorByHandle = useMemo(
     () =>
       new Map(
@@ -354,6 +480,21 @@ export function App() {
       order: line.lineIdx,
       line,
     }));
+    // Optimistic pending commits: keep finished line visible before server confirms
+    const pendingRows = pendingCommits.map((pc) => ({
+      kind: "committed" as const,
+      key: `pending:${pc.id}`,
+      order: pc.lineIdx,
+      line: {
+        id: pc.id,
+        handle: pc.handle,
+        content: pc.content,
+        lineIdx: pc.lineIdx,
+        committed: true,
+        committedAt: pc.committedAt,
+        color: pc.color,
+      },
+    }));
     const activeRows = participants.map((participant) => ({
       kind: "active" as const,
       key: `active:${participant.id}`,
@@ -366,11 +507,11 @@ export function App() {
     // never its type, determines where it renders. Enter therefore changes a
     // row from active to committed without moving the text, and deferred
     // ownership ensures first typer comes first.
-    return [...committedRows, ...activeRows].sort((left, right) => {
+    return [...committedRows, ...pendingRows, ...activeRows].sort((left, right) => {
       if (left.order !== right.order) return left.order - right.order;
       return left.key.localeCompare(right.key);
     });
-  }, [participants, visibleHistory]);
+  }, [participants, visibleHistory, pendingCommits]);
   const documentSignature = documentLines
     .map((row) =>
       row.kind === "active"
@@ -553,9 +694,11 @@ export function App() {
     characterCount: number,
   ) => {
     for (let index = 0; index < characterCount; index += 1) {
+      const seq = seqRef.current++;
       await api.sendBackspace({
         roomId: activeSession.roomId,
         participantId: activeSession.participantId,
+        seq,
       });
     }
   };
@@ -622,12 +765,14 @@ export function App() {
 
     setOptimisticContent(`${baseContent}${acceptedCharacters.join("")}`);
     const activeSession = session;
-    // Fire each char without queueing through the serial enqueue — avoids backlog under latency
+    // Fire each char with seq, ordered stream but concurrent sends — server buffers out-of-order
     for (const char of acceptedCharacters) {
+      const seq = seqRef.current++;
       api.sendChar({
         roomId: activeSession.roomId,
         participantId: activeSession.participantId,
         char,
+        seq,
       }).then(() => {
         void queryClient.invalidateQueries({ queryKey: ["room-state", activeSession.roomId] });
       }).catch((reason: unknown) => {
@@ -649,16 +794,24 @@ export function App() {
       optimisticContentRef.current ?? ownParticipant?.activeContent ?? "";
     setOptimisticContent(`${activeContent}${char}`);
     const activeSession = session;
-    // Immediate send, not queued — local typing stays immediate, remote sees chars via WS without 250ms bunching
+    const seq = seqRef.current++;
+    // Immediate send with seq — server will buffer out-of-order, preserving order without blocking UI
     api.sendChar({
       roomId: activeSession.roomId,
       participantId: activeSession.participantId,
       char,
-    }).then(() => {
-      // Server will broadcast via WS, but invalidate as fallback
+      seq,
+    }).then((res:any) => {
+      if(res?.buffered){
+        // Buffered by server, will be applied when earlier seq arrives — no rollback needed
+        return;
+      }
+      // Server will broadcast via WS, but invalidate as fallback for polling clients
       void queryClient.invalidateQueries({ queryKey: ["room-state", activeSession.roomId] });
     }).catch((reason: unknown) => {
-      // Roll back optimistic on failure
+      // Roll back optimistic on failure (except 202 which is not an error)
+      const msg = reason instanceof Error ? reason.message : "";
+      if(msg.includes("202") || msg.includes("buffered")) return;
       setOptimisticContent(optimisticContentRef.current?.slice(0, -1) ?? null);
       setError(reason instanceof Error ? reason.message : "Send failed");
     });
@@ -671,10 +824,13 @@ export function App() {
     if (activeContent.length === 0) return;
 
     setOptimisticContent(activeContent.slice(0, -1));
+    const seq = seqRef.current++;
     api.sendBackspace({
       roomId: session.roomId,
       participantId: session.participantId,
-    }).then(() => {
+      seq,
+    }).then((res:any) => {
+      if(res?.buffered) return;
       void queryClient.invalidateQueries({ queryKey: ["room-state", session.roomId] });
     }).catch((reason: unknown) => {
       setError(reason instanceof Error ? reason.message : "Backspace failed");
@@ -703,24 +859,39 @@ export function App() {
       return;
     }
     // Allow empty lines: multiple Enters should insert empty lines
-    // Do not clear the current line visually — keep it in place until server confirms commit.
-    // Only the new empty active line at bottom should get the caret.
+    // Separate responsibilities: keep finished line visible (pendingCommits) AND start fresh buffer (optimisticContent="")
     const contentAtCommit = activeContent;
-    enqueue(async () => {
-      await api.commitLine({
-        roomId: session.roomId,
-        participantId: session.participantId,
-      });
-      // Clear optimistic after commit succeeds; if we had optimistic content equal to what we just committed,
-      // drop it so the fresh empty active line shows.
-      if (optimisticContentRef.current === contentAtCommit) {
-        setOptimisticContent(null);
-      } else if (optimisticContentRef.current === "") {
-        // We didn't set it early, but if something else cleared it, keep null
-        setOptimisticContent(null);
+    const commitLineIdx = ownParticipant?.activeLineIdx ?? (visibleHistory.length ? Math.max(...visibleHistory.map(l=>l.lineIdx))+1 + pendingCommits.length : pendingCommits.length);
+    const pendingId = `pending-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+    // Immediately start fresh local buffer for new line
+    setOptimisticContent("");
+    // Keep finished line visible optimistically until server confirms
+    setPendingCommits((prev) => [...prev, {
+      id: pendingId,
+      content: contentAtCommit,
+      committedAt: Date.now(),
+      handle: session.handle,
+      color: ownParticipant?.color ?? "#ccc",
+      lineIdx: commitLineIdx,
+    }]);
+    const seq = seqRef.current++;
+    api.commitLine({
+      roomId: session.roomId,
+      participantId: session.participantId,
+      seq,
+    }).then((res:any) => {
+      if(res?.buffered){
+        // Buffered, server will apply in order — keep pending commit until history includes it
+        return;
       }
+      // Server will broadcast room-update, which triggers refetch that will clear pending commit
+      void queryClient.invalidateQueries({ queryKey: ["room-state", session.roomId] });
+    }).catch((reason: unknown) => {
+      // On failure, remove pending commit and restore content
+      setPendingCommits((prev) => prev.filter(pc => pc.id !== pendingId));
+      setOptimisticContent(contentAtCommit);
+      setError(reason instanceof Error ? reason.message : "Commit failed");
     });
-    // Keep current optimistic content visible as committed line in place — do not blank it here.
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {

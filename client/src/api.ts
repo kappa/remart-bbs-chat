@@ -22,9 +22,9 @@ export const api = {
   leaveRoom:(args:{roomId:number, participantId:number}):Promise<{freed:boolean}> => fetchJson('/api/leave', {method:'POST', body:JSON.stringify(args)}),
   getRoster:(args:{roomId:number}):Promise<{participants:RosterEntry[]}> => fetchJson(`/api/roster?roomId=${args.roomId}`),
   heartbeat:(args:{roomId:number, participantId:number}):Promise<{alive:boolean, removed:number}> => fetchJson('/api/heartbeat', {method:'POST', body:JSON.stringify(args)}),
-  sendChar:(args:{roomId:number, participantId:number, char:string}):Promise<{content:string, lineIdx:number, position:number, participantId:number}> => fetchJson('/api/char', {method:'POST', body:JSON.stringify(args)}),
-  sendBackspace:(args:{roomId:number, participantId:number}):Promise<{content:string, lineIdx:number, participantId:number}> => fetchJson('/api/backspace', {method:'POST', body:JSON.stringify(args)}),
-  commitLine:(args:{roomId:number, participantId:number}):Promise<{newLineIdx:number, committedContent:string, committedAt:number}> => fetchJson('/api/commit', {method:'POST', body:JSON.stringify(args)}),
+  sendChar:(args:{roomId:number, participantId:number, char:string, seq?:number}):Promise<{content:string, lineIdx:number, position:number, participantId:number, buffered?:boolean, duplicate?:boolean, expected?:number}> => fetchJson('/api/char', {method:'POST', body:JSON.stringify(args)}),
+  sendBackspace:(args:{roomId:number, participantId:number, seq?:number}):Promise<{content:string, lineIdx:number, participantId:number, buffered?:boolean, duplicate?:boolean}> => fetchJson('/api/backspace', {method:'POST', body:JSON.stringify(args)}),
+  commitLine:(args:{roomId:number, participantId:number, seq?:number}):Promise<{newLineIdx:number, committedContent:string, committedAt:number, buffered?:boolean, duplicate?:boolean}> => fetchJson('/api/commit', {method:'POST', body:JSON.stringify(args)}),
   getRoomState:(args:{roomId:number}):Promise<{roomId:number, history:HistoryLine[], participants:Participant[], roster:RosterEntry[]}> => fetchJson(`/api/room-state?roomId=${args.roomId}`),
 };
 

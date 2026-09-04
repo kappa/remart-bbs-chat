@@ -124,8 +124,8 @@ describe('Rendering behaviors', ()=>{
     await user.click(chatArea);
     await user.keyboard('{Enter}');
     // After commit, old content should still be visible as committed (no disappearance)
-    // Wait for query invalidation
-    expect(await screen.findByText('typing')).toBeInTheDocument();
+    // With new pendingCommits logic, there may be 2 elements (pending + history) briefly, so use AllBy
+    expect((await screen.findAllByText('typing')).length).toBeGreaterThanOrEqual(1);
   });
 
   it('backspace at column zero does nothing (no crash)', async ()=>{
