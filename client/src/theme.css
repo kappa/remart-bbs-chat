@@ -34,7 +34,10 @@ html, body, #root { width:100%; height:100%; min-height:0; margin:0; overflow:hi
 .chat-line { min-height:1.55em; font-family:ui-monospace, Menlo, Monaco, monospace; overflow:hidden; color:#ccc; line-height:1.55em; text-overflow:clip; white-space:pre; }
 .system-line { margin-bottom:0.8em; color:#888; font-style:italic; }
 .typing-hint { display:none; }
-.caret { display:inline-block; width:0.62em; height:2px; vertical-align:-0.2em; background:#ccc; animation:blink 1s step-start infinite; }
+.caret { display:inline-block; width:0.62em; height:2px; overflow:hidden; vertical-align:-0.12em; background:#ccc; animation:blink 1s step-start infinite; }
+/* overflow != visible makes the inline-block's baseline its bottom margin edge,
+   so the 2px bar sits on the text baseline like a DOS underline cursor.
+   (Without it, the inner space's text baseline pushed the bar to the top of the cell — an overline.) */
 @keyframes blink { 50%{opacity:0;} }
 @media (prefers-reduced-motion:reduce){ .caret{animation:none;} }
 @media (max-width:420px){ #chat-area{padding:6px;} #roster{width:128px; flex-basis:128px; padding:6px;} .roster-heading{letter-spacing:0.03em;} .typing-hint{display:block;} }
