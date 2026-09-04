@@ -129,7 +129,12 @@ export function App() {
   );
   const [pendingActions, setPendingActions] = useState(0);
   const [pendingCommits, setPendingCommits] = useState<Array<{id:string, content:string, committedAt:number, handle:string, color:string, lineIdx:number}>>([]);
-  const [provisionalActiveIdx, setProvisionalActiveIdx] = useState<number|null>(null);
+  // Optimistic lineIdx for our in-progress draft, assigned on its first character
+  // at the current end of the transcript (mirrors the server's greatest+1 rule).
+  // While set — or while the server reports an activeLineIdx — our draft is a real
+  // shared row. When neither exists we are idle: no shared row, only a local
+  // cursor preview below the transcript on our own client.
+  const [draftLineIdx, setDraftLineIdx] = useState<number|null>(null);
   const chatRef = useRef<HTMLElement>(null);
   const keyboardRef = useRef<HTMLTextAreaElement>(null);
   const queueRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -195,7 +200,7 @@ export function App() {
     if (session) {
       seqRef.current = 1;
       setPendingCommits([]);
-      setProvisionalActiveIdx(null);
+      setDraftLineIdx(null);
       setOptimisticContent(null);
       optimisticContentRef.current = null;
     }
@@ -408,14 +413,24 @@ export function App() {
     }
   }, [ownParticipant]);
 
-  // Clear provisional active idx once server has allocated a real one (>= provisional)
-  useEffect(() => {
-    if (provisionalActiveIdx == null || !ownParticipant) return;
-    const realIdx = (ownParticipant as any).activeLineIdx;
-    if (realIdx != null && realIdx >= provisionalActiveIdx) {
-      setProvisionalActiveIdx(null);
-    }
-  }, [ownParticipant, provisionalActiveIdx]);
+  // Allocate our draft line optimistically on its first character: it takes the
+  // current end of the transcript, matching the server's greatest+1 rule.
+  // No-ops when the draft is already allocated or the server has allocated one.
+  // (The server's idx is stale while its line is still in pendingCommits —
+  // we committed it locally — so staleness counts as unallocated here too.)
+  const ensureDraftAllocated = () => {
+    if (draftLineIdx != null) return;
+    const serverIdx = (ownParticipant as any)?.activeLineIdx ?? null;
+    const stale =
+      serverIdx != null && pendingCommits.some((pc) => pc.lineIdx === serverIdx);
+    if (!stale && serverIdx != null) return;
+    let maxKnown = -1;
+    for (const h of visibleHistory) if ((h as any).lineIdx > maxKnown) maxKnown = (h as any).lineIdx;
+    for (const pc of pendingCommits) if (pc.lineIdx > maxKnown) maxKnown = pc.lineIdx;
+    for (const p of participants) if ((p as any).activeLineIdx != null && (p as any).activeLineIdx > maxKnown) maxKnown = (p as any).activeLineIdx;
+    setDraftLineIdx(maxKnown + 1);
+  };
+
   // --- Scrollback belongs to the viewer, not the snapshot ---
   // Server returns only last 100 committed lines as bounded recovery snapshot.
   // Viewer accumulates everything seen since join so upward reading never loses text.
@@ -507,24 +522,28 @@ export function App() {
       },
     }));
 
-    const activeRows = participants.map((participant) => {
-      let order = participant.activeLineIdx ?? Number.MAX_SAFE_INTEGER;
-      // After Enter, fresh buffer must be logically separate immediately and stay put
-      // until server allocates a new lineIdx. Use provisional idx set at commit time,
-      // not just while pendingCommits exist, to avoid jumping down then back.
-      if (session && participant.id === session.participantId && provisionalActiveIdx != null) {
-        if (participant.activeLineIdx == null || participant.activeLineIdx < provisionalActiveIdx) {
-          order = provisionalActiveIdx;
-        }
-      }
-      return {
+    const activeRows = participants.flatMap((participant) => {
+      const isOwn = session != null && participant.id === session.participantId;
+      const serverIdx: number | null = (participant as any).activeLineIdx ?? null;
+      // Our own server allocation is stale while its line sits in pendingCommits:
+      // we already committed that line locally, so it must not render as active.
+      const staleOwn =
+        isOwn && serverIdx != null &&
+        pendingCommits.some((pc) => pc.lineIdx === serverIdx);
+      // A shared active row exists only for an allocated line: the server's
+      // activeLineIdx, or our own optimistic draft (first char typed, server
+      // hasn't allocated yet). An idle participant — no allocation — renders no
+      // shared row at all; their own client shows a local cursor preview instead.
+      // Note: an allocated line backspaced to empty keeps its row and position.
+      let order: number | null = staleOwn ? null : serverIdx;
+      if (order == null && isOwn) order = draftLineIdx;
+      if (order == null) return [];
+      return [{
         kind: "active" as const,
         key: `active:${participant.id}`,
-        // Ownership assigned on first char, not on Enter: null means not yet reserved, show at bottom
-        // (but provisional keeps it stable right after Enter)
         order,
         participant,
-      };
+      }];
     });
 
     // Committed history and live lines are one document. A line's order key,
@@ -535,14 +554,14 @@ export function App() {
       if (left.order !== right.order) return left.order - right.order;
       return left.key.localeCompare(right.key);
     });
-  }, [participants, visibleHistory, pendingCommits, session, provisionalActiveIdx]);
+  }, [participants, visibleHistory, pendingCommits, session, draftLineIdx]);
   const documentSignature = documentLines
     .map((row) =>
       row.kind === "active"
         ? `${row.key}:${row.order}:${row.participant.activeContent}`
         : `${row.key}:${row.order}`,
     )
-    .join("\u0000");
+    .join("\u0000") + `\u0000own:${draftLineIdx}:${optimisticContent ?? ""}`;
 
   useEffect(() => {
     if (!roomState.data?.participants) return;
@@ -787,6 +806,7 @@ export function App() {
       return;
     }
 
+    ensureDraftAllocated();
     setOptimisticContent(`${baseContent}${acceptedCharacters.join("")}`);
     const activeSession = session;
     // Fire each char with seq, ordered stream but concurrent sends — server buffers out-of-order
@@ -816,6 +836,7 @@ export function App() {
 
     const activeContent =
       optimisticContentRef.current ?? ownParticipant?.activeContent ?? "";
+    ensureDraftAllocated();
     setOptimisticContent(`${activeContent}${char}`);
     const activeSession = session;
     const seq = seqRef.current++;
@@ -907,17 +928,11 @@ export function App() {
       }
     }
     const pendingId = `pending-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
-    // Immediately start fresh local buffer for new line
+    // Immediately start fresh local buffer for new line. The draft lineIdx is
+    // cleared: until the next first character there is no allocated line, so
+    // no shared row renders — only the local cursor preview below the transcript.
     setOptimisticContent("");
-    // Provisional idx for the fresh buffer: stays stable until server allocates real idx, avoids jump-down-then-back
-    {
-      let maxKnown = commitLineIdx;
-      for (const h of visibleHistory) if (h.lineIdx > maxKnown) maxKnown = h.lineIdx;
-      for (const pc of pendingCommits) if (pc.lineIdx > maxKnown) maxKnown = pc.lineIdx;
-      for (const p of participants) if (p.activeLineIdx != null && p.activeLineIdx > maxKnown) maxKnown = p.activeLineIdx;
-      if (provisionalActiveIdx != null && provisionalActiveIdx > maxKnown) maxKnown = provisionalActiveIdx;
-      setProvisionalActiveIdx(maxKnown + 1);
-    }
+    setDraftLineIdx(null);
     // Keep finished line visible optimistically until server confirms
     setPendingCommits((prev) => [...prev, {
       id: pendingId,
@@ -1166,6 +1181,23 @@ export function App() {
 
         {roomState.isLoading ? (
           <div className="chat-line system-line">Connecting...</div>
+        ) : null}
+        {/* Local cursor preview: shown only on our own client, only while we
+            have no allocated shared line. It is not a shared row — other
+            clients never render it and it reserves no transcript position.
+            When someone else starts a line first, theirs takes the next
+            position and this preview simply stays below it. */}
+        {session &&
+        !documentLines.some(
+          (row) =>
+            row.kind === "active" &&
+            row.participant.id === session.participantId,
+        ) ? (
+          <div className="chat-line local-cursor-preview">
+            <span className="caret" aria-label="Your typing position">
+              {" "}
+            </span>
+          </div>
         ) : null}
         {feedback ? (
           <div className="chat-line system-line" role="status">

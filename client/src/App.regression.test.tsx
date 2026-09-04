@@ -210,7 +210,7 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
     commitResolve({newLineIdx:null, committedContent:'A', committedAt:Date.now()});
   });
 
-  it('Enter does not cause active line to jump down then back (provisional stays stable)', async ()=>{
+  it('idle participant renders no shared row; local cursor preview only; B lines appear directly below', async ()=>{
     const user = userEvent.setup();
     const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
@@ -226,6 +226,7 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
 
     let commitResolve:any;
     (api.commitLine as any).mockImplementation(()=> new Promise(res=>{ commitResolve=res; }));
+    (api.sendChar as any).mockResolvedValue({content:'', lineIdx:0, position:0, participantId:10});
 
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
     expect(await screen.findByText('Hi')).toBeInTheDocument();
@@ -234,43 +235,116 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
     await user.click(chatArea);
     await user.keyboard('{Enter}');
 
-    // Capture active line order right after Enter (before ack)
-    let orderBeforeAck: string|null = null;
+    // After Enter with no further typing: Alice is idle — no shared active row,
+    // only the local cursor preview on her own client.
     await waitFor(()=>{
-      const active = document.querySelector('.active-line');
-      expect(active).toBeTruthy();
-      orderBeforeAck = active?.getAttribute('data-document-order') ?? null;
-      expect(orderBeforeAck).not.toBeNull();
+      expect(document.querySelector('.active-line')).toBeNull();
+      expect(document.querySelector('.local-cursor-preview')).not.toBeNull();
     });
-
-    // Simulate server ack: history includes Hi, activeLineIdx null (no new char yet, deferred ownership)
+    // Committed Hi stays visible as pending
+    expect(screen.getByText('Hi')).toBeInTheDocument();
+    // Server acks: history has Hi, Alice idle (no allocated line)
+    const ackAt = Date.now();
     (api.getRoomState as any).mockResolvedValue({
       roomId:1,
-      history:[{id:'h1', handle:'Alice', content:'Hi', lineIdx:0, committed:true, committedAt:2, color:'#fff'}],
+      history:[{id:'h1', handle:'Alice', content:'Hi', lineIdx:0, committed:true, committedAt:ackAt, color:'#fff'}],
       participants:[
         {id:10, handle:'Alice', color:'#fff', lineSlot:0, activeLineIdx:null, activeContent:'', joinedAt:1, nextExpectedSeq:3},
+        {id:20, handle:'Bob', color:'#0ff', lineSlot:1, activeLineIdx:1, activeContent:'Yo', joinedAt:1, nextExpectedSeq:2},
       ],
-      roster:[{handle:'Alice', color:'#fff', lineSlot:0}]
+      roster:[{handle:'Alice', color:'#fff', lineSlot:0},{handle:'Bob', color:'#0ff', lineSlot:1}]
     });
     commitResolve({newLineIdx:null, committedContent:'Hi', committedAt:Date.now()});
 
-    // After ack, active line should still be at same order (provisional), not jumped to bottom then back
+    // Bob's line appears directly below committed Hi — no blank row reserved for idle Alice.
+    // Alice still has only her local preview.
     await waitFor(()=>{
-      const active = document.querySelector('.active-line');
-      expect(active).toBeTruthy();
-      const orderAfterAck = active?.getAttribute('data-document-order');
-      expect(orderAfterAck).toBe(orderBeforeAck);
+      const lines = Array.from(document.querySelectorAll('.chat-line'));
+      const hiIdx = lines.findIndex(el=> el.textContent==='Hi');
+      const yoIdx = lines.findIndex(el=> el.textContent==='Yo');
+      expect(hiIdx).toBeGreaterThanOrEqual(0);
+      expect(yoIdx).toBeGreaterThanOrEqual(0);
+      expect(yoIdx).toBe(hiIdx + 1);
+      expect(document.querySelector('.local-cursor-preview')).not.toBeNull();
+      // Alice (lineSlot 0) contributes no shared row while idle
+      expect(document.querySelector('.active-line[data-line-slot="0"]')).toBeNull();
     });
 
-    // Committed Hi should still be visible and stay in place (order 0)
+    // Alice resumes typing: her new line starts below Bob's line.
+    await user.keyboard('Z');
     await waitFor(()=>{
-      const committed = screen.getByText('Hi');
-      expect(committed).toBeInTheDocument();
-      // Committed Hi should be before active line in DOM
       const lines = Array.from(document.querySelectorAll('.chat-line'));
-      const hiIdx = lines.findIndex(el=> el.textContent==='Hi' && !el.classList.contains('active-line'));
-      const activeIdx = lines.findIndex(el=> el.classList.contains('active-line'));
-      expect(hiIdx).toBeLessThan(activeIdx);
+      const yoIdx = lines.findIndex(el=> el.textContent==='Yo');
+      const zRow = Array.from(document.querySelectorAll('.active-line'))
+        .find(el=> el.textContent?.includes('Z'));
+      expect(zRow).toBeTruthy();
+      const zIdx = lines.indexOf(zRow as Element);
+      expect(zIdx).toBeGreaterThan(yoIdx);
+      // Preview hides while she has a shared row
+      expect(document.querySelector('.local-cursor-preview')).toBeNull();
+    });
+  });
+
+  it('backspacing an allocated line to empty keeps its position', async ()=>{
+    const user = userEvent.setup();
+    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice'};
+    sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
+
+    (api.getRoomState as any).mockResolvedValue({
+      roomId:1,
+      history:[],
+      participants:[
+        {id:10, handle:'Alice', color:'#fff', lineSlot:0, activeLineIdx:null, activeContent:'', joinedAt:1, nextExpectedSeq:1},
+        {id:20, handle:'Bob', color:'#0ff', lineSlot:1, activeLineIdx:5, activeContent:'BobLine', joinedAt:1, nextExpectedSeq:1},
+      ],
+      roster:[{handle:'Alice', color:'#fff', lineSlot:0},{handle:'Bob', color:'#0ff', lineSlot:1}]
+    });
+
+    (api.sendChar as any).mockResolvedValue({content:'', lineIdx:0, position:0, participantId:10});
+    (api.sendBackspace as any).mockResolvedValue({content:'', lineIdx:0, participantId:10});
+
+    render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
+    const chatArea = await screen.findByLabelText('Shared chat area');
+    await user.click(chatArea);
+
+    // Idle Alice: no shared row for her (lineSlot 0), only preview.
+    // (Bob has an allocated line, so his shared row correctly renders.)
+    await waitFor(()=>{
+      expect(document.querySelector('.active-line[data-line-slot="0"]')).toBeNull();
+      expect(document.querySelector('.local-cursor-preview')).not.toBeNull();
+    });
+
+    // Type AB then delete everything (select Alice's row by her lineSlot)
+    await user.keyboard('A');
+    await user.keyboard('B');
+    let orderWithText: string|null = null;
+    await waitFor(()=>{
+      const row = document.querySelector('.active-line[data-line-slot="0"]');
+      expect(row).not.toBeNull();
+      expect(row?.textContent).toContain('AB');
+      orderWithText = row?.getAttribute('data-document-order') ?? null;
+    });
+    await user.keyboard('{Backspace}');
+    await user.keyboard('{Backspace}');
+
+    // Allocated row remains at the same position even though empty
+    await waitFor(()=>{
+      const row = document.querySelector('.active-line[data-line-slot="0"]');
+      expect(row).not.toBeNull();
+      expect(row?.getAttribute('data-document-order')).toBe(orderWithText);
+      // Still below Bob's line, not relocated
+      const lines = Array.from(document.querySelectorAll('.chat-line'));
+      const bobIdx = lines.findIndex(el=> el.textContent==='BobLine');
+      const rowIdx = lines.indexOf(row as Element);
+      expect(rowIdx).toBeGreaterThan(bobIdx);
+    });
+
+    // Typing again reuses the same line
+    await user.keyboard('C');
+    await waitFor(()=>{
+      const row = document.querySelector('.active-line[data-line-slot="0"]');
+      expect(row?.textContent).toContain('C');
+      expect(row?.getAttribute('data-document-order')).toBe(orderWithText);
     });
   });
 });
