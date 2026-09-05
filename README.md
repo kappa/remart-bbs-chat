@@ -19,8 +19,8 @@ shared IPv4.
   way.
 - [`docs/PROTOCOL.md`](docs/PROTOCOL.md) — current HTTP and WebSocket messages,
   payloads, ordering, session lifecycle, and client behavior.
-- [`docs/SPECS_STATUS.md`](docs/SPECS_STATUS.md) — which older specs are
-  historical and which docs are authoritative.
+- [`docs/SPECS_STATUS.md`](docs/SPECS_STATUS.md) — which docs are
+  authoritative; `docs/archive/` holds the superseded original specs.
 
 ## Structure
 

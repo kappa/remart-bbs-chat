@@ -11,9 +11,10 @@ database or authentication service.
 Read `docs/USER_EXPERIENCE.md` for behavior and `docs/DESIGN.md` for rationale.
 Together with `README.md` and the wire reference `docs/PROTOCOL.md`, these are
 the maintained product docs. Follow
-`docs/SPECS_STATUS.md`: material under `docs/superpowers/`, `docs/final-spec/`,
-and `.superpowers/` is historical. Do not restore its superseded ASCII-only,
-80-column, or typing-throttle requirements. When docs and implementation
+`docs/SPECS_STATUS.md`: everything under `docs/archive/` is historical. Do not
+execute the archived plan or restore its superseded ASCII-only, 80-column, or
+typing-throttle requirements. `docs/superpowers/` holds only active specs and
+plans; there are none at present. When docs and implementation
 disagree, inspect the code and tests and correct the maintained docs as part of
 the relevant change.
 

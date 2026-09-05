@@ -1,4 +1,4 @@
-> **OUT OF DATE — 2026-09-04** — Historical intent only. Current implementation is in `server/index.js` + `client/src/App.tsx` + `README.md`. See `docs/SPECS_STATUS.md` for authoritative behavior. Do not use this doc as source of truth for new work.
+> **OUT OF DATE — 2026-09-04** — Historical intent only. **Do not execute this plan**; the sub-skill instruction below is retained verbatim for the record. Current implementation is in `server/index.js` + `client/src/App.tsx` + `README.md`. See `docs/SPECS_STATUS.md` for authoritative behavior. Do not use this doc as source of truth for new work.
 
 ---
 
