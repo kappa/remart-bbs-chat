@@ -17,6 +17,8 @@ shared IPv4.
   like, treating the system as a black box.
 - [`docs/DESIGN.md`](docs/DESIGN.md) — design decisions: why it behaves that
   way.
+- [`docs/PROTOCOL.md`](docs/PROTOCOL.md) — current HTTP and WebSocket messages,
+  payloads, ordering, session lifecycle, and client behavior.
 - [`docs/SPECS_STATUS.md`](docs/SPECS_STATUS.md) — which older specs are
   historical and which docs are authoritative.
 
