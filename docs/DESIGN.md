@@ -138,6 +138,10 @@ are not a design input.
 - The layout is responsive with no horizontal scrolling. The desktop typing
   hint is hidden (a regular knows where to click); it appears only on narrow
   screens (≤420 px) where the tap target is not obvious.
+- Transcript rows wrap using the browser's available layout width, including
+  the space taken by the roster. Preserved whitespace and unbroken text wrap
+  too. Resizing reflows both live and committed rows without changing their
+  content or server-assigned line indices.
 
 ## Aesthetic notes
 

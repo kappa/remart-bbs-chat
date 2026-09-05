@@ -47,6 +47,8 @@ name prefixes on ordinary lines because the color tells you who is who.
   fresh line below, ready for the next thought. Pressing Enter on an empty
   line commits an empty line — several in a row are fine.
 - There is no line-length limit. Any language works, including Cyrillic.
+- Long lines wrap to the available transcript width and reflow when the window
+  is resized. Wrapping is visual only; it does not insert line breaks into text.
 - Pasting is capped at 100 characters; you are told when a paste is trimmed.
 - Your line never moves once you start it. If you type the first character
   before someone else starts theirs, your line stays above theirs — even if
