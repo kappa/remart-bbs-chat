@@ -26,8 +26,8 @@ found there is current.
   server echo, no Vite dev server), absorbing issues 2 and 3; implemented
   2026-09-05, kept as the design record.
 - `docs/superpowers/plans/2026-09-05-websocket-server-echo.md` — the
-  implementation plan for that spec; executed on branch
-  `websocket-server-echo`.
+  implementation plan for that spec; executed and merged into master on
+  2026-09-06 (the commit before it is tagged `before-websocket-server-echo`).
 
 ## Archive (historical, not authoritative)
 
@@ -37,3 +37,8 @@ superseded on 2026-09-03/04 (Unicode, no 80-cell limit, no typing throttle,
 deferred ownership on first char, live socket updates, seq-ordered ops,
 viewer-accumulated scrollback). Do not execute the archived plan and do not
 update the archived files; update the authoritative docs instead.
+
+`docs/archive/2026-09-06-websocket-server-echo-review.md` is the review of
+the `websocket-server-echo` branch against its spec and plan. Its findings
+were fixed in commits inserted after the ones they address before the merge,
+so it is a record, not open work.
