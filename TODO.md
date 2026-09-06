@@ -15,28 +15,21 @@ Describe implemented behavior there; keep future proposals in these tasks.
 
 ## Recommended implementation order
 
-Keep issue numbers stable; use this order for execution:
+Tasks 1, 4, 6, 7, 10, and 11 are done and tasks 8 and 9 are closed; see their
+checkboxes. Keep task numbers stable; execute the open tasks in this order:
 
-| Order | Tasks | Reason |
+| Order | Task | Reason |
 | --- | --- | --- |
-| 1 | 6 — Build and setup | Establish a reliable build/test workflow. |
-| 2 | 1 — Participant authorization | Establish credentials for HTTP mutations and socket sessions. |
-| 3 | 4 — Stale-room joins | Make session creation reliable before implementing recovery. |
-| 4 | 11 + 7 — WebSocket transport and development routing (done) | Establish the server protocol and local verification. Incorporate issues 2 and 3 into delivery/reconnection behavior. |
-| 5 | 10 — Server echo (done) | Switch the client to authoritative events, remove optimistic state, and finish retiring HTTP chat mutations. |
-| 6 | 12 — Last 20 lines on join | Implement on the new snapshot/rendering path rather than the client logic being removed. |
-| 7 | 5 — Unicode deletion | Fix deletion in the surviving server-authoritative path. |
-| 8 | 8 — Production helpers | Consolidate surviving logic and remove obsolete helpers/tests. |
-
-Task 9 (regression coverage) accompanies every step, with a final integration
-pass; it is not deferred until the end. Tasks 11 and 10 are one coordinated
-migration: establish the server protocol before switching the client, and retire
-old endpoints after the switch. Issue 2's stalled-input failure is solved within
-WebSocket recovery rather than by a separate HTTP retry system; issue 3's
-transient-failure behavior lives in the same connection lifecycle.
-
-This order assumes the rewrite is next. If the current application will remain
-deployed for an extended period, bring fixes for issues 3 and 5 forward.
+| 1 | 20 — Restore the join sound | A shipped feature is broken; tasks 15 and 17 build on it. Test first. |
+| 2 | 13 — Keep a mouse selection | Bug, small, isolated to the chat area's click handler. |
+| 3 | 19 — Mobile keyboard | Bug for phone users; no dependencies, needs a device check. |
+| 4 | 12 — Last 20 lines on join | The last review item that changes the protocol; land it before features add their own. |
+| 5 | 5 — Unicode deletion | Defines the deletion unit that task 14 builds on. |
+| 6 | 14 — Caret editing | Protocol change; needs task 5's unit. |
+| 7 | 15 — Join-sound switch | Needs a working chirp from task 20. |
+| 8 | 16 — Clickable URLs | Row rendering; independent. |
+| 9 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
+| 10 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
 
 ## 1. Require participant authorization for mutations
 
@@ -108,15 +101,20 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
 ## 5. Delete Unicode characters without corrupting surrogate pairs
 
 - [ ] **Medium priority**
-- **Location:** `server/index.js` `applyBackspaceOperation`;
-  `client/src/App.tsx` local deletion, rollback, and remote backspace handling.
+- **Location:** `server/index.js` `applyBackspace`. Since server echo this is
+  the only deletion site: the client sends a `backspace` keystroke and renders
+  the echoed live line, so no client code changes.
 - **Problem:** `slice(0, -1)` deletes one UTF-16 code unit. Deleting `😀` leaves
   an unpaired surrogate instead of empty text; this was reproduced.
-- **Suggested fix:** Define consistent Unicode-aware deletion semantics and
-  use them on the server and in all client deletion paths.
+- **Suggested fix:** Delete one code point on the server, for example
+  `Array.from(text).slice(0, -1).join('')`. Decide whether a combining
+  sequence (a base character plus marks, or an emoji with modifiers) counts as
+  one unit or several, and write it down; code point is acceptable for now.
+  Task 14 adds forward deletion and caret movement and must use the same unit.
 - **Acceptance:** One backspace removes a single emoji without malformed
   text, and all viewers converge. Cover ASCII, Cyrillic, supplementary Unicode
-  characters, and the chosen behavior for combining sequences.
+  characters, and the chosen behavior for combining sequences, in
+  `test-server-ws.js`.
 - **Protocol docs:** Update [PROTOCOL.md](docs/PROTOCOL.md) with the deletion unit
   and any changed validation or position semantics, replacing the current
   UTF-16 deletion limitation.
@@ -153,7 +151,7 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
 
 ## 8. Make helper tests exercise production logic
 
-- [ ] **Maintainability** (partly done: computeDocumentLines and isValidChar are the only paths; remaining: none known, verify and close)
+- [x] **Maintainability** (done: the component calls `computeDocumentLines` and `isValidChar` from `documentLines.ts`, the optimistic helpers and their tests are gone, and the client validator matches the server's)
 - **Location:** `client/src/documentLines.ts`, `client/src/App.tsx`, and their tests.
 - **Problem:** Character validation and document-ordering logic are duplicated;
   testing the extracted helpers does not ensure the component uses that logic.
@@ -166,7 +164,7 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
 
 ## 9. Add regression coverage for the retained review findings
 
-- [ ] **Testing**
+- [x] **Testing** (done: authorization, sequence recovery, session survival, stale-room joins, reconnect replay, and scrollback each have named server or client tests; the Unicode case is tracked under task 5; the development socket item is obsolete since the Vite dev server was removed)
 - **Location:** `test-server-*.js` and `client/src/*.test.{ts,tsx}`.
 - **Problem:** The review exposed failure paths that need explicit regression
   protection. Existing client WebSocket stubs do not validate the real transport.
@@ -289,19 +287,25 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
 - [ ] **Requested feature**
 - **Goal:** Seed a new participant's transcript with up to 20 existing committed
   lines, then continue showing live typing and subsequent committed lines.
-- **Code:** [Room storage, join handler, and room-state snapshot](server/index.js),
-  [history accumulation and visible-history filtering](client/src/App.tsx),
-  [snapshot response types](client/src/api.ts), and
+- **Code:** [Room storage, join handler, and snapshot assembly](server/index.js),
+  [join-time filtering](client/src/roomState.ts),
+  [the session's joinedAt](client/src/useRoomConnection.ts),
+  [wire types](client/src/protocol.ts), and
   [document ordering helpers](client/src/documentLines.ts).
-  Review `room.lines`, `/api/join`, `/api/room-state`, `historyAccum`,
-  `visibleHistory`, and both client filters comparing `committedAt` to `joinedAt`.
-- **Existing behavior:** The server already stores committed lines in memory
-  in `room.lines` and returns up to 100 in a recovery snapshot. The client
-  explicitly filters out pre-join history. No database or new persistence service
-  is needed. The current 100-line response limit does not bound stored history.
+  Review `room.lines`, `snapshotMessage`, `/api/join`, the two
+  `committedAt >= joinedAt` checks in `applyServerMessage` (`snapshot` and
+  `committed`), and `readSession` in `App.tsx`, which rejects a stored session
+  without `joinedAt`.
+- **Existing behavior:** The server stores committed lines in memory in
+  `room.lines`, and the `snapshot` sent on every socket connect carries the
+  last 100 sorted by row. The client accumulates every committed line seen
+  since the session began and drops lines committed before the session's
+  `joinedAt`, which comes from the join response. No database or new
+  persistence service is needed. The 100-line snapshot limit does not bound
+  stored history.
 - **Scope and interpretation:**
   - Count logical committed transcript lines, not screen rows produced by
-    wrapping. Use transcript order (`lineIdx`) to select the last 20 and show
+    wrapping. Use transcript order (`row`) to select the last 20 and show
     them oldest to newest; commit arrival order can differ during concurrent
     typing. Preserve author color snapshots and blank lines.
   - Treat existing join/leave announcements as transcript lines within the 20.
@@ -345,7 +349,7 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
 
 ## Product issues from GitHub
 
-Tasks 13 to 19 come from the repository's GitHub issues, one task per issue,
+Tasks 13 to 20 come from the repository's GitHub issues, one task per issue,
 imported 2026-09-06. Task numbers stay stable; the GitHub issue number is in
 each task's **Source** line. These are product requests, not review findings.
 They have no fixed order relative to tasks 1 to 12, except where a task says
@@ -427,9 +431,10 @@ Close the GitHub issue when the task is done.
   mention bell) respect the same switch or get their own; decide there.
 - **Acceptance:** Unchecking the box stops the chirp for later joins in this
   browser; the choice survives a reload; the default is on. No server change.
-- **Tests:** Roster test that a newcomer does not construct an AudioContext
-  when the setting is off, and does when it is on; a storage test for the
-  persisted value.
+- **Tests:** Roster test that a newcomer does not play the chirp when the
+  setting is off, and does when it is on, using the audible-path assertion
+  from task 20; a storage test for the persisted value.
+- **Order:** After task 20; a switch for a silent sound cannot be tested.
 - **Protocol docs:** none. Mention the switch in
   [USER_EXPERIENCE.md](docs/USER_EXPERIENCE.md).
 
@@ -462,8 +467,9 @@ Close the GitHub issue when the task is done.
 
 - [ ] **Requested feature**
 - **Source:** [GitHub issue #6](https://github.com/kappa/remart-bbs-chat/issues/6).
-- **Location:** `client/src/App.tsx` transcript row rendering and the
-  committed-line handling in the room-state path; the sound helper.
+- **Location:** `client/src/App.tsx` transcript row rendering;
+  `client/src/useRoomConnection.ts`, where `committed` messages arrive and
+  the join chirp is triggered; the sound helper.
 - **Problem:** Someone addressing you with `@yourname` is easy to miss, and
   the mention looks like any other text.
 - **Suggested fix:** Client-side only: every client knows its own handle and
@@ -550,3 +556,44 @@ Close the GitHub issue when the task is done.
   device in the commit message; there is no automated mobile browser run.
 - **Protocol docs:** none. Note the mobile behavior in
   [USER_EXPERIENCE.md](docs/USER_EXPERIENCE.md).
+
+## 20. Restore the join sound
+
+- [ ] **Bug**
+- **Source:** [GitHub issue #9](https://github.com/kappa/remart-bbs-chat/issues/9).
+- **Location:** `client/src/App.tsx` `playJoinSound`;
+  `client/src/useRoomConnection.ts` newcomer detection (`onNewcomer` fires on
+  a `roster` or `snapshot` message that names a participant not seen before);
+  `client/src/App.roster.test.tsx`; `client/src/test-setup.ts` AudioContext
+  stub.
+- **Problem:** In a manual two-tab test on 2026-09-06, in Chrome and in
+  Firefox, no chirp was heard when the second participant joined. A
+  headless-Chrome probe of the same build showed that `playJoinSound` runs on
+  each newcomer and constructs an AudioContext, so the event path is intact
+  and the failure is in producing audible sound. The existing roster test only
+  asserts that an AudioContext is constructed, which is why it stays green.
+- **Suggested fix:** Write the failing test first, as the issue asks. Find the
+  cause in a real browser with the devtools console open on the listening
+  tab: log `ctx.state` and the oscillator schedule at chirp time. Candidates,
+  unconfirmed: a context created suspended by the autoplay policy and never
+  resumed (each chirp makes a fresh context and never calls `resume()`);
+  oscillators scheduled on a context that is closed 600 ms later; or a
+  regression in the browsers themselves, which the tag
+  `before-websocket-server-echo` can rule in or out by checking whether the
+  chirp works on the pre-rewrite build. Likely shape of the fix: create one
+  AudioContext lazily on the first click or keystroke in the chat area, keep
+  it, call `resume()` before each chirp, and stop closing contexts per chirp.
+- **Acceptance:** Two tabs in Chrome and Firefox: after at least one click or
+  keystroke in the tab already in the room, that tab plays the chirp when
+  someone joins. A tab that has never been interacted with stays silent, which
+  browsers require; the docs say so.
+- **Tests:** A client test that asserts the audible path, not construction:
+  with a fake AudioContext that records its state, `resume()` calls, oscillator
+  `start()` and `stop()` times, and gain values, a newcomer after a simulated
+  user gesture produces a started oscillator on a running context, and a
+  newcomer before any gesture does not throw. The test must fail on the
+  current build before the fix. Record the two-browser check in the commit
+  message.
+- **Protocol docs:** none. Note the one-gesture requirement in
+  [USER_EXPERIENCE.md](docs/USER_EXPERIENCE.md) next to the chirp sentence.
+- **Order:** Before task 15 and before task 17's bell.
