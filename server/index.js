@@ -71,7 +71,7 @@ function getOrCreateRoom(preferredId, forceNew){
     }
   }
   const id = nextRoomId++;
-  const room = {id, name:`Room ${id}`, createdAt:new Date(), maxParticipants:10, isLobby:false, participants:new Map(), lines:[], charEvents:[], wsClients:new Set(), nextLineIdx:0};
+  const room = {id, name:`Room ${id}`, createdAt:new Date(), maxParticipants:10, isLobby:false, participants:new Map(), lines:[], charEvents:[], nextLineIdx:0};
   rooms.set(id, room);
   return room;
 }
@@ -128,6 +128,7 @@ function cleanupStaleInRoom(room, excludeId=null){
       colorSnapshot:s.color
     });
     room.charEvents = room.charEvents.filter(e=>e.handle!==s.handle);
+    if(s.socket){ try{ s.socket.close(); }catch{} }
     room.participants.delete(s.id);
   }
   // ephemeral room cleanup
@@ -149,20 +150,51 @@ function globalHandleExists(handleLower){
   return false;
 }
 
-function broadcastRoom(room){
-  if(!room || !room.wsClients || room.wsClients.size===0) return;
-  const payload = JSON.stringify({type:'room-update', roomId:room.id});
-  for(const ws of room.wsClients){
-    try{ if(ws.readyState===1) ws.send(payload); }catch{}
+function sendWs(ws, msg){
+  try{ if(ws.readyState===1) ws.send(JSON.stringify(msg)); }catch{}
+}
+
+function sendTo(participant, msg){
+  if(participant.socket) sendWs(participant.socket, msg);
+}
+
+// Every participant with an open socket receives room messages, the author included.
+function broadcast(room, msg){
+  const payload = JSON.stringify(msg);
+  for(const p of room.participants.values()){
+    const ws = p.socket;
+    if(ws && ws.readyState===1){ try{ ws.send(payload); }catch{} }
   }
 }
 
-function broadcastChar(room, participantId, type, data){
-  if(!room.wsClients) return;
-  const msg = JSON.stringify({type, roomId:room.id, participantId, ...data});
-  for(const ws of room.wsClients){
-    try{ if(ws.readyState===1) ws.send(msg); }catch{}
-  }
+// Legacy notifications for the HTTP chat routes; removed with them.
+function broadcastRoom(room){ if(room) broadcast(room, {type:'room-update', roomId:room.id}); }
+function broadcastChar(room, participantId, type, data){ broadcast(room, {type, roomId:room.id, participantId, ...data}); }
+
+function rosterOf(room){
+  return Array.from(room.participants.values())
+    .map(p=>({participantId:p.id, handle:p.handle, color:p.color, slot:p.lineSlot}))
+    .sort((a,b)=>a.slot-b.slot);
+}
+
+function publicLine(line){
+  return {id:line.id, row:line.lineIdx, text:line.content, handle:line.handle, color:line.colorSnapshot, committedAt:line.committedAt};
+}
+
+function liveLineOf(p){
+  return {participantId:p.id, handle:p.handle, color:p.color, slot:p.lineSlot, row:p.activeLineIdx, text:p.activeContent};
+}
+
+// Last 100 appended committed lines, sorted by row: the recovery snapshot.
+function snapshotMessage(room, participant){
+  return {
+    type:'snapshot',
+    roomId:room.id,
+    you:{participantId:participant.id, nextSeq:participant.nextExpectedSeq},
+    liveLines:Array.from(room.participants.values()).sort((a,b)=>a.lineSlot-b.lineSlot).map(liveLineOf),
+    committed:room.lines.slice(-100).sort((a,b)=>a.lineIdx-b.lineIdx).map(publicLine),
+    roster:rosterOf(room),
+  };
 }
 
 // --- Ordered operation helpers with seq buffering ---
@@ -317,7 +349,7 @@ app.post('/api/join', (req,res)=>{
   // history is lost with the detached object.
   if(!rooms.has(room.id)){
     const orphanedLines = room.lines;
-    room = {id:room.id, name:room.name, createdAt:new Date(), maxParticipants:10, isLobby:false, participants:new Map(), lines:orphanedLines, charEvents:[], wsClients:new Set(), nextLineIdx:0};
+    room = {id:room.id, name:room.name, createdAt:new Date(), maxParticipants:10, isLobby:false, participants:new Map(), lines:orphanedLines, charEvents:[], nextLineIdx:0};
     rooms.set(room.id, room);
   }
 
@@ -352,7 +384,8 @@ app.post('/api/join', (req,res)=>{
     joinedAt: now,
     lastSeen: now,
     nextExpectedSeq: 1,
-    opBuffer: new Map()
+    opBuffer: new Map(),
+    socket: null
   };
   room.participants.set(participant.id, participant);
   room.lines.push({
@@ -576,31 +609,48 @@ if(fs.existsSync(clientDist)){
 }
 
 const server = createServer(app);
-const wss = new WebSocketServer({server});
+const wss = new WebSocketServer({server, path:'/ws'});
 
 wss.on('connection', (ws)=>{
   ws.on('message', (raw)=>{
-    try{
-      const msg = JSON.parse(raw.toString());
-      if(msg.type==='subscribe' && msg.roomId){
-        const room = getRoom(msg.roomId);
-        if(room){
-          room.wsClients.add(ws);
-          ws._roomId = room.id;
-          ws.send(JSON.stringify({type:'subscribed', roomId:room.id}));
-        }
-      } else if(msg.type==='ping'){
-        ws.send(JSON.stringify({type:'pong'}));
-      }
-    }catch{}
-  });
-  ws.on('close', ()=>{
-    if(ws._roomId){
-      const room = getRoom(ws._roomId);
-      if(room) room.wsClients.delete(ws);
+    let msg;
+    try{ msg = JSON.parse(raw.toString()); }catch{ return sendWs(ws, {type:'error', code:'invalid-message'}); }
+    if(!ws.participant){
+      if(!msg || msg.type!=='hello'){ sendWs(ws, {type:'error', code:'unauthorized'}); return ws.close(); }
+      const room = getRoom(msg.roomId);
+      const participant = room && room.participants.get(Number(msg.participantId));
+      if(!participant){ sendWs(ws, {type:'error', code:'unknown-participant'}); return ws.close(); }
+      if(!checkParticipantAuth(participant, msg.token)){ sendWs(ws, {type:'error', code:'unauthorized'}); return ws.close(); }
+      // One socket per participant: a reconnecting tab replaces its old connection.
+      if(participant.socket && participant.socket!==ws){ try{ participant.socket.close(); }catch{} }
+      participant.socket = ws;
+      participant.lastSeen = new Date();
+      ws.participant = participant;
+      ws.room = room;
+      return sendWs(ws, snapshotMessage(room, participant));
     }
+    const participant = ws.participant;
+    if(participant.socket!==ws || !ws.room.participants.has(participant.id)) return;
+    participant.lastSeen = new Date();
+    sendWs(ws, {type:'error', code:'invalid-message'});
   });
+  ws.on('pong', ()=>{ if(ws.participant) ws.participant.lastSeen = new Date(); });
+  ws.on('close', ()=>{ if(ws.participant && ws.participant.socket===ws) ws.participant.socket = null; });
 });
+
+// Presence is the socket: pings every 12 s, pongs refresh lastSeen.
+export function pingSockets(){
+  for(const room of rooms.values()){
+    for(const p of room.participants.values()){
+      const ws = p.socket;
+      if(ws && ws.readyState===1){ try{ ws.ping(); }catch{} }
+    }
+  }
+}
+let pingInterval = null;
+if (process.env.NODE_ENV !== 'test') {
+  pingInterval = setInterval(pingSockets, 12000);
+}
 
 // periodic stale sweep every 15s
 let sweepInterval = null;
@@ -639,6 +689,12 @@ export {
   applyBackspaceOperation,
   applyCommitOperation,
   drainBufferedOps,
+  broadcast,
+  sendTo,
+  snapshotMessage,
+  rosterOf,
+  publicLine,
+  liveLineOf,
 };
 
 // Test helpers
