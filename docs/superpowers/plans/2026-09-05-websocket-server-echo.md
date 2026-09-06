@@ -10,11 +10,24 @@
 
 **Spec:** `docs/superpowers/specs/2026-09-05-websocket-server-echo-design.md`
 
+## Prerequisites
+
+- Read the spec above and `AGENTS.md` first. `docs/PROTOCOL.md` describes the protocol being replaced; `server/index.js` and `client/src/App.tsx` are the code being rewritten.
+- Node 18 or newer (this plan was verified on Node 22). Install both packages from the repo root:
+
+```bash
+npm install
+npm --prefix client install
+```
+
+- Baseline before Task 1, verify it yourself: `npm test` passes 61 server tests, `npm --prefix client test` passes 40 client tests, `npm --prefix client run build` succeeds.
+- Line numbers cited in tasks refer to the files at commit `f98a29b` (the commit that added this plan); re-locate by content if they have drifted.
+
 ## Global Constraints
 
 - Work on branch `websocket-server-echo`, created from `master` in Task 1. Do not commit to `master`.
 - Test first for every code change: write the failing test, run it and see it fail for the right reason, make the minimal change, run it green, then commit. Never commit with a failing suite.
-- One commit per task. Commit messages end with `Claude-Session: https://claude.ai/code/session_01Pb6DtmrRCjjGMSHkaepEHq`.
+- One commit per task. The `Claude-Session:` trailer in the commit commands belongs to the session that wrote this plan; another harness may omit it.
 - Vocabulary in code, comments, docs, and tests: **live line** (`liveText`, `liveRow`), **committed line**, **row**, **keystroke** (`key`), **sequence number** (`seq`), **snapshot**, **announcement**. Do not introduce "draft", "op", "activeContent", "lineIdx", or "history" in new code.
 - Wire shapes are exactly those in the spec's Messages section. Socket path is `/ws`. Snapshot committed lines are the last 100 appended, sorted by row. Pending queue bound is 200. Reconnect delay is 1200 ms. Server ping interval is 12 s; stale timeout stays 40 s; sweep stays 15 s.
 - Task 12 (last 20 lines on join) is out of scope. Do not add a 20-line window anywhere.
