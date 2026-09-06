@@ -78,6 +78,14 @@ NODE_ENV=test node --test test-server-ws.js
 npm --prefix client test -- src/App.race.test.tsx
 ```
 
+`npm run check:browser` runs a two-tab end-to-end check (`check-browser.mjs`)
+in a headless Chrome driven over the DevTools protocol: typing, Backspace,
+Enter, the `?`, `l`, and `q` commands, a page reload, and a server restart.
+It needs a built client and a `google-chrome` binary (`CHROME` overrides) and
+is not part of `npm test`. Use it for changes to the typing protocol, the
+socket connection, or the transcript rendering; a plan's end-to-end step can
+point at it instead of a manual browser session.
+
 Server tests set `NODE_ENV=test` before dynamically importing the server, reset
 shared state with `resetForTests()`, and bind integration servers to port 0.
 Test mode disables automatic listening and the periodic cleanup timer. Preserve
