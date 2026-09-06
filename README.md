@@ -33,7 +33,8 @@ shared IPv4.
 
 ```bash
 npm install
-npm run build --workspace=client  # builds client/dist
+npm --prefix client install
+npm --prefix client run build  # builds client/dist
 npm start  # PORT env, default 3000
 ```
 

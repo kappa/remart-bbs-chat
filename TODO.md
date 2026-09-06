@@ -123,7 +123,7 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
 
 ## 6. Repair the build entry point and setup documentation
 
-- [ ] **Development workflow**
+- [x] **Development workflow** (done: root build delegates via `npm --prefix client run build`, README documents both installs)
 - **Location:** Root `package.json` and `README.md`.
 - **Problem:** The README uses `--workspace=client`, but no workspace is
   declared. The root build script invokes Vite without the client package's
