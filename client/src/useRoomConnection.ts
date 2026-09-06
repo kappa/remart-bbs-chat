@@ -1,0 +1,61 @@
+import { useEffect, useRef, useState } from 'react';
+import { openRoomConnection, type ConnectionStatus } from './connection';
+import type { CommandName, KeyInput, ServerMessage } from './protocol';
+import { applyServerMessage, emptyRoom, type RoomState } from './roomState';
+
+export type RoomSession = { roomId: number; participantId: number; token: string; joinedAt: number };
+export type RoomEvents = {
+  onCommand: (name: CommandName) => void;
+  onSessionEnded: () => void;
+  onNewcomer: () => void;
+  onNotice: (text: string) => void;
+};
+
+// Owns the socket for the current session and turns server messages into
+// room state. Events that need app-level reactions (commands, session end,
+// join chirp, warnings) go through `events`, read via a ref so callers can
+// pass fresh closures every render.
+export function useRoomConnection(session: RoomSession | null, events: RoomEvents) {
+  const [room, setRoom] = useState<RoomState>(emptyRoom);
+  const [status, setStatus] = useState<ConnectionStatus>('connecting');
+  const eventsRef = useRef(events);
+  eventsRef.current = events;
+  const sendRef = useRef<(key: KeyInput) => boolean>(() => false);
+
+  const roomId = session?.roomId, participantId = session?.participantId, token = session?.token, joinedAt = session?.joinedAt;
+
+  useEffect(() => {
+    if (roomId == null || participantId == null || token == null || joinedAt == null) return;
+    setRoom(emptyRoom());
+    const knownIds = new Set<number>();
+    let seeded = false;
+    const connection = openRoomConnection({ roomId, participantId, token }, {
+      onStatus: setStatus,
+      onInputLost: () => eventsRef.current.onNotice('Connection recovered, some input was lost'),
+      onMessage: (msg: ServerMessage) => {
+        if (msg.type === 'command') return eventsRef.current.onCommand(msg.name);
+        if (msg.type === 'error') {
+          if (msg.code === 'unknown-participant' || msg.code === 'unauthorized') eventsRef.current.onSessionEnded();
+          return;
+        }
+        if (msg.type === 'roster' || msg.type === 'snapshot') {
+          const ids = (msg.type === 'roster' ? msg.roster : msg.liveLines).map((e) => e.participantId);
+          const newcomer = seeded && ids.some((id) => !knownIds.has(id) && id !== participantId);
+          knownIds.clear();
+          for (const id of ids) knownIds.add(id);
+          seeded = true;
+          if (newcomer) eventsRef.current.onNewcomer();
+        }
+        setRoom((prev) => applyServerMessage(prev, msg, joinedAt));
+      },
+    });
+    sendRef.current = connection.send;
+    return () => { connection.close(); sendRef.current = () => false; };
+  }, [roomId, participantId, token, joinedAt]);
+
+  const send = (key: KeyInput) => {
+    if (!sendRef.current(key)) eventsRef.current.onNotice('Not connected, input paused');
+  };
+
+  return { room, status, send };
+}

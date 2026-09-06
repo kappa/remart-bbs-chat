@@ -4,7 +4,6 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from './App';
 import { api } from './api';
-import { primeChatSnapshot, resetChatState, getLastSocket, broadcastFromServer } from './test-setup';
 
 vi.mock('./api', () => ({
   api: {
@@ -32,7 +31,6 @@ beforeEach(()=>{
   sessionStorage.clear();
   vi.clearAllMocks();
   (api.listRooms as any).mockResolvedValue({rooms:[]});
-  resetChatState();
 });
 
 describe('Lobby rendering', ()=>{

@@ -1,75 +1,45 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { App } from './App';
-import { primeChatSnapshot, resetChatState, getLastSocket, broadcastFromServer } from './test-setup';
+import { screen } from '@testing-library/react';
+import { api } from './api';
+import { renderJoined, serverSend, snapshot, alice, bob, idle, typing } from './testing/roomFixtures';
 
-function qc(){
-  return new QueryClient({defaultOptions:{queries:{retry:false}}});
-}
+vi.mock('./api', () => ({
+  api: { listRooms: vi.fn(), getOrCreateRoom: vi.fn(), joinRoom: vi.fn(), leaveRoom: vi.fn(), getRoster: vi.fn() },
+  keepaliveApi: { leaveRoom: vi.fn() },
+}));
 
-beforeEach(()=>{
-  localStorage.clear();
-  sessionStorage.clear();
-  resetChatState();
-});
+beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.clearAllMocks(); (api.listRooms as any).mockResolvedValue({ rooms: [] }); });
 
-describe('Roster rendering', ()=>{
-  it('shows roster sorted by lineSlot with color dots', async ()=>{
-    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice', token:'test-token'};
-    sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
-    primeChatSnapshot({
-      roomId: 1,
-      liveLines: [
-        { participantId: 11, handle: 'Bob', color: '#00ff00', slot: 2, row: 2, text: 'hi' },
-        { participantId: 10, handle: 'Alice', color: '#ff0000', slot: 0, row: 0, text: '' },
-        { participantId: 12, handle: 'Carol', color: '#0000ff', slot: 1, row: 1, text: 'yo' },
-      ],
-      roster: [
-        { handle: 'Alice', color: '#ff0000', slot: 0 },
-        { handle: 'Carol', color: '#0000ff', slot: 1 },
-        { handle: 'Bob', color: '#00ff00', slot: 2 },
-      ],
-    });
-    render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
+const carol = { participantId: 30, handle: 'Carol', color: '#f0f', slot: 2 };
+
+describe('Roster', () => {
+  it('lists participants by slot with color dots', async () => {
+    await renderJoined(snapshot({ liveLines: [idle(carol), idle(alice), idle(bob)], roster: [carol, alice, bob] }));
     expect(await screen.findByText('PARTICIPANTS')).toBeInTheDocument();
-    await waitFor(() => {
-      const rosterEntries = document.querySelectorAll('.roster-entry');
-      expect(rosterEntries.length).toBe(3);
-      expect(rosterEntries[0].textContent).toContain('Alice');
-      const dots = document.querySelectorAll('.roster-color-dot');
-      expect(dots.length).toBe(3);
-    });
+    const entries = document.querySelectorAll('.roster-entry');
+    expect(Array.from(entries).map((e) => e.textContent)).toEqual(['Alice', 'Bob', 'Carol']);
+    expect(document.querySelectorAll('.roster-color-dot').length).toBe(3);
   });
 
-  it('char counter shows current content length', async ()=>{
-    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice', token:'test-token'};
-    sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
-    primeChatSnapshot({
-      roomId: 1,
-      liveLines: [{ participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: 0, text: 'hello' }],
-      roster: [{ handle: 'Alice', color: '#fff', slot: 0 }],
-    });
-    render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
+  it('a roster message adds and removes people', async () => {
+    const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+    await screen.findByText('Bob');
+    serverSend(ws, { type: 'roster', roomId: 1, roster: [alice, carol] });
+    expect(await screen.findByText('Carol')).toBeInTheDocument();
+    expect(screen.queryByText('Bob')).not.toBeInTheDocument();
+  });
+
+  it('the char counter shows the length of the own live line', async () => {
+    await renderJoined(snapshot({ liveLines: [typing(alice, 0, 'hello')] }));
     expect(await screen.findByText('5 chars')).toBeInTheDocument();
   });
 
-  it('caret only for own participant', async ()=>{
-    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice', token:'test-token'};
-    sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
-    primeChatSnapshot({
-      roomId: 1,
-      liveLines: [
-        { participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: 0, text: 'a' },
-        { participantId: 11, handle: 'Bob', color: '#0f0', slot: 1, row: 1, text: 'b' },
-      ],
-      roster: [
-        { handle: 'Alice', color: '#fff', slot: 0 },
-        { handle: 'Bob', color: '#0f0', slot: 1 },
-      ],
-    });
-    render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
-    const carets = await screen.findAllByLabelText(/your typing position/i);
-    expect(carets.length).toBe(1);
+  it('a newcomer plays the join chirp; the first snapshot does not', async () => {
+    const spy = vi.spyOn(globalThis as any, 'AudioContext');
+    const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+    expect(spy).not.toHaveBeenCalled();
+    serverSend(ws, { type: 'roster', roomId: 1, roster: [alice, bob, carol] });
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 });

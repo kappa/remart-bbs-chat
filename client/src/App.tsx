@@ -1,4 +1,4 @@
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import {
   useEffect,
   useMemo,
@@ -9,8 +9,10 @@ import {
   type KeyboardEvent,
   type UIEvent,
 } from "react";
-import { api, keepaliveApi, openChatSocket, sendKey, SocketRejected, type WsMessage } from "./api";
-import { isValidChar } from "./documentLines";
+import { api, keepaliveApi } from "./api";
+import { computeDocumentLines, isValidChar } from "./documentLines";
+import { sortedCommitted } from "./roomState";
+import { useRoomConnection } from "./useRoomConnection";
 
 type Session = {
   roomId: number;
@@ -18,6 +20,7 @@ type Session = {
   participantId: number;
   handle: string;
   token: string;
+  joinedAt: number;
 };
 
 const SESSION_KEY = "remart-bbs-chat.session";
@@ -91,6 +94,9 @@ function readSession(): Session | null {
     if (!value) return null;
     const parsed = JSON.parse(value) as Session;
     if (!parsed || typeof parsed.token !== "string" || !parsed.token) return null;
+    // Sessions without a join timestamp predate the socket protocol; the user
+    // rejoins and gets a fresh one.
+    if (typeof parsed.joinedAt !== "number") return null;
     return parsed;
   } catch {
     return null;
@@ -109,7 +115,6 @@ function initialHandle() {
 }
 
 export function App() {
-  const queryClient = useQueryClient();
   const [session, setSession] = useState<Session | null>(() => readSession());
   const [handle, setHandle] = useState(initialHandle);
   const [joining, setJoining] = useState(false);
@@ -119,12 +124,8 @@ export function App() {
   const [showHelp, setShowHelp] = useState(false);
   const chatRef = useRef<HTMLElement>(null);
   const keyboardRef = useRef<HTMLTextAreaElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
   const wasNearBottomRef = useRef(true);
   const autoJoinAttemptRef = useRef("");
-  const prevParticipantIdsRef = useRef<Set<number>>(new Set());
-  const hasInitializedParticipantsRef = useRef(false);
-  const seqRef = useRef(1);
 
   const lobbyRooms = useQuery({
     queryKey: ["rooms"],
@@ -134,18 +135,31 @@ export function App() {
     retry: false,
   });
 
-  // The socket is the only source of room state: a snapshot on hello, then
-  // live/committed/roster/command events. Recovery is reconnect + fresh
-  // snapshot; there is no HTTP polling.
-  const [room, setRoom] = useState<{ roomId: number; history: any[]; participants: any[]; roster: any[] } | null>(null);
-  const [connecting, setConnecting] = useState(false);
-
   const endSession = (message: string) => {
     storageRemove("session", SESSION_KEY);
     setSession(null);
-    setRoom(null);
+    setShowHelp(false);
+    setFeedback("");
+    setWarning("");
     setError(message);
   };
+
+  const { room, status, send } = useRoomConnection(session, {
+    onCommand: (name) => {
+      if (name === "roster") setFeedback("Roster refreshed");
+      else if (name === "help") setShowHelp(true);
+      else endSession("");
+    },
+    onSessionEnded: () => endSession("Room session ended. Join again."),
+    onNewcomer: playJoinSound,
+    onNotice: setWarning,
+  });
+
+  const participants = room.participants;
+  const ownParticipant = participants.find((p) => p.participantId === session?.participantId);
+  const ownText = ownParticipant?.text ?? "";
+  const committedLines = useMemo(() => sortedCommitted(room), [room]);
+  const documentLines = useMemo(() => computeDocumentLines(committedLines, participants), [committedLines, participants]);
 
   const focusKeyboard = () => {
     keyboardRef.current?.focus({ preventScroll: true });
@@ -158,173 +172,16 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [session]);
 
-  // Reset seq on new session
-  useEffect(() => {
-    if (session) {
-      seqRef.current = 1;
-    }
-  }, [session?.participantId]);
-
   // Page-hide leaves the room; presence is the WebSocket (no separate heartbeat needed)
   useEffect(() => {
     if (!session) return;
     const currentSession = session;
     const leaveOnPageHide = () => {
-      void keepaliveApi.leaveRoom({
-        roomId: currentSession.roomId,
-        participantId: currentSession.participantId,
-        token: currentSession.token,
-      });
+      void keepaliveApi.leaveRoom({ roomId: currentSession.roomId, participantId: currentSession.participantId, token: currentSession.token });
     };
     window.addEventListener("pagehide", leaveOnPageHide);
-
-    return () => {
-      window.removeEventListener("pagehide", leaveOnPageHide);
-    };
+    return () => window.removeEventListener("pagehide", leaveOnPageHide);
   }, [session]);
-
-  // WebSocket live updates: connect, hello, then handle snapshot/live/committed/roster/command.
-  useEffect(() => {
-    if (!session) return;
-    let ws: WebSocket | null = null;
-    let closed = false;
-    let reconnectTimer: number | null = null;
-
-    const scheduleReconnect = () => {
-      if (closed) return;
-      setConnecting(true);
-      reconnectTimer = window.setTimeout(connect, 1200) as unknown as number;
-    };
-
-    const connect = () => {
-      if (closed) return;
-      setConnecting(true);
-      openChatSocket(session)
-        .then(({ socket, snapshot }) => {
-          if (closed) {
-            try { socket.close(); } catch {}
-            return;
-          }
-          ws = socket;
-          wsRef.current = socket;
-          setConnecting(false);
-
-          const applySnapshot = (msg: Extract<WsMessage, { type: 'snapshot' }>) => {
-            setRoom({
-              roomId: msg.roomId,
-              history: msg.committed ?? [],
-              participants: msg.liveLines.map((l) => ({
-                id: l.participantId,
-                handle: l.handle,
-                color: l.color,
-                lineSlot: l.slot,
-                activeLineIdx: l.row,
-                activeContent: l.text,
-                joinedAt: (l as any).joinedAt ?? (msg.you.participantId === l.participantId ? Date.now() : 0),
-                nextExpectedSeq: msg.you.participantId === l.participantId ? msg.you.nextSeq : undefined,
-              })),
-              roster: msg.roster ?? [],
-            });
-          };
-          // The handshake consumed the snapshot before this handler existed.
-          applySnapshot(snapshot);
-
-          socket.onmessage = (event) => {
-            try {
-              const msg: WsMessage = JSON.parse(event.data);
-              if (msg.type === "snapshot") {
-                applySnapshot(msg);
-                return;
-              }
-              if (msg.type === "live") {
-                setRoom((old) => {
-                  if (!old) return old;
-                  const existing = old.participants ?? [];
-                  const found = existing.some((p) => p.id === msg.participantId);
-                  if (found) {
-                    return {
-                      ...old,
-                      participants: existing.map((p) => {
-                        if (p.id !== msg.participantId) return p;
-                        return { ...p, activeLineIdx: msg.row, activeContent: msg.text };
-                      }),
-                    };
-                  }
-                  // New participant via live message — add them. Handle/color
-                  // may be filled in by a subsequent roster message.
-                  return {
-                    ...old,
-                    participants: [...existing, {
-                      id: msg.participantId,
-                      handle: `user-${msg.participantId}`,
-                      color: '#ccc',
-                      lineSlot: msg.participantId,
-                      activeLineIdx: msg.row,
-                      activeContent: msg.text,
-                      joinedAt: Date.now(),
-                    }],
-                  };
-                });
-                return;
-              }
-              if (msg.type === "committed") {
-                setRoom((old) => {
-                  if (!old) return old;
-                  // Append, dedupe by id, keep last 100 (server caps, but defensively truncate).
-                  const existing = old.history ?? [];
-                  const dedup = existing.filter((h) => h.id !== msg.line.id);
-                  return { ...old, history: [...dedup, msg.line].slice(-100) };
-                });
-                return;
-              }
-              if (msg.type === "roster") {
-                setRoom((old) => {
-                  if (!old) return old;
-                  return { ...old, roster: msg.roster ?? [] };
-                });
-                return;
-              }
-              if (msg.type === "command") {
-                if (msg.name === "help") {
-                  setShowHelp(true);
-                } else if (msg.name === "roster") {
-                  setFeedback("Roster refreshed");
-                }
-                return;
-              }
-            } catch {
-              // Non-JSON or unknown — ignore
-            }
-          };
-
-          socket.onclose = () => {
-            if (closed) return;
-            wsRef.current = null;
-            scheduleReconnect();
-          };
-        })
-        .catch((reason) => {
-          if (closed) return;
-          // The server rejected the session itself; retrying cannot help.
-          if (reason instanceof SocketRejected &&
-              (reason.code === 'unknown-participant' || reason.code === 'unauthorized')) {
-            endSession("Room session ended. Join again.");
-            return;
-          }
-          scheduleReconnect();
-        });
-    };
-
-    connect();
-
-    return () => {
-      closed = true;
-      if (reconnectTimer) window.clearTimeout(reconnectTimer);
-      try { ws?.close(); } catch {}
-      wsRef.current = null;
-    };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [session?.participantId]);
 
   useEffect(() => {
     if (!feedback) return;
@@ -350,155 +207,12 @@ export function App() {
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [session, showHelp]);
 
-  const participants = room?.participants ?? [];
-  const ownParticipant = participants.find(
-    (participant) => participant.id === session?.participantId,
-  );
-
-  // Sync seqRef from server's expected seq to handle reloads
-  useEffect(() => {
-    if (!ownParticipant) return;
-    const serverExpected = (ownParticipant as any).nextExpectedSeq;
-    if (typeof serverExpected === "number" && serverExpected > seqRef.current) {
-      seqRef.current = serverExpected;
-    }
-  }, [ownParticipant]);
-
-  // --- Scrollback belongs to the viewer, not the snapshot ---
-  // Server returns only last 100 committed lines as bounded recovery snapshot.
-  // Viewer accumulates everything seen since join so upward reading never loses text.
-  const [historyAccum, setHistoryAccum] = useState<Map<string, any>>(new Map());
-
-  // Clear accum on session switch
-  useEffect(() => {
-    setHistoryAccum(new Map());
-  }, [session?.participantId]);
-
-  // Merge latest snapshot into accum, filtered by joinedAt (no pre-join history)
-  useEffect(() => {
-    if (!room?.history || !ownParticipant) return;
-    const joinedAt = (ownParticipant as any).joinedAt;
-    if (joinedAt == null) return;
-    setHistoryAccum((prev) => {
-      let changed = false;
-      const next = new Map(prev);
-      for (const line of room.history) {
-        if ((line as any).committedAt < joinedAt) continue;
-        const existing = next.get(line.id);
-        if (!existing) {
-          next.set(line.id, line as any);
-          changed = true;
-        } else if (
-          existing.content !== (line as any).content ||
-          existing.lineIdx !== (line as any).lineIdx ||
-          (existing as any).color !== (line as any).color
-        ) {
-          next.set(line.id, line as any);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [room?.history, (ownParticipant as any)?.joinedAt]);
-
-  // Active content is real chat content: every visible character is already
-  // legitimate, even before Enter commits the line to scrollback.
-  const currentContent = ownParticipant?.activeContent ?? "";
-  const visibleHistory = useMemo(() => {
-    if (!ownParticipant) return [];
-    // Accumulated scrollback since arrival, sorted by server-assigned order.
-    // Snapshot cutoff does not delete viewer history.
-    // Include current snapshot immediately so first paint isn't empty before accum effect runs.
-    const map = new Map(historyAccum);
-    for (const line of room?.history ?? []) {
-      if ((line as any).committedAt < (ownParticipant as any).joinedAt) continue;
-      if (!map.has(line.id)) map.set(line.id, line as any);
-    }
-    const all = Array.from(map.values()) as any[];
-    return all.sort((a, b) => a.lineIdx - b.lineIdx);
-  }, [historyAccum, ownParticipant, room?.history]);
-  const colorByHandle = useMemo(
-    () =>
-      new Map(
-        participants.map((participant) => [
-          participant.handle,
-          participant.color,
-        ]),
-      ),
-    [participants],
-  );
-  const orderedParticipants = useMemo(
-    () => [...participants].sort((a, b) => a.lineSlot - b.lineSlot),
-    [participants],
-  );
-  const documentLines = useMemo(() => {
-    const committedRows = visibleHistory.map((line) => ({
-      kind: "committed" as const,
-      key: `committed:${line.id}`,
-      order: line.lineIdx,
-      line,
-    }));
-
-    const activeRows = participants.flatMap((participant) => {
-      const serverIdx: number | null = (participant as any).activeLineIdx ?? null;
-      // A shared active row exists only for an allocated line.
-      // Note: an allocated line backspaced to empty keeps its row and position.
-      if (serverIdx == null) return [];
-      return [{
-        kind: "active" as const,
-        key: `active:${participant.id}`,
-        order: serverIdx,
-        participant,
-      }];
-    });
-
-    // Committed history and live lines are one document. A line's order key,
-    // never its type, determines where it renders. Enter therefore changes a
-    // row from active to committed without moving the text, and deferred
-    // ownership ensures first typer comes first.
-    return [...committedRows, ...activeRows].sort((left, right) => {
-      if (left.order !== right.order) return left.order - right.order;
-      return left.key.localeCompare(right.key);
-    });
-  }, [participants, visibleHistory]);
-  const documentSignature = documentLines
-    .map((row) =>
-      row.kind === "active"
-        ? `${row.key}:${row.order}:${row.participant.activeContent}`
-        : `${row.key}:${row.order}`,
-    )
-    .join("\u0000");
-
-  useEffect(() => {
-    if (!room?.participants) return;
-    const currentIds = new Set(room.participants.map(p => p.id));
-    if (!hasInitializedParticipantsRef.current) {
-      // First load — don't beep, just remember
-      hasInitializedParticipantsRef.current = true;
-      prevParticipantIdsRef.current = currentIds;
-      return;
-    }
-    // Someone new arrived who wasn't there before, and it's not just us
-    let hasNewcomer = false;
-    for (const id of currentIds) {
-      if (!prevParticipantIdsRef.current.has(id)) {
-        if (id !== session?.participantId) {
-          hasNewcomer = true;
-        }
-      }
-    }
-    prevParticipantIdsRef.current = currentIds;
-    if (hasNewcomer) {
-      playJoinSound();
-    }
-  }, [room?.participants, session?.participantId]);
-
   useEffect(() => {
     const chat = chatRef.current;
     if (chat && wasNearBottomRef.current) {
       chat.scrollTop = chat.scrollHeight;
     }
-  }, [documentSignature]);
+  }, [documentLines]);
 
   const onChatScroll = (event: UIEvent<HTMLElement>) => {
     const chat = event.currentTarget;
@@ -514,7 +228,7 @@ export function App() {
 
   const finishJoin = (
     room: { id: number; name: string },
-    participant: { id: number; handle: string; token: string },
+    participant: { id: number; handle: string; token: string; joinedAt: number },
     cleanHandle: string,
   ) => {
     const nextSession: Session = {
@@ -523,6 +237,7 @@ export function App() {
       participantId: participant.id,
       handle: participant.handle,
       token: participant.token,
+      joinedAt: participant.joinedAt,
     };
     rememberHandle(cleanHandle);
     storageSet("session", SESSION_KEY, JSON.stringify(nextSession));
@@ -543,7 +258,6 @@ export function App() {
       finishJoin(room, participant, cleanHandle);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not join room");
-      await queryClient.invalidateQueries({ queryKey: ["rooms"] });
     } finally {
       setJoining(false);
     }
@@ -567,7 +281,6 @@ export function App() {
       finishJoin(room, participant, cleanHandle);
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Could not join room");
-      await queryClient.invalidateQueries({ queryKey: ["rooms"] });
     } finally {
       setJoining(false);
     }
@@ -594,42 +307,30 @@ export function App() {
     if (autoJoinAttemptRef.current === attemptKey) return;
     autoJoinAttemptRef.current = attemptKey;
     void createAndJoin(false, preferredId);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handle, joining, session]);
 
-  // Send a keystroke over the WebSocket; server is the source of truth for
-  // ordering and echo (live/committed/command).
-  const sendKeyOverSocket = (kind: "char" | "backspace" | "enter", char?: string) => {
-    const ws = wsRef.current;
-    if (!ws || ws.readyState !== 1) {
-      setError("Connection lost; refresh to reconnect.");
-      return;
-    }
-    const seq = seqRef.current++;
-    sendKey(ws, { type: "key", kind, seq, char });
+  const refreshRoster = () => {
+    if (!session) return;
+    api.getRoster({ roomId: session.roomId })
+      .then(() => setFeedback("Roster refreshed"))
+      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Roster failed"));
   };
 
+  const leave = () => {
+    if (!session) return;
+    api.leaveRoom({ roomId: session.roomId, participantId: session.participantId, token: session.token })
+      .catch(() => { /* the server sweeps us if the request is lost */ })
+      .finally(() => endSession(""));
+  };
+
+  // Input never touches the transcript: the server's echo does.
   const appendCharacter = (char: string) => {
-    if (!session) return;
-
-    if (!isValidChar(char) && char !== " ") {
-      if (Array.from(char).length !== 1) return;
-      if (char === "\n" || char === "\r") return;
-    }
-
-    sendKeyOverSocket("char", char);
+    if (!session || !isValidChar(char)) return;
+    send({ kind: "char", char });
   };
-
-  const eraseCharacter = () => {
-    if (!session) return;
-    const activeContent = ownParticipant?.activeContent ?? "";
-    if (activeContent.length === 0) return;
-    sendKeyOverSocket("backspace");
-  };
-
-  const submitActiveLine = () => {
-    if (!session) return;
-    sendKeyOverSocket("enter");
-  };
+  const eraseCharacter = () => { if (session) send({ kind: "backspace" }); };
+  const submitActiveLine = () => { if (session) send({ kind: "enter" }); };
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
     if (!session || event.metaKey || event.ctrlKey || event.altKey) return;
@@ -678,58 +379,9 @@ export function App() {
   const onPaste = (event: ClipboardEvent<HTMLElement>) => {
     if (!session) return;
     event.preventDefault();
-
-    const clipboardCharacters = Array.from(
-      event.clipboardData.getData("text"),
-    );
-    const limitedCharacters = clipboardCharacters.slice(0, 100);
-    const validCharacters = limitedCharacters.filter(
-      (char) => isValidChar(char) || char === " ",
-    );
-    const messages: string[] = [];
-
-    if (clipboardCharacters.length > 100) {
-      messages.push("Paste limited to 100 characters");
-    }
-    if (messages.length > 0) setWarning(messages.join(" · "));
-    if (validCharacters.length === 0) {
-      return;
-    }
-
-    for (const char of validCharacters) {
-      appendCharacter(char);
-    }
-  };
-
-  const refreshRoster = () => {
-    if (!session) return;
-    // Send a single "l" character followed by Enter so the server's command
-    // path clears the line and the server sends a `command:roster` to us.
-    sendKeyOverSocket("char", "l");
-    sendKeyOverSocket("enter");
-  };
-
-  const showHelpCommand = () => {
-    if (!session) return;
-    sendKeyOverSocket("char", "?");
-    sendKeyOverSocket("enter");
-  };
-
-  const leave = () => {
-    if (!session) return;
-    const activeSession = session;
-    // q + Enter: server's command path closes our socket and removes us.
-    sendKeyOverSocket("char", "q");
-    sendKeyOverSocket("enter");
-    // Optimistically clear local session; if the server keeps us (e.g. q
-    // wasn't alone, e.g. " q"), the next snapshot will refresh state.
-    storageRemove("session", SESSION_KEY);
-    setSession(null);
-    setFeedback("");
-    setWarning("");
-    setShowHelp(false);
-    setError("");
-    void activeSession;
+    const characters = Array.from(event.clipboardData.getData("text"));
+    if (characters.length > 100) setWarning("Paste limited to 100 characters");
+    for (const char of characters.slice(0, 100)) if (isValidChar(char)) send({ kind: "char", char });
   };
 
   if (!session) {
@@ -829,12 +481,12 @@ export function App() {
 
   /*
    * Color identifies each author, so chat lines never need nickname prefixes.
-   * One shared scrolling document holds both committed and active lines in
-   * server-assigned order. Every participant owns exactly one editable line;
-   * Enter commits it in place and allocates a new one at the bottom. In sequence it resembles IRC;
-   * simultaneous typing reveals Remart's distinct model. The top-right roster
-   * carries names and roughly ten distinct colors. Rooms are ephemeral, and
-   * browser-native scrollback plus no history on join are intentional features.
+   * One shared scrolling document holds both committed and live lines in
+   * server-assigned row order. Text appears only when the server echoes it;
+   * Enter commits the live line in place and the next first character claims
+   * a new row. In sequence it resembles IRC; simultaneous typing reveals
+   * Remart's distinct model. The top-right roster carries names and roughly
+   * ten distinct colors. Rooms are ephemeral.
    */
   return (
     <main id="container" aria-label="Remart BBS Chat">
@@ -865,8 +517,7 @@ export function App() {
         {documentLines.map((row) => {
           if (row.kind === "committed") {
             const { line } = row;
-            const isSystemLine = line.content.startsWith("* ");
-            const lineColor = (line as any).color ?? colorByHandle.get(line.handle) ?? (isSystemLine ? "var(--dim)" : "var(--text)");
+            const isSystemLine = line.text.startsWith("* ");
             return (
               <div
                 className={`chat-line committed-line${
@@ -875,26 +526,25 @@ export function App() {
                 key={row.key}
                 data-document-order={row.order}
                 style={{
-                  color: lineColor,
+                  color: line.color,
                 }}
               >
-                {line.content || " "}
+                {line.text || " "}
               </div>
             );
           }
 
           const { participant } = row;
-          const isOwnLine = participant.id === session.participantId;
-          const content = participant.activeContent;
+          const isOwnLine = participant.participantId === session.participantId;
           return (
             <div
-              className="chat-line active-line"
+              className="chat-line live-line"
               key={row.key}
-              data-line-slot={participant.lineSlot}
+              data-line-slot={participant.slot}
               data-document-order={row.order}
               style={{ color: participant.color }}
             >
-              {content}
+              {participant.text}
               {isOwnLine ? (
                 <span className="caret" aria-label="Your typing position"> </span>
               ) : null}
@@ -902,20 +552,17 @@ export function App() {
           );
         })}
 
-        {connecting ? (
-          <div className="chat-line system-line">Connecting...</div>
+        {status !== "open" ? (
+          <div className="chat-line system-line" role="status">
+            {status === "connecting" ? "Connecting..." : "Reconnecting..."}
+          </div>
         ) : null}
         {/* Local cursor preview: shown only on our own client, only while we
             have no allocated shared line. It is not a shared row — other
             clients never render it and it reserves no transcript position.
             When someone else starts a line first, theirs takes the next
             position and this preview simply stays below it. */}
-        {session &&
-        !documentLines.some(
-          (row) =>
-            row.kind === "active" &&
-            row.participant.id === session.participantId,
-        ) ? (
+        {ownParticipant?.row == null ? (
           <div className="chat-line local-cursor-preview">
             <span className="caret" aria-label="Your typing position">
               {" "}
@@ -936,11 +583,11 @@ export function App() {
 
       <aside id="roster" aria-label="Participants">
         <div className="roster-heading">PARTICIPANTS</div>
-        {orderedParticipants.length ? (
-          orderedParticipants.map((participant) => (
+        {participants.length ? (
+          participants.map((participant) => (
             <div
               className="roster-entry"
-              key={participant.id}
+              key={participant.participantId}
               style={{ color: participant.color }}
             >
               <span
@@ -959,7 +606,7 @@ export function App() {
             className="char-counter"
             aria-live="polite"
           >
-            {currentContent.length} chars
+            {ownText.length} chars
           </div>
           {warning ? (
             <div className="paste-warning" role="status">
