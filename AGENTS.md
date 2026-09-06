@@ -86,7 +86,7 @@ FakeWebSocket double (`client/src/testing/fakeWebSocket.ts`), mock `api`, and
 reset browser storage between cases.
 
 There is no configured lint script. The Vite build does not perform TypeScript
-type checking; run `npx tsc --noEmit` inside `client/` for that, and do not
+type checking; run `npm --prefix client run typecheck` for that, and do not
 report a successful build as a passing type check.
 
 ## Behavior to preserve
