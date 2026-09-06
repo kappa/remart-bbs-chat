@@ -77,7 +77,7 @@ describe('Join semantics', () => {
     for (let i = 0; i < 5; i++) {
       const { json } = await post(baseUrl, '/api/join', { roomId, handle: `u${i}` });
       colors.add(json.participant.color);
-      slots.add(json.participant.lineSlot);
+      slots.add(json.participant.slot);
       assert.ok(ANSI_COLORS.includes(json.participant.color));
     }
     assert.equal(colors.size, 5);
@@ -87,7 +87,7 @@ describe('Join semantics', () => {
   it('defers ownership: no row until the first character', async () => {
     const roomId = await newRoom(baseUrl);
     const { json } = await post(baseUrl, '/api/join', { roomId, handle: 'deferred' });
-    assert.equal(json.participant.activeLineIdx, null);
+    assert.equal(json.participant.liveRow, null);
   });
 
   it('rejects missing, empty, and overlong handles', async () => {
@@ -104,7 +104,7 @@ describe('Roster', () => {
     const roomId = await newRoom(baseUrl);
     for (let i = 0; i < 3; i++) await join(baseUrl, roomId, `u${i}`);
     const { json } = await get(`/api/roster?roomId=${roomId}`);
-    const slots = json.participants.map((p) => p.lineSlot);
+    const slots = json.participants.map((p) => p.slot);
     assert.deepEqual(slots, [...slots].sort((a, b) => a - b));
   });
 

@@ -76,11 +76,11 @@ function getOrCreateRoom(preferredId, forceNew){
   return room;
 }
 
-function greatestLineIdx(room){
+function greatestRow(room){
   let max=-1;
-  for(const l of room.lines) if(l.lineIdx>max) max=l.lineIdx;
+  for(const l of room.lines) if(l.row>max) max=l.row;
   for(const p of room.participants.values()){
-    if(p.activeLineIdx != null && p.activeLineIdx>max) max=p.activeLineIdx;
+    if(p.liveRow != null && p.liveRow>max) max=p.liveRow;
   }
   return max;
 }
@@ -130,16 +130,16 @@ function broadcast(room, msg){
 
 function rosterOf(room){
   return Array.from(room.participants.values())
-    .map(p=>({participantId:p.id, handle:p.handle, color:p.color, slot:p.lineSlot}))
+    .map(p=>({participantId:p.id, handle:p.handle, color:p.color, slot:p.slot}))
     .sort((a,b)=>a.slot-b.slot);
 }
 
 function publicLine(line){
-  return {id:line.id, row:line.lineIdx, text:line.content, handle:line.handle, color:line.colorSnapshot, committedAt:line.committedAt};
+  return {id:line.id, row:line.row, text:line.text, handle:line.handle, color:line.color, committedAt:line.committedAt};
 }
 
 function liveLineOf(p){
-  return {participantId:p.id, handle:p.handle, color:p.color, slot:p.lineSlot, row:p.activeLineIdx, text:p.activeContent, joinedAt: p.joinedAt.getTime()};
+  return {participantId:p.id, handle:p.handle, color:p.color, slot:p.slot, row:p.liveRow, text:p.liveText, joinedAt: p.joinedAt.getTime()};
 }
 
 // Last 100 appended committed lines, sorted by row: the recovery snapshot.
@@ -147,16 +147,16 @@ function snapshotMessage(room, participant){
   return {
     type:'snapshot',
     roomId:room.id,
-    you:{participantId:participant.id, nextSeq:participant.nextExpectedSeq},
-    liveLines:Array.from(room.participants.values()).sort((a,b)=>a.lineSlot-b.lineSlot).map(liveLineOf),
-    committed:room.lines.slice(-100).sort((a,b)=>a.lineIdx-b.lineIdx).map(publicLine),
+    you:{participantId:participant.id, nextSeq:participant.nextSeq},
+    liveLines:Array.from(room.participants.values()).sort((a,b)=>a.slot-b.slot).map(liveLineOf),
+    committed:room.lines.slice(-100).sort((a,b)=>a.row-b.row).map(publicLine),
     roster:rosterOf(room),
   };
 }
 
 // Keystroke handling functions
 function liveMessage(p, seq){
-  return {type:'live', participantId:p.id, row:p.activeLineIdx, text:p.activeContent, seq};
+  return {type:'live', participantId:p.id, row:p.liveRow, text:p.liveText, seq};
 }
 
 function committedMessage(line, participantId, seq){
@@ -168,26 +168,26 @@ function newLineId(participant){
 }
 
 function storeLine(room, participant, text, row, at){
-  const line = {id:newLineId(participant), handle:participant.handle, content:text, committed:true, lineIdx:row, createdAt:at, committedAt:at.getTime(), colorSnapshot:participant.color};
+  const line = {id:newLineId(participant), handle:participant.handle, text, row, committedAt:at.getTime(), color:participant.color};
   room.lines.push(line);
   return line;
 }
 
 // The first character claims the next row; backspacing to empty keeps it.
 function applyChar(participant, room, char){
-  if(participant.activeLineIdx == null) participant.activeLineIdx = greatestLineIdx(room)+1;
-  participant.activeContent += char;
+  if(participant.liveRow == null) participant.liveRow = greatestRow(room)+1;
+  participant.liveText += char;
 }
 
 function applyBackspace(participant){
-  participant.activeContent = participant.activeContent.slice(0,-1);
+  participant.liveText = participant.liveText.slice(0,-1);
 }
 
 function commitLive(participant, room, at){
-  const row = participant.activeLineIdx != null ? participant.activeLineIdx : greatestLineIdx(room)+1;
-  const line = storeLine(room, participant, participant.activeContent, row, at);
-  participant.activeContent = '';
-  participant.activeLineIdx = null;
+  const row = participant.liveRow != null ? participant.liveRow : greatestRow(room)+1;
+  const line = storeLine(room, participant, participant.liveText, row, at);
+  participant.liveText = '';
+  participant.liveRow = null;
   return line;
 }
 
@@ -197,9 +197,9 @@ const KEY_KINDS = new Set(['char','backspace','enter']);
 function handleKey(participant, room, msg){
   const seq = msg.seq;
   if(typeof seq !== 'number' || !KEY_KINDS.has(msg.kind)) return sendTo(participant, {type:'error', code:'invalid-message'});
-  if(seq < participant.nextExpectedSeq) return;
-  if(seq > participant.nextExpectedSeq) return sendTo(participant, {type:'error', code:'seq-gap', expected:participant.nextExpectedSeq});
-  participant.nextExpectedSeq++;
+  if(seq < participant.nextSeq) return;
+  if(seq > participant.nextSeq) return sendTo(participant, {type:'error', code:'seq-gap', expected:participant.nextSeq});
+  participant.nextSeq++;
   if(msg.kind==='char'){
     if(isValidChar(msg.char)) applyChar(participant, room, msg.char);
     return broadcast(room, liveMessage(participant, seq));
@@ -209,10 +209,10 @@ function handleKey(participant, room, msg){
     return broadcast(room, liveMessage(participant, seq));
   }
   if(msg.kind==='enter'){
-    const commandName = COMMANDS[participant.activeContent];
+    const commandName = COMMANDS[participant.liveText];
     if(commandName){
-      participant.activeContent = '';
-      participant.activeLineIdx = null;
+      participant.liveText = '';
+      participant.liveRow = null;
       broadcast(room, liveMessage(participant, seq));
       sendTo(participant, {type:'command', name:commandName});
       if(commandName === 'leave'){
@@ -236,11 +236,11 @@ function rosterMessage(room){
 // leave time for a deliberate leave, last activity for stale cleanup.
 function removeParticipant(room, participant, preservedAt){
   const committedLines = [];
-  if(participant.activeContent && participant.activeContent.length>0){
-    const commitIdx = participant.activeLineIdx != null ? participant.activeLineIdx : greatestLineIdx(room)+1;
-    committedLines.push(storeLine(room, participant, participant.activeContent, commitIdx, preservedAt));
+  if(participant.liveText && participant.liveText.length>0){
+    const commitIdx = participant.liveRow != null ? participant.liveRow : greatestRow(room)+1;
+    committedLines.push(storeLine(room, participant, participant.liveText, commitIdx, preservedAt));
   }
-  const leaveLine = storeLine(room, participant, `* ${participant.handle} left`, greatestLineIdx(room)+1, new Date());
+  const leaveLine = storeLine(room, participant, `* ${participant.handle} left`, greatestRow(room)+1, new Date());
   if(participant.socket){ try{ participant.socket.close(); }catch{} }
   room.participants.delete(participant.id);
   if(room.participants.size===0 && !room.isLobby){
@@ -288,7 +288,7 @@ app.post('/api/join', (req,res)=>{
   // Cleanup deletes the room when its last occupant was stale. Recreate it
   // under the same id so this join lands in a live, discoverable room
   // instead of a detached object that roster and sockets would never find.
-  // Carry over the committed lines (preserved stale drafts, leave notices)
+  // Carry over the committed lines (preserved stale live text, leave notices)
   // so no transcript history is lost with the detached object.
   if(!rooms.has(room.id)){
     const orphanedLines = room.lines;
@@ -303,7 +303,7 @@ app.post('/api/join', (req,res)=>{
 
   if(room.participants.size>=10) return res.status(409).json({error:'room full'});
 
-  const usedSlots = new Set(Array.from(room.participants.values()).map(p=>p.lineSlot));
+  const usedSlots = new Set(Array.from(room.participants.values()).map(p=>p.slot));
   let slot=0; while(usedSlots.has(slot) && slot<10) slot++;
   if(slot>=10) return res.status(409).json({error:'room full'});
 
@@ -311,9 +311,8 @@ app.post('/api/join', (req,res)=>{
   const color = ANSI_COLORS.find(c=>!usedColors.has(c)) || ANSI_COLORS[slot%ANSI_COLORS.length];
 
   const now = new Date();
-  const gIdx = greatestLineIdx(room);
-  const joinLineIdx = gIdx+1;
-  const activeLineIdx = null;
+  const joinRowIdx = greatestRow(room)+1;
+
 
   const participant = {
     id: nextParticipantId++,
@@ -321,21 +320,21 @@ app.post('/api/join', (req,res)=>{
     handle: cleanHandle,
     token: newParticipantToken(),
     color,
-    lineSlot: slot,
-    activeLineIdx,
-    activeContent: '',
+    slot,
+    liveRow: null,
+    liveText: '',
     joinedAt: now,
     lastSeen: now,
-    nextExpectedSeq: 1,
+    nextSeq: 1,
     socket: null
   };
   room.participants.set(participant.id, participant);
-  const joinLine = storeLine(room, participant, `* ${cleanHandle} joined`, joinLineIdx, now);
+  const joinLine = storeLine(room, participant, `* ${cleanHandle} joined`, joinRowIdx, now);
 
-  const roster = Array.from(room.participants.values()).map(p=>({handle:p.handle, color:p.color, lineSlot:p.lineSlot}));
+  const roster = Array.from(room.participants.values()).map(p=>({handle:p.handle, color:p.color, slot:p.slot}));
   broadcast(room, committedMessage(joinLine, null, null));
   broadcast(room, rosterMessage(room));
-  res.json({participant:{id:participant.id, roomId:participant.roomId, handle:participant.handle, token:participant.token, color:participant.color, lineSlot:participant.lineSlot, activeLineIdx:participant.activeLineIdx, joinedAt:participant.joinedAt.getTime()}, roster, room:{id:room.id, name:room.name}});
+  res.json({participant:{id:participant.id, roomId:participant.roomId, handle:participant.handle, token:participant.token, color:participant.color, slot:participant.slot, liveRow:participant.liveRow, joinedAt:participant.joinedAt.getTime()}, roster, room:{id:room.id, name:room.name}});
 });
 
 // leave
@@ -356,7 +355,7 @@ app.get('/api/roster', (req,res)=>{
   const roomId = Number(req.query.roomId);
   const room = getRoom(roomId);
   if(!room) return res.status(404).json({error:'room not found'});
-  const participants = Array.from(room.participants.values()).map(p=>({handle:p.handle, color:p.color, lineSlot:p.lineSlot})).sort((a,b)=>a.lineSlot-b.lineSlot);
+  const participants = Array.from(room.participants.values()).map(p=>({handle:p.handle, color:p.color, slot:p.slot})).sort((a,b)=>a.slot-b.slot);
   res.json({participants});
 });
 
@@ -446,7 +445,7 @@ export {
   getRoom,
   listRooms,
   getOrCreateRoom,
-  greatestLineIdx,
+  greatestRow,
   cleanupStaleInRoom,
   globalHandleExists,
   handleKey,

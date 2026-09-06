@@ -14,9 +14,9 @@ truth for wire fields.
 
 | Term | Meaning | Name in code |
 | --- | --- | --- |
-| Live line | The line a participant is typing right now. At most one per participant; none while idle. | `activeContent`, `activeLineIdx` |
+| Live line | The line a participant is typing right now. At most one per participant; none while idle. | `liveText`, `liveRow` |
 | Committed line | A line finished with Enter, or preserved when its author leaves. Never changes again. | `room.lines` |
-| Row | A position in the shared transcript, assigned by the server. Live and committed lines share one numbering. | `lineIdx`, `row` in socket payloads |
+| Row | A position in the shared transcript, assigned by the server. Live and committed lines share one numbering. | `row` |
 | Keystroke | One client message: a character, a backspace, or Enter. | `key` |
 | Sequence number | The client's running count of its keystrokes, starting at 1, used to detect replayed duplicates. | `seq` |
 | Snapshot | Everything needed to render a room, sent when a socket connects. | `snapshot` |
@@ -67,7 +67,7 @@ Each participant has one live line (its text plus an optional shared row). A
 first character allocates `greatestLineIdx(room) + 1`. Committing preserves
 that row and clears the live line; committing without an allocated row
 creates a fresh one. Backspacing a live line to empty retains its row.
-`lineSlot` is a reusable roster slot from 0 to 9, not transcript order.
+`slot` is a reusable roster slot from 0 to 9, not transcript order.
 
 Join and leave announcements are ordinary committed records whose content is
 `* <handle> joined` or `* <handle> left`. The wire format has no system-line
@@ -144,15 +144,12 @@ Example response (timestamps illustrative):
 {
   "participant": {
     "id":1,"roomId":1,"handle":"Alice","token":"9f2c…(32 hex chars)",
-    "color":"#00FFFF","lineSlot":0,"activeLineIdx":null,"joinedAt":1788600000000
+    "color":"#00FFFF","slot":0,"liveRow":null,"joinedAt":1788600000000
   },
-  "roster":[{"handle":"Alice","color":"#00FFFF","lineSlot":0}],
+  "roster":[{"handle":"Alice","color":"#00FFFF","slot":0}],
   "room":{"id":1,"name":"Room 1"}
 }
 ```
-
-`lineSlot` and `activeLineIdx` in this response are the roster slot and live
-row; they are renamed to `slot` and `liveRow` in the next change.
 
 The server converts a truthy handle to a string, trims it, and limits it to 32
 UTF-16 code units. Handles are unique case-insensitively across all rooms.
@@ -182,10 +179,10 @@ discoverable room. Stale handles are reusable once their occupants are cleaned.
 ### GET /api/roster?roomId=1
 
 ```ts
-{ participants: Array<{ handle: string, color: string, lineSlot: number }> }
+{ participants: Array<{ handle: string, color: string, slot: number }> }
 ```
 
-Sorted by `lineSlot`. Does not clean stale participants. Missing room:
+Sorted by `slot`. Does not clean stale participants. Missing room:
 404 `{"error":"room not found"}`. Note the response key is `participants`,
 whereas socket payloads embed this reduced representation under `roster`.
 

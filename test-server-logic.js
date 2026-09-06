@@ -8,7 +8,7 @@ const {
   isValidChar,
   getRoom,
   getOrCreateRoom,
-  greatestLineIdx,
+  greatestRow,
   cleanupStaleInRoom,
   globalHandleExists,
   rooms,
@@ -76,9 +76,9 @@ describe('Room creation and occupancy', () => {
         id: i + 1,
         handle: `user${i}`,
         color: ANSI_COLORS[i % ANSI_COLORS.length],
-        lineSlot: i,
-        activeLineIdx: null,
-        activeContent: '',
+        slot: i,
+        liveRow: null,
+        liveText: '',
         lastSeen: new Date(),
         joinedAt: new Date(),
       });
@@ -95,9 +95,9 @@ describe('Room creation and occupancy', () => {
         id: i + 100,
         handle: `user${i}`,
         color: ANSI_COLORS[i],
-        lineSlot: i,
-        activeLineIdx: null,
-        activeContent: '',
+        slot: i,
+        liveRow: null,
+        liveText: '',
         lastSeen: new Date(),
         joinedAt: new Date(),
       });
@@ -120,9 +120,9 @@ describe('Room creation and occupancy', () => {
       id: 999,
       handle: 'stale',
       color: ANSI_COLORS[0],
-      lineSlot: 0,
-      activeLineIdx: null,
-      activeContent: '',
+      slot: 0,
+      liveRow: null,
+      liveText: '',
       lastSeen: new Date(Date.now() - HEARTBEAT_TIMEOUT_MS - 1000),
       joinedAt: new Date(),
     };
@@ -133,15 +133,15 @@ describe('Room creation and occupancy', () => {
     assert.equal(rooms.has(roomId), false, 'empty ephemeral room should be deleted');
   });
 
-  it('greatestLineIdx handles null activeLineIdx', () => {
+  it('greatestRow handles null liveRow', () => {
     const room = getOrCreateRoom(null, true);
-    room.lines.push({ lineIdx: 5 });
-    room.lines.push({ lineIdx: 2 });
-    room.participants.set(1, { activeLineIdx: null });
-    room.participants.set(2, { activeLineIdx: 10 });
-    assert.equal(greatestLineIdx(room), 10);
+    room.lines.push({ row: 5 });
+    room.lines.push({ row: 2 });
+    room.participants.set(1, { liveRow: null });
+    room.participants.set(2, { liveRow: 10 });
+    assert.equal(greatestRow(room), 10);
     room.participants.delete(2);
-    assert.equal(greatestLineIdx(room), 5);
+    assert.equal(greatestRow(room), 5);
   });
 });
 
@@ -167,9 +167,9 @@ describe('cleanupStaleInRoom preserving nonempty', () => {
       id: 10,
       handle: 'bob',
       color: '#00FFFF',
-      lineSlot: 0,
-      activeLineIdx: 5,
-      activeContent: 'hello',
+      slot: 0,
+      liveRow: 5,
+      liveText: 'hello',
       lastSeen: new Date(Date.now() - HEARTBEAT_TIMEOUT_MS - 5000),
       joinedAt: new Date(),
     };
@@ -186,9 +186,9 @@ describe('cleanupStaleInRoom preserving nonempty', () => {
       id: 1,
       handle: 'keeper',
       color: ANSI_COLORS[1],
-      lineSlot: 1,
-      activeLineIdx: null,
-      activeContent: '',
+      slot: 1,
+      liveRow: null,
+      liveText: '',
       lastSeen: new Date(),
       joinedAt: new Date(),
     };
@@ -197,9 +197,9 @@ describe('cleanupStaleInRoom preserving nonempty', () => {
       id: 2,
       handle: 'bob',
       color: ANSI_COLORS[0],
-      lineSlot: 0,
-      activeLineIdx: 3,
-      activeContent: 'typed but not committed',
+      slot: 0,
+      liveRow: 3,
+      liveText: 'typed but not committed',
       lastSeen: new Date(Date.now() - HEARTBEAT_TIMEOUT_MS - 1000),
       joinedAt: new Date(),
     };
@@ -208,9 +208,9 @@ describe('cleanupStaleInRoom preserving nonempty', () => {
       id: 3,
       handle: 'empty',
       color: ANSI_COLORS[2],
-      lineSlot: 2,
-      activeLineIdx: null,
-      activeContent: '',
+      slot: 2,
+      liveRow: null,
+      liveText: '',
       lastSeen: new Date(Date.now() - HEARTBEAT_TIMEOUT_MS - 1000),
       joinedAt: new Date(),
     };
@@ -222,7 +222,7 @@ describe('cleanupStaleInRoom preserving nonempty', () => {
     assert.equal(room.participants.has(staleFull.id), false);
     assert.equal(room.participants.has(staleEmpty.id), false);
     // Check lines contain committed text and leave notices
-    const contents = room.lines.map(l => l.content);
+    const contents = room.lines.map(l => l.text);
     assert.ok(contents.some(c => c === 'typed but not committed'), 'should preserve nonempty active text');
     assert.ok(contents.some(c => c === '* bob left'));
     assert.ok(contents.some(c => c === '* empty left'));
