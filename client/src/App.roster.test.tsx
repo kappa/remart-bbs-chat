@@ -26,9 +26,9 @@ describe('Roster rendering', ()=>{
         { participantId: 12, handle: 'Carol', color: '#0000ff', slot: 1, row: 1, text: 'yo' },
       ],
       roster: [
-        { handle: 'Alice', color: '#ff0000', lineSlot: 0 },
-        { handle: 'Carol', color: '#0000ff', lineSlot: 1 },
-        { handle: 'Bob', color: '#00ff00', lineSlot: 2 },
+        { handle: 'Alice', color: '#ff0000', slot: 0 },
+        { handle: 'Carol', color: '#0000ff', slot: 1 },
+        { handle: 'Bob', color: '#00ff00', slot: 2 },
       ],
     });
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
@@ -48,7 +48,7 @@ describe('Roster rendering', ()=>{
     primeChatSnapshot({
       roomId: 1,
       liveLines: [{ participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: 0, text: 'hello' }],
-      roster: [{ handle: 'Alice', color: '#fff', lineSlot: 0 }],
+      roster: [{ handle: 'Alice', color: '#fff', slot: 0 }],
     });
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
     expect(await screen.findByText('5 chars')).toBeInTheDocument();
@@ -64,8 +64,8 @@ describe('Roster rendering', ()=>{
         { participantId: 11, handle: 'Bob', color: '#0f0', slot: 1, row: 1, text: 'b' },
       ],
       roster: [
-        { handle: 'Alice', color: '#fff', lineSlot: 0 },
-        { handle: 'Bob', color: '#0f0', lineSlot: 1 },
+        { handle: 'Alice', color: '#fff', slot: 0 },
+        { handle: 'Bob', color: '#0f0', slot: 1 },
       ],
     });
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);

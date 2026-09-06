@@ -21,7 +21,7 @@ describe('Rendering behaviors', ()=>{
       roomId: 1,
       history: [{ id: 'h1', handle: 'Bob', content: 'old message', lineIdx: 0, committed: true, committedAt: 2, color: '#ff00ff' }],
       liveLines: [{ participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: 1, text: '' }],
-      roster: [{ handle: 'Alice', color: '#fff', lineSlot: 0 }],
+      roster: [{ handle: 'Alice', color: '#fff', slot: 0 }],
     });
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
     const line = await screen.findByText('old message');
@@ -35,7 +35,7 @@ describe('Rendering behaviors', ()=>{
       roomId: 1,
       history: [{ id: 'h1', handle: 'Alice', content: '', lineIdx: 0, committed: true, committedAt: 2 }],
       liveLines: [{ participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: 1, text: '' }],
-      roster: [{ handle: 'Alice', color: '#fff', lineSlot: 0 }],
+      roster: [{ handle: 'Alice', color: '#fff', slot: 0 }],
     });
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
     const lines = await screen.findAllByText((_,el)=> el?.classList.contains('committed-line') ?? false);
@@ -51,7 +51,7 @@ describe('Rendering behaviors', ()=>{
       roomId: 1,
       history: [{ id: 'h1', handle: 'system', content: '* Bob joined', lineIdx: 0, committed: true, committedAt: 2, color: '#888' }],
       liveLines: [{ participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: 1, text: '' }],
-      roster: [{ handle: 'Alice', color: '#fff', lineSlot: 0 }],
+      roster: [{ handle: 'Alice', color: '#fff', slot: 0 }],
     });
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
     const sys = await screen.findByText('* Bob joined');
@@ -65,7 +65,7 @@ describe('Rendering behaviors', ()=>{
     primeChatSnapshot({
       roomId: 1,
       liveLines: [{ participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: 0, text: 'typing' }],
-      roster: [{ handle: 'Alice', color: '#fff', lineSlot: 0 }],
+      roster: [{ handle: 'Alice', color: '#fff', slot: 0 }],
     });
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
     expect(await screen.findByText('typing')).toBeInTheDocument();
@@ -85,7 +85,7 @@ describe('Rendering behaviors', ()=>{
     primeChatSnapshot({
       roomId: 1,
       liveLines: [{ participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: 0, text: '' }],
-      roster: [{ handle: 'Alice', color: '#fff', lineSlot: 0 }],
+      roster: [{ handle: 'Alice', color: '#fff', slot: 0 }],
     });
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
     const chatArea = await screen.findByLabelText('Shared chat area');
@@ -101,7 +101,7 @@ describe('Rendering behaviors', ()=>{
     primeChatSnapshot({
       roomId: 1,
       liveLines: [{ participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: 0, text: '?' }],
-      roster: [{ handle: 'Alice', color: '#fff', lineSlot: 0 }],
+      roster: [{ handle: 'Alice', color: '#fff', slot: 0 }],
     });
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
     const chatArea = await screen.findByLabelText('Shared chat area');

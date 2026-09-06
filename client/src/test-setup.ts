@@ -1,92 +1,58 @@
 import '@testing-library/jest-dom/vitest';
+import { FakeWebSocket } from './testing/fakeWebSocket';
 
-// jsdom doesn't implement WebSocket by default; provide a stub for App's WS effect.
-// Tests control the stub via the test-setup helpers below.
+// jsdom has no WebSocket; install the shared fake. The app under test
+// connects to a fake in-memory chat server whose state tests control through
+// the helpers at the bottom of this file: a `hello` is answered with the
+// primed snapshot, and `broadcastFromServer` pushes messages to open sockets.
 type LiveLine = { participantId: number; handle: string; color: string; slot: number; row: number | null; text: string };
-type ServerState = {
+
+const server: {
   roomId: number;
   liveLines: LiveLine[];
-  committed: Array<{ id: string; handle: string; content: string; lineIdx: number; committed: boolean; committedAt: number; color?: string }>;
-  roster: Array<{ handle: string; color: string; lineSlot: number }>;
+  committed: Array<{ id: string; handle: string; content: string; lineIdx: number; committed?: boolean; committedAt: number; color?: string }>;
+  roster: Array<{ handle: string; color: string; slot: number }>;
   nextSeq: number;
-  nextLineIdx: number;
-  sockets: Array<{ ws: any; participantId: number; lastSeq: number }>;
-};
-
-const server: ServerState = {
+} = {
   roomId: 0,
   liveLines: [],
   committed: [],
   roster: [],
   nextSeq: 1,
-  nextLineIdx: 0,
-  sockets: [],
 };
 
-const sockets: any[] = [];
-
-class MockWebSocket {
-  url: string;
-  readyState = 0; // CONNECTING
-  onopen: (() => void) | null = null;
-  onmessage: ((e: { data: string }) => void) | null = null;
-  onclose: (() => void) | null = null;
-  onerror: ((e: any) => void) | null = null;
+class MockChatWebSocket extends FakeWebSocket {
+  // Keystrokes this socket sent, in order (subset of `sent`).
   sentKeys: Array<{ kind: 'char' | 'backspace' | 'enter'; seq: number; char?: string }> = [];
-  helloMsg: any = null;
-
-  constructor(url: string) {
-    this.url = url;
-    sockets.push(this);
-    setTimeout(() => {
-      this.readyState = 1; // OPEN
-      this.onopen?.();
-    }, 0);
-  }
 
   send(data: string) {
-    let msg: any;
-    try { msg = JSON.parse(data); } catch { return; }
+    const msg = JSON.parse(data);
     if (msg.type === 'hello') {
-      this.helloMsg = msg;
-      // Each live line carries its own joinedAt so the client can filter
-      // history relative to its own join. The "self" participant (matching
-      // the hello) gets joinedAt = now; others get the value supplied in the
-      // mock (defaulting to 0 = show all history).
+      // Every live line carries its own joinedAt so the client can filter
+      // history relative to its own join. Tests that want strict pre-join
+      // filtering can supply their own joinedAt; the default of 0 shows all
+      // primed history.
       const liveLines = server.liveLines.map((l) => ({
         ...l,
-        // For the "self" participant, default joinedAt to 0 so tests can
-        // pre-seed history without it being filtered as pre-join. Tests that
-        // want strict pre-join filtering can supply their own joinedAt.
-        joinedAt: (l as any).joinedAt ?? (l.participantId === msg.participantId ? 0 : 0),
+        joinedAt: (l as any).joinedAt ?? 0,
       }));
-      const snapshot = {
+      this.serverSend({
         type: 'snapshot',
         roomId: server.roomId,
         you: { participantId: msg.participantId, nextSeq: server.nextSeq },
         liveLines,
         committed: server.committed,
         roster: server.roster,
-      };
-      this.deliver(snapshot);
-      return;
+      });
     }
     if (msg.type === 'key') {
       this.sentKeys.push({ kind: msg.kind, seq: msg.seq, char: msg.char });
     }
-  }
-
-  close() {
-    this.readyState = 3; // CLOSED
-    this.onclose?.();
-  }
-
-  deliver(msg: any) {
-    if (this.onmessage) this.onmessage({ data: JSON.stringify(msg) });
+    super.send(data);
   }
 }
 
-(globalThis as any).WebSocket = MockWebSocket;
+(globalThis as any).WebSocket = MockChatWebSocket;
 
 // AudioContext stub for join chirp
 class MockAudioContext {
@@ -99,9 +65,8 @@ class MockAudioContext {
 (globalThis as any).AudioContext = MockAudioContext;
 (globalThis as any).webkitAudioContext = MockAudioContext;
 
-// Default fetch mock for tests that don't bring their own. Returns state
-// derived from the live chat server mock so room-state polling agrees with
-// the WebSocket snapshot and doesn't mark the session invalid.
+// Default fetch mock for tests that don't bring their own: the surviving HTTP
+// surface (rooms, roster, leave) backed by the same primed server state.
 if (typeof globalThis.fetch === 'undefined' || (globalThis.fetch as any).__isMocked !== true) {
   const fetchMock: any = async (url: string, init?: RequestInit) => {
     const u = String(url);
@@ -114,27 +79,6 @@ if (typeof globalThis.fetch === 'undefined' || (globalThis.fetch as any).__isMoc
       json: async () => body,
     });
     if (u.includes('/api/rooms') && method === 'GET') return ok({ rooms: [] });
-    if (u.includes('/api/room-state')) {
-      // Build a room-state view that matches the primed snapshot. joinedAt
-      // matches what the WebSocket snapshot delivered (default 0 = show all
-      // history) so the polling path and socket path agree.
-      const participants = (server.liveLines ?? []).map((l) => ({
-        id: l.participantId,
-        handle: l.handle,
-        color: l.color,
-        lineSlot: l.slot,
-        activeLineIdx: l.row,
-        activeContent: l.text,
-        joinedAt: (l as any).joinedAt ?? 0,
-        nextExpectedSeq: server.nextSeq,
-      }));
-      return ok({
-        roomId: server.roomId,
-        history: server.committed,
-        participants,
-        roster: server.roster,
-      });
-    }
     if (u.includes('/api/roster')) return ok({ participants: server.roster });
     if (u.includes('/api/leave')) return ok({ freed: true });
     return ok({});
@@ -144,7 +88,6 @@ if (typeof globalThis.fetch === 'undefined' || (globalThis.fetch as any).__isMoc
 }
 
 // --- Test helpers ---
-// Tests call these from beforeEach to drive the mock WebSocket / fake server.
 
 export function resetChatState() {
   server.roomId = 0;
@@ -152,39 +95,34 @@ export function resetChatState() {
   server.committed = [];
   server.roster = [];
   server.nextSeq = 1;
-  server.nextLineIdx = 0;
-  server.sockets = [];
-  sockets.length = 0;
+  FakeWebSocket.reset();
 }
 
 export function primeChatSnapshot(opts: {
   roomId: number;
-  history?: Array<{ id: string; handle: string; content: string; lineIdx: number; committed: boolean; committedAt: number; color?: string }>;
+  // Committed lines are passed through to the app verbatim; until the app
+  // consumes the wire format directly this is its internal history shape.
+  history?: Array<{ id: string; handle: string; content: string; lineIdx: number; committed?: boolean; committedAt: number; color?: string }>;
   liveLines?: LiveLine[];
-  roster?: Array<{ handle: string; color: string; lineSlot: number }>;
+  roster?: Array<{ handle: string; color: string; slot: number }>;
 }) {
   server.roomId = opts.roomId;
   server.liveLines = opts.liveLines ?? [];
   server.committed = opts.history ?? [];
   server.roster = opts.roster ?? [];
-  // Compute a sensible next line index from the seed
-  let maxIdx = 0;
-  for (const l of server.committed) if (l.lineIdx >= maxIdx) maxIdx = l.lineIdx + 1;
-  for (const l of server.liveLines) if (l.row != null && l.row >= maxIdx) maxIdx = l.row + 1;
-  server.nextLineIdx = maxIdx;
 }
 
 export function getSockets() {
-  return sockets;
+  return FakeWebSocket.instances as MockChatWebSocket[];
 }
 
 export function getLastSocket() {
-  return sockets[sockets.length - 1];
+  return FakeWebSocket.instances[FakeWebSocket.instances.length - 1] as MockChatWebSocket;
 }
 
 export function broadcastFromServer(msg: any) {
-  for (const ws of sockets) {
-    ws.deliver(msg);
+  for (const ws of FakeWebSocket.instances) {
+    ws.serverSend(msg);
   }
 }
 

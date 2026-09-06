@@ -23,7 +23,7 @@ describe('Enter buffer separation - typing during pending commit', ()=>{
     primeChatSnapshot({
       roomId: 1,
       liveLines: [{ participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: 0, text: 'Hi' }],
-      roster: [{ handle: 'Alice', color: '#fff', lineSlot: 0 }],
+      roster: [{ handle: 'Alice', color: '#fff', slot: 0 }],
     });
 
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
@@ -70,7 +70,7 @@ describe('Enter buffer separation - typing during pending commit', ()=>{
     primeChatSnapshot({
       roomId: 1,
       liveLines: [{ participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: null, text: '' }],
-      roster: [{ handle: 'Alice', color: '#fff', lineSlot: 0 }],
+      roster: [{ handle: 'Alice', color: '#fff', slot: 0 }],
     });
 
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);

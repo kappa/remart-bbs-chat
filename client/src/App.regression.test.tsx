@@ -27,8 +27,8 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
         { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1, row: 1, text: 'X' },
       ],
       roster: [
-        { handle: 'Alice', color: '#fff', lineSlot: 0 },
-        { handle: 'Bob', color: '#0ff', lineSlot: 1 },
+        { handle: 'Alice', color: '#fff', slot: 0 },
+        { handle: 'Bob', color: '#0ff', slot: 1 },
       ],
     });
 
@@ -97,8 +97,8 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
         { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1, row: 5, text: 'BobLine' },
       ],
       roster: [
-        { handle: 'Alice', color: '#fff', lineSlot: 0 },
-        { handle: 'Bob', color: '#0ff', lineSlot: 1 },
+        { handle: 'Alice', color: '#fff', slot: 0 },
+        { handle: 'Bob', color: '#0ff', slot: 1 },
       ],
     });
 
@@ -136,7 +136,7 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
     primeChatSnapshot({
       roomId: 1,
       liveLines: [{ participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: 0, text: 'Hi' }],
-      roster: [{ handle: 'Alice', color: '#fff', lineSlot: 0 }],
+      roster: [{ handle: 'Alice', color: '#fff', slot: 0 }],
     });
 
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
@@ -152,7 +152,7 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
     broadcastFromServer({ type: 'live', participantId: 10, row: null, text: '', seq: 1 });
     // Bob appears at row 1
     broadcastFromServer({ type: 'live', participantId: 20, row: 1, text: 'Yo', seq: 1 });
-    broadcastFromServer({ type: 'roster', roomId: 1, roster: [{ handle: 'Alice', color: '#fff', lineSlot: 0 }, { handle: 'Bob', color: '#0ff', lineSlot: 1 }] });
+    broadcastFromServer({ type: 'roster', roomId: 1, roster: [{ handle: 'Alice', color: '#fff', slot: 0 }, { handle: 'Bob', color: '#0ff', slot: 1 }] });
 
     await waitFor(()=>{
       expect(document.querySelector('.active-line[data-line-slot="0"]')).toBeNull();
@@ -188,8 +188,8 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
         { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1, row: 5, text: 'BobLine' },
       ],
       roster: [
-        { handle: 'Alice', color: '#fff', lineSlot: 0 },
-        { handle: 'Bob', color: '#0ff', lineSlot: 1 },
+        { handle: 'Alice', color: '#fff', slot: 0 },
+        { handle: 'Bob', color: '#0ff', slot: 1 },
       ],
     });
 
@@ -253,8 +253,8 @@ describe('Regression: server-driven Enter preserves draft lineIdx', ()=>{
         { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1, row: null, text: '' },
       ],
       roster: [
-        { handle: 'Alice', color: '#fff', lineSlot: 0 },
-        { handle: 'Bob', color: '#0ff', lineSlot: 1 },
+        { handle: 'Alice', color: '#fff', slot: 0 },
+        { handle: 'Bob', color: '#0ff', slot: 1 },
       ],
     });
 
