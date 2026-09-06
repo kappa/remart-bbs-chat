@@ -15,8 +15,9 @@ Describe implemented behavior there; keep future proposals in these tasks.
 
 ## Recommended implementation order
 
-Tasks 1, 4, 6, 7, 10, and 11 are done and tasks 8 and 9 are closed; see their
-checkboxes. Keep task numbers stable; execute the open tasks in this order:
+Tasks 1, 4, 6, 7, 10, 11, and 13 are done and tasks 8 and 9 are closed; see
+their checkboxes. Keep task numbers stable; execute the remaining open tasks
+in this order:
 
 | Order | Task | Reason |
 | --- | --- | --- |
@@ -478,7 +479,7 @@ Close the GitHub issue when the task is done.
 
 ## 13. Keep a transcript text selection after the mouse is released
 
-- [ ] **Bug**
+- [x] **Bug** (done: chat-area clicks skip keyboard focus while the document selection is non-collapsed; keystrokes are handled by a document-level listener keyed on the active element, so typing works without a click after a selection)
 - **Source:** [GitHub issue #2](https://github.com/kappa/remart-bbs-chat/issues/2).
 - **Location:** `client/src/App.tsx`: the session view's
   `<section id="chat-area" ... onClick={focusKeyboard}>`, `focusKeyboard`

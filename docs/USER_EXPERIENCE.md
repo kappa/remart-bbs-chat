@@ -34,6 +34,9 @@ name prefixes on ordinary lines because the color tells you who is who.
   leaves.
 - People joining or leaving appear as announcement lines in that person's
   color.
+- Transcript text can be selected with the mouse and copied (Ctrl+C /
+  Cmd+C). A plain click still puts the keyboard focus back on the chat
+  input, and typing after a selection works without clicking again.
 
 ## Typing
 

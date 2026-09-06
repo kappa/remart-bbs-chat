@@ -6,7 +6,6 @@ import {
   useState,
   type ClipboardEvent,
   type FormEvent,
-  type KeyboardEvent,
   type UIEvent,
 } from "react";
 import { api, keepaliveApi } from "./api";
@@ -207,6 +206,21 @@ export function App() {
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [session, showHelp]);
 
+  // Keys are handled at the document level so typing keeps working while the
+  // capture textarea has lost focus, e.g. after selecting transcript text
+  // with the mouse (task 13). Buttons, the lobby, and the help dialog keep
+  // their keys.
+  useEffect(() => {
+    if (!session) return;
+    const onDocumentKey = (event: KeyboardEvent) => {
+      const active = document.activeElement;
+      if (active !== document.body && active !== chatRef.current && active !== keyboardRef.current) return;
+      if (handleChatKey(event)) focusKeyboard();
+    };
+    document.addEventListener("keydown", onDocumentKey);
+    return () => document.removeEventListener("keydown", onDocumentKey);
+  }, [session]);
+
   useEffect(() => {
     const chat = chatRef.current;
     if (chat && wasNearBottomRef.current) {
@@ -332,25 +346,28 @@ export function App() {
   const eraseCharacter = () => { if (session) send({ kind: "backspace" }); };
   const submitActiveLine = () => { if (session) send({ kind: "enter" }); };
 
-  const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
-    if (!session || event.metaKey || event.ctrlKey || event.altKey) return;
+  // Key-to-keystroke mapping for the document-level listener: sends the
+  // matching chat keystroke and reports whether the key was chat input.
+  // Modifier combinations keep their browser meaning (copy, paste, ...).
+  const handleChatKey = (event: KeyboardEvent) => {
+    if (!session || event.metaKey || event.ctrlKey || event.altKey) return false;
 
     if (event.key === "Backspace") {
       event.preventDefault();
       eraseCharacter();
-      return;
+      return true;
     }
 
     if (event.key === "Enter") {
       event.preventDefault();
       submitActiveLine();
-      return;
+      return true;
     }
 
-    const isSingleInputCharacter = Array.from(event.key).length === 1;
-    if (!isSingleInputCharacter) return;
+    if (Array.from(event.key).length !== 1) return false;
     event.preventDefault();
     appendCharacter(event.key);
+    return true;
   };
 
   const onKeyboardInput = (event: FormEvent<HTMLTextAreaElement>) => {
@@ -494,8 +511,12 @@ export function App() {
         id="chat-area"
         aria-label="Shared chat area"
         ref={chatRef}
-        onClick={focusKeyboard}
-        onKeyDown={onKeyDown}
+        onClick={() => {
+          const doc = window.getSelection();
+          if (!doc || doc.rangeCount === 0 || doc.getRangeAt(0).collapsed) {
+            focusKeyboard();
+          }
+        }}
         onPaste={onPaste}
         onScroll={onChatScroll}
       >

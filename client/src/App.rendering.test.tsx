@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, act } from '@testing-library/react';
+import { fireEvent } from '@testing-library/dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { App } from './App';
 import { FakeWebSocket } from './testing/fakeWebSocket';
@@ -130,5 +131,78 @@ describe('Rendering from server state', () => {
     await screen.findByText('a');
     expect(document.querySelector('.local-cursor-preview')).toBeNull();
     expect(document.querySelectorAll('[aria-label="Your typing position"]').length).toBe(1);
+  });
+});
+
+describe('Mouse selection (task 13)', () => {
+  const keyboard = () => screen.getByLabelText('Chat keyboard input');
+
+  // renderJoined's join timer focuses the capture textarea; drop that focus
+  // so each test's focus assertions say something about the click or key.
+  const blurKeyboard = () => (document.activeElement as HTMLElement)?.blur?.();
+
+  const selectLine = async (text: string, collapsed = false) => {
+    const el = await screen.findByText(text);
+    const range = document.createRange();
+    range.selectNodeContents(el);
+    if (collapsed) range.collapse(true);
+    const sel = window.getSelection()!;
+    sel.removeAllRanges();
+    sel.addRange(range);
+    return sel;
+  };
+
+  it('a click while text is selected does not focus the keyboard textarea', async () => {
+    await renderJoined(snapshot({ committed: [line('h1', 0, 'hello world')] }));
+    blurKeyboard();
+    const sel = await selectLine('hello world');
+
+    fireEvent.click(screen.getByLabelText('Shared chat area'));
+
+    expect(document.activeElement).not.toBe(keyboard());
+    expect(sel.rangeCount).toBe(1);
+    expect(sel.getRangeAt(0).collapsed).toBe(false);
+  });
+
+  it('a plain click still focuses the keyboard textarea', async () => {
+    await renderJoined(snapshot({ committed: [line('h1', 0, 'hello world')] }));
+    blurKeyboard();
+    await selectLine('hello world', true);
+
+    fireEvent.click(screen.getByLabelText('Shared chat area'));
+
+    expect(document.activeElement).toBe(keyboard());
+  });
+
+  it('a keydown after a selection types into the room without a click', async () => {
+    const { ws } = await renderJoined(snapshot({ committed: [line('h1', 0, 'hello world')] }));
+    blurKeyboard();
+    await selectLine('hello world');
+
+    fireEvent.click(screen.getByLabelText('Shared chat area'));
+    fireEvent.keyDown(document.body, { key: 'A' });
+
+    expect(ws.keys()).toEqual([{ type: 'key', seq: 1, kind: 'char', char: 'A' }]);
+    expect(document.activeElement).toBe(keyboard());
+  });
+
+  it('a keydown while a button has focus is left alone', async () => {
+    const { ws } = await renderJoined();
+    screen.getByRole('button', { name: 'Leave' }).focus();
+
+    fireEvent.keyDown(document.body, { key: 'A' });
+
+    expect(ws.keys()).toEqual([]);
+    expect(document.activeElement).not.toBe(keyboard());
+  });
+
+  it('one keydown produces exactly one keystroke', async () => {
+    const { ws } = await renderJoined();
+    blurKeyboard();
+
+    fireEvent.click(screen.getByLabelText('Shared chat area'));
+    fireEvent.keyDown(document.body, { key: 'A' });
+
+    expect(ws.keys().length).toBe(1);
   });
 });
