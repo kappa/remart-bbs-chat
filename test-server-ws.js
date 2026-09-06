@@ -343,18 +343,22 @@ describe('Join, leave, and cleanup broadcasts', () => {
     assert.equal(joined.line.row, 1);
     assert.equal(joined.line.color, bob.color);
     const roster = await a.next((m) => m.type === 'roster');
+    assert.deepEqual(Object.keys(roster), ['type', 'roster']);
     assert.deepEqual(roster.roster.map((r) => r.handle), ['Alice', 'Bob']);
     a.ws.close();
   });
 
-  it('HTTP leave preserves nonempty text, announces, updates the roster, and closes the socket', async () => {
+  it('HTTP leave preserves nonempty text stamped at leave time, announces, updates the roster, and closes the socket', async () => {
     const { alice, a, b } = await roomWithTwo();
     a.send(key(1, 'char', 'h'));
     a.send(key(2, 'char', 'i'));
     await b.next((m) => m.type === 'live' && m.seq === 2);
+    rooms.get(alice.roomId).participants.get(alice.participantId).lastSeen = new Date(Date.now() - 5000);
+    const leftAt = Date.now();
     await post(baseUrl, '/api/leave', { roomId: alice.roomId, participantId: alice.participantId, token: alice.token });
     const preserved = await b.next((m) => m.type === 'committed');
     assert.deepEqual([preserved.line.text, preserved.line.row, preserved.line.color], ['hi', 2, alice.color]);
+    assert.ok(preserved.line.committedAt >= leftAt, 'a deliberate leave stamps the preserved line at leave time');
     const left = await b.next((m) => m.type === 'committed');
     assert.deepEqual([left.line.text, left.line.row], ['* Alice left', 3]);
     assert.equal((await b.next((m) => m.type === 'roster')).roster.length, 1);

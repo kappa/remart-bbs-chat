@@ -217,7 +217,6 @@ function handleKey(participant, room, msg){
     if(commandName){
       participant.activeContent = '';
       participant.activeLineIdx = null;
-      participant.lastSeen = new Date();
       broadcast(room, liveMessage(participant, seq));
       sendTo(participant, {type:'command', name:commandName});
       if(commandName === 'leave'){
@@ -304,41 +303,19 @@ function drainBufferedOps(participant, room){
 }
 
 function rosterMessage(room){
-  return {type:'roster', roomId:room.id, roster:rosterOf(room)};
+  return {type:'roster', roster:rosterOf(room)};
 }
 
-function removeParticipant(room, participant, at){
-  const now = at instanceof Date ? at : new Date();
-  const draftCommittedAt = participant.lastSeen && participant.lastSeen.getTime()
-    ? participant.lastSeen.getTime()
-    : now.getTime();
+// The single exit path for HTTP leave, the q command, and stale cleanup.
+// Nonempty live text is preserved as a committed line stamped `preservedAt`:
+// leave time for a deliberate leave, last activity for stale cleanup.
+function removeParticipant(room, participant, preservedAt){
   const committedLines = [];
   if(participant.activeContent && participant.activeContent.length>0){
     const commitIdx = participant.activeLineIdx != null ? participant.activeLineIdx : greatestLineIdx(room)+1;
-    const line = {
-      id:`line-${participant.id}-${Date.now()}`,
-      handle:participant.handle,
-      content:participant.activeContent,
-      committed:true,
-      lineIdx:commitIdx,
-      createdAt:new Date(draftCommittedAt),
-      committedAt:draftCommittedAt,
-      colorSnapshot:participant.color
-    };
-    room.lines.push(line);
-    committedLines.push(line);
+    committedLines.push(storeLine(room, participant, participant.activeContent, commitIdx, preservedAt));
   }
-  const leaveLine = {
-    id:`leave-${participant.id}-${Date.now()}`,
-    handle:participant.handle,
-    content:`* ${participant.handle} left`,
-    committed:true,
-    lineIdx:greatestLineIdx(room)+1,
-    createdAt:now,
-    committedAt:now.getTime(),
-    colorSnapshot:participant.color
-  };
-  room.lines.push(leaveLine);
+  const leaveLine = storeLine(room, participant, `* ${participant.handle} left`, greatestLineIdx(room)+1, new Date());
   room.charEvents = room.charEvents.filter(e=>e.handle!==participant.handle);
   if(participant.socket){ try{ participant.socket.close(); }catch{} }
   room.participants.delete(participant.id);
@@ -473,19 +450,9 @@ app.post('/api/join', (req,res)=>{
     socket: null
   };
   room.participants.set(participant.id, participant);
-  room.lines.push({
-    id:`join-${participant.id}-${Date.now()}`,
-    handle:cleanHandle,
-    content:`* ${cleanHandle} joined`,
-    committed:true,
-    lineIdx:joinLineIdx,
-    createdAt:now,
-    committedAt:now.getTime(),
-    colorSnapshot:color
-  });
+  const joinLine = storeLine(room, participant, `* ${cleanHandle} joined`, joinLineIdx, now);
 
   const roster = Array.from(room.participants.values()).map(p=>({handle:p.handle, color:p.color, lineSlot:p.lineSlot}));
-  const joinLine = room.lines[room.lines.length-1];
   broadcast(room, committedMessage(joinLine, null, null));
   broadcast(room, rosterMessage(room));
   res.json({participant:{id:participant.id, roomId:participant.roomId, handle:participant.handle, token:participant.token, color:participant.color, lineSlot:participant.lineSlot, activeLineIdx:participant.activeLineIdx, joinedAt:participant.joinedAt.getTime()}, roster, room:{id:room.id, name:room.name}});
