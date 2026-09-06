@@ -166,9 +166,13 @@ participant insertion order, unlike the sorted roster endpoint.
 | 409 | `Handle already active` |
 | 409 | `room full` |
 
-Known edge case: cleanup can delete a room when its last occupant is stale;
-the handler then continues joining into the detached object and returns 200.
-The next room-state request returns 404. See TODO issue 4.
+If cleanup deletes the room because its last occupant was stale, the handler
+recreates the room under the same id and name, carrying over the committed
+lines (preserved stale drafts and leave notices), then completes the join in
+that live room. A successful join is therefore always followed by a
+discoverable room: the next room-state request returns 200 with the new
+participant and their join announcement. Stale handles are reusable once
+their occupants are cleaned.
 
 ### GET /api/roster?roomId=1
 
@@ -597,7 +601,8 @@ character result. A later snapshot shows committed `A` and an empty draft.
   currently scans committed and active rows for the greatest index.
 - There is no global ordering/revision marker for merging HTTP snapshots with
   socket events, no missed-event replay, and no durable exactly-once guarantee.
-  Current auth, Unicode, gap recovery, and lifecycle defects are tracked in
+  Participant authorization (TODO tasks 1 and 4) is implemented; the remaining
+  Unicode, gap recovery, and lifecycle defects are tracked in
   [TODO.md](../TODO.md). This document records their observable behavior rather
   than promising the planned fixes.
 

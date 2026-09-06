@@ -437,3 +437,41 @@ describe('Participant authorization (task 1)', () => {
   });
 });
 
+describe('Stale-room joins (task 4)', () => {
+  function ageParticipant(roomId, participantId, msAgo) {
+    const room = rooms.get(roomId);
+    room.participants.get(participantId).lastSeen = new Date(Date.now() - msAgo);
+  }
+
+  it('joining a room whose last occupant went stale yields a live session', async () => {
+    const { json } = await fetchJson('/api/rooms', { method: 'POST', body: JSON.stringify({ forceNew: true }) });
+    const roomId = json.room.id;
+    const { json: ghost } = await fetchJson('/api/join', { method: 'POST', body: JSON.stringify({ roomId, handle: 'ghost' }) });
+    ageParticipant(roomId, ghost.participant.id, 60000);
+
+    const { res: rJoin, json: jJoin } = await fetchJson('/api/join', { method: 'POST', body: JSON.stringify({ roomId, handle: 'newcomer' }) });
+    assert.equal(rJoin.ok, true, 'join into all-stale room should succeed');
+    const { res: rState, json: state } = await fetchJson(`/api/room-state?roomId=${roomId}`);
+    assert.equal(rState.ok, true, 'room must be discoverable right after join (no 404)');
+    assert.ok(state.participants.some(p => p.id === jJoin.participant.id), 'newcomer must hold a live session');
+    assert.ok(state.history.some(h => h.content === '* newcomer joined'), 'newcomer join announcement must be stored');
+    assert.ok(!state.participants.some(p => p.handle === 'ghost'), 'stale occupant must be gone');
+  });
+
+  it('stale handle is reusable and a stale nonempty draft is preserved', async () => {
+    const { json } = await fetchJson('/api/rooms', { method: 'POST', body: JSON.stringify({ forceNew: true }) });
+    const roomId = json.room.id;
+    const { json: ghost } = await fetchJson('/api/join', { method: 'POST', body: JSON.stringify({ roomId, handle: 'ghost' }) });
+    const gpid = ghost.participant.id;
+    const gtoken = ghost.participant.token;
+    await fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: gpid, token: gtoken, char: 'h' }) });
+    await fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: gpid, token: gtoken, char: 'i' }) });
+    ageParticipant(roomId, gpid, 60000);
+
+    // Same handle is free again once the occupant is stale
+    const { res: rJoin } = await fetchJson('/api/join', { method: 'POST', body: JSON.stringify({ roomId, handle: 'ghost' }) });
+    assert.equal(rJoin.ok, true, 'stale handle should be reusable');
+    const { json: state } = await fetchJson(`/api/room-state?roomId=${roomId}`);
+    assert.ok(state.history.some(h => h.handle === 'ghost' && h.content === 'hi'), 'stale nonempty draft must survive as committed text');
+  });
+});

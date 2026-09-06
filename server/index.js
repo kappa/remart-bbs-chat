@@ -304,11 +304,22 @@ app.post('/api/join', (req,res)=>{
   if(!cleanHandle) return res.status(400).json({error:'handle required'});
   if(cleanHandle.length>32) return res.status(400).json({error:'handle too long'});
 
-  const room = getRoom(roomId);
+  let room = getRoom(roomId);
   if(!room) return res.status(404).json({error:'room not found'});
 
   // cleanup stale first (reconciled behavior: preserve nonempty)
   cleanupStaleInRoom(room);
+
+  // Cleanup deletes the room when its last occupant was stale. Recreate it
+  // under the same id so this join lands in a live, discoverable room
+  // instead of a detached object that room-state would 404. Carry over the
+  // committed lines (preserved stale drafts, leave notices) so no transcript
+  // history is lost with the detached object.
+  if(!rooms.has(room.id)){
+    const orphanedLines = room.lines;
+    room = {id:room.id, name:room.name, createdAt:new Date(), maxParticipants:10, isLobby:false, participants:new Map(), lines:orphanedLines, charEvents:[], wsClients:new Set(), nextLineIdx:0};
+    rooms.set(room.id, room);
+  }
 
   // global case-insensitive duplicate check per final spec
   if(globalHandleExists(cleanHandle)){

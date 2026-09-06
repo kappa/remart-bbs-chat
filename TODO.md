@@ -92,7 +92,7 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
 
 ## 4. Avoid successful joins into deleted rooms
 
-- [ ] **Medium priority**
+- [x] **Medium priority** (done: room recreated under same id with history carried over, join lands live)
 - **Location:** `server/index.js` `/api/join` and `cleanupStaleInRoom`.
 - **Problem:** Cleaning up the last stale participant deletes the room, but
   the join handler adds the newcomer to the detached room object. Reproduced:
