@@ -52,6 +52,15 @@ describe('Socket handshake', () => {
     await client.closed;
   });
 
+  it('malformed JSON before hello is rejected like any other first message', async () => {
+    const client = openSocket(wsUrl);
+    await client.opened;
+    client.ws.send('not json');
+    const err = await client.next((m) => m.type === 'error');
+    assert.equal(err.code, 'unauthorized');
+    await client.closed;
+  });
+
   it('hello for a participant that no longer exists reports unknown-participant', async () => {
     const roomId = await newRoom(baseUrl);
     const keeper = await join(baseUrl, roomId, 'Keeper');

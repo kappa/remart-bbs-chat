@@ -614,8 +614,9 @@ const wss = new WebSocketServer({server, path:'/ws'});
 wss.on('connection', (ws)=>{
   ws.on('message', (raw)=>{
     let msg;
-    try{ msg = JSON.parse(raw.toString()); }catch{ return sendWs(ws, {type:'error', code:'invalid-message'}); }
+    try{ msg = JSON.parse(raw.toString()); }catch{ msg = null; }
     if(!ws.participant){
+      // Before hello, anything but a hello (unparseable input included) is unauthorized.
       if(!msg || msg.type!=='hello'){ sendWs(ws, {type:'error', code:'unauthorized'}); return ws.close(); }
       const room = getRoom(msg.roomId);
       const participant = room && room.participants.get(Number(msg.participantId));
