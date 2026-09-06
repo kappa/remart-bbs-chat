@@ -108,8 +108,9 @@ The following describes the current implementation and its regression baseline.
   hidden. Do not force-scroll a viewer reading older text.
 - Committed lines keep author color snapshots after departure. Leave, stale
   cleanup, and the `q` command share one removal path that preserves nonempty
-  live text stamped at last activity, announces, broadcasts `committed` then
-  `roster`, and closes the socket. The server pings sockets every 12 seconds;
+  live text (stamped at leave time on a deliberate leave, at last activity on
+  stale cleanup), announces, broadcasts `committed` then `roster`, and closes
+  the socket. The server pings sockets every 12 seconds;
   silence past 40 seconds is stale, swept every 15 seconds and on join.
 - Handles are unique case-insensitively across all rooms; rooms allow up to
   ten participants. Browser storage is prototype session convenience. The
