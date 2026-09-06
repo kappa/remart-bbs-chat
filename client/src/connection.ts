@@ -1,0 +1,107 @@
+import type { ClientMessage, KeyInput, KeyMessage, ServerMessage } from './protocol';
+
+export type ConnectionStatus = 'connecting' | 'open' | 'reconnecting';
+export type ConnectionCredentials = { roomId: number; participantId: number; token: string };
+export type ConnectionHandlers = {
+  onMessage: (msg: ServerMessage) => void;
+  onStatus: (status: ConnectionStatus) => void;
+  onInputLost: () => void;
+};
+export type ConnectionOptions = { url?: string; reconnectDelayMs?: number; maxPending?: number };
+export type RoomConnection = {
+  // Numbers and queues a keystroke; false means the queue is full and it was dropped.
+  send: (key: KeyInput) => boolean;
+  close: () => void;
+};
+
+export const MAX_PENDING = 200;
+export const RECONNECT_DELAY_MS = 1200;
+
+export function socketUrl(location: Location = window.location): string {
+  const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  return `${protocol}//${location.host}/ws`;
+}
+
+// One socket per session. Keystrokes are numbered on the way in and held in
+// `pending` until the server echoes them back (its echo carries our seq).
+// After a reconnect the snapshot says which numbers the server already has;
+// the rest are resent. A seq-gap means the server saw a number it never
+// received: the queue is discarded and the count restarts at its value.
+export function openRoomConnection(credentials: ConnectionCredentials, handlers: ConnectionHandlers, options: ConnectionOptions = {}): RoomConnection {
+  const url = options.url ?? socketUrl();
+  const reconnectDelayMs = options.reconnectDelayMs ?? RECONNECT_DELAY_MS;
+  const maxPending = options.maxPending ?? MAX_PENDING;
+
+  let socket: WebSocket | null = null;
+  let closed = false;
+  let ready = false;
+  let nextSeq = 1;
+  let pending: KeyMessage[] = [];
+  let reconnectTimer: number | null = null;
+
+  const transmit = (msg: ClientMessage) => {
+    try { socket?.send(JSON.stringify(msg)); } catch { /* the close handler reconnects */ }
+  };
+
+  const scheduleReconnect = () => {
+    if (closed) return;
+    reconnectTimer = window.setTimeout(connect, reconnectDelayMs);
+  };
+
+  const receive = (msg: ServerMessage) => {
+    if (msg.type === 'snapshot') {
+      pending = pending.filter((key) => key.seq >= msg.you.nextSeq);
+      if (pending.length === 0) nextSeq = msg.you.nextSeq;
+      for (const key of pending) transmit(key);
+      ready = true;
+      handlers.onStatus('open');
+    } else if ((msg.type === 'live' || msg.type === 'committed') && msg.participantId === credentials.participantId && msg.seq != null) {
+      const acked = msg.seq;
+      pending = pending.filter((key) => key.seq > acked);
+    } else if (msg.type === 'error' && msg.code === 'seq-gap') {
+      pending = [];
+      if (typeof msg.expected === 'number') nextSeq = msg.expected;
+      handlers.onInputLost();
+    }
+    handlers.onMessage(msg);
+  };
+
+  const connect = () => {
+    if (closed) return;
+    let current: WebSocket;
+    try { current = new WebSocket(url); } catch { scheduleReconnect(); return; }
+    socket = current;
+    ready = false;
+    current.onopen = () => transmit({ type: 'hello', ...credentials });
+    current.onmessage = (event) => {
+      let msg: ServerMessage;
+      try { msg = JSON.parse(event.data); } catch { return; }
+      receive(msg);
+    };
+    current.onclose = () => {
+      if (closed || socket !== current) return;
+      ready = false;
+      handlers.onStatus('reconnecting');
+      scheduleReconnect();
+    };
+    current.onerror = () => { try { current.close(); } catch { /* close handler runs */ } };
+  };
+
+  handlers.onStatus('connecting');
+  connect();
+
+  return {
+    send(key) {
+      if (pending.length >= maxPending) return false;
+      const msg: KeyMessage = { type: 'key', seq: nextSeq++, ...key };
+      pending.push(msg);
+      if (ready) transmit(msg);
+      return true;
+    },
+    close() {
+      closed = true;
+      if (reconnectTimer != null) window.clearTimeout(reconnectTimer);
+      try { socket?.close(); } catch { /* already closed */ }
+    },
+  };
+}

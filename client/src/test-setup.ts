@@ -1,4 +1,5 @@
 import '@testing-library/jest-dom/vitest';
+import { beforeEach } from 'vitest';
 import { FakeWebSocket } from './testing/fakeWebSocket';
 
 // jsdom has no WebSocket; install the shared fake. The app under test
@@ -27,7 +28,7 @@ class MockChatWebSocket extends FakeWebSocket {
 
   send(data: string) {
     const msg = JSON.parse(data);
-    if (msg.type === 'hello') {
+    if (msg.type === 'hello' && server.roomId === msg.roomId) {
       // Every live line carries its own joinedAt so the client can filter
       // history relative to its own join. Tests that want strict pre-join
       // filtering can supply their own joinedAt; the default of 0 shows all
@@ -53,6 +54,10 @@ class MockChatWebSocket extends FakeWebSocket {
 }
 
 (globalThis as any).WebSocket = MockChatWebSocket;
+
+// Fresh instance lists for every test, including files that use the fake
+// directly instead of the helpers below.
+beforeEach(() => FakeWebSocket.reset());
 
 // AudioContext stub for join chirp
 class MockAudioContext {
