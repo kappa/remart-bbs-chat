@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from './App';
 import { api } from './api';
+import { primeChatSnapshot, resetChatState, getLastSocket, broadcastFromServer } from './test-setup';
 
 vi.mock('./api', () => ({
   api: {
@@ -12,10 +13,6 @@ vi.mock('./api', () => ({
     joinRoom: vi.fn(),
     leaveRoom: vi.fn(),
     getRoster: vi.fn(),
-    heartbeat: vi.fn(),
-    sendChar: vi.fn(),
-    sendBackspace: vi.fn(),
-    commitLine: vi.fn(),
     getRoomState: vi.fn(),
   },
   keepaliveApi: { leaveRoom: vi.fn() }
@@ -34,8 +31,8 @@ beforeEach(()=>{
   localStorage.clear();
   sessionStorage.clear();
   vi.clearAllMocks();
-  // default: no rooms
   (api.listRooms as any).mockResolvedValue({rooms:[]});
+  resetChatState();
 });
 
 describe('Lobby rendering', ()=>{
@@ -68,7 +65,6 @@ describe('Lobby rendering', ()=>{
     renderApp();
     expect(await screen.findByText(/lobby \(1\/10/)).toBeInTheDocument();
     const joinBtns = await screen.findAllByRole('button', {name:/join/i});
-    // first room join enabled (if handle present) else disabled - with no handle both disabled
     expect(joinBtns.length).toBeGreaterThanOrEqual(1);
   });
 

@@ -19,7 +19,7 @@ describe('Socket handshake', () => {
     assert.equal(snap.roomId, roomId);
     assert.deepEqual(snap.you, { participantId: alice.participantId, nextSeq: 1 });
     assert.deepEqual(snap.roster, [{ participantId: alice.participantId, handle: 'Alice', color: alice.color, slot: 0 }]);
-    assert.deepEqual(snap.liveLines, [{ participantId: alice.participantId, handle: 'Alice', color: alice.color, slot: 0, row: null, text: '' }]);
+    assert.deepEqual(snap.liveLines.map((l) => ({ participantId: l.participantId, handle: l.handle, color: l.color, slot: l.slot, row: l.row, text: l.text })), [{ participantId: alice.participantId, handle: 'Alice', color: alice.color, slot: 0, row: null, text: '' }]);
     assert.equal(snap.committed.length, 1);
     const announcement = snap.committed[0];
     assert.equal(announcement.text, '* Alice joined');

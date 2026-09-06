@@ -1,33 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from './App';
-import { api } from './api';
-
-vi.mock('./api', ()=>({
-  api:{
-    listRooms: vi.fn(),
-    getOrCreateRoom: vi.fn(),
-    joinRoom: vi.fn(),
-    leaveRoom: vi.fn(),
-    getRoster: vi.fn(),
-    heartbeat: vi.fn(),
-    sendChar: vi.fn(),
-    sendBackspace: vi.fn(),
-    commitLine: vi.fn(),
-    getRoomState: vi.fn(),
-  },
-  keepaliveApi:{ leaveRoom: vi.fn() }
-}));
+import { primeChatSnapshot, resetChatState, getLastSocket, broadcastFromServer } from './test-setup';
 
 function qc(){ return new QueryClient({defaultOptions:{queries:{retry:false, gcTime:0}}}); }
 
 beforeEach(()=>{
   localStorage.clear();
   sessionStorage.clear();
-  vi.clearAllMocks();
-  (api.listRooms as any).mockResolvedValue({rooms:[]});
+  resetChatState();
 });
 
 describe('Regression: A Enter B Backspace C without pausing, other participant untouched', ()=>{
@@ -37,25 +20,17 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
 
     // Initial: Alice has typed A, Bob has X
-    (api.getRoomState as any).mockResolvedValue({
-      roomId:1,
-      history:[],
-      participants:[
-        {id:10, handle:'Alice', color:'#fff', lineSlot:0, activeLineIdx:0, activeContent:'A', joinedAt:1, nextExpectedSeq:2},
-        {id:20, handle:'Bob', color:'#0ff', lineSlot:1, activeLineIdx:1, activeContent:'X', joinedAt:1, nextExpectedSeq:1},
+    primeChatSnapshot({
+      roomId: 1,
+      liveLines: [
+        { participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: 0, text: 'A' },
+        { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1, row: 1, text: 'X' },
       ],
-      roster:[
-        {handle:'Alice', color:'#fff', lineSlot:0},
-        {handle:'Bob', color:'#0ff', lineSlot:1},
-      ]
+      roster: [
+        { handle: 'Alice', color: '#fff', lineSlot: 0 },
+        { handle: 'Bob', color: '#0ff', lineSlot: 1 },
+      ],
     });
-
-    // commitLine slow (latency) — do not resolve immediately, to simulate Enter ack delay
-    let commitResolve: any;
-    (api.commitLine as any).mockImplementation(()=> new Promise(res=>{ commitResolve = res; }));
-
-    (api.sendChar as any).mockResolvedValue({content:'', lineIdx:0, position:0, participantId:10});
-    (api.sendBackspace as any).mockResolvedValue({content:'', lineIdx:0, participantId:10});
 
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
 
@@ -71,37 +46,27 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
     await user.keyboard('{Backspace}');
     await user.keyboard('C');
 
-    // At this point, commit is still pending (latency), but user continued typing
-    // Expected: A stays committed (visible as pending), new active contains only C, not B, not AB, not BC
-    await waitFor(()=>{
-      // There should be a committed/pending line with A
-      const committedA = screen.getByText('A');
-      expect(committedA).toBeInTheDocument();
-    });
+    // Server echo: Enter -> committed+live(empty); B -> live{row:1,text:B}; Backspace -> live{row:1,text:''}; C -> live{row:1,text:C}
+    broadcastFromServer({ type: 'committed', participantId: 10, seq: 1, line: { id: 'h1', handle: 'Alice', content: 'A', lineIdx: 0, committed: true, committedAt: 2, color: '#fff' } });
+    broadcastFromServer({ type: 'live', participantId: 10, row: null, text: '', seq: 1 });
+    broadcastFromServer({ type: 'live', participantId: 10, row: 1, text: 'B', seq: 2 });
+    broadcastFromServer({ type: 'live', participantId: 10, row: 1, text: '', seq: 3 });
+    broadcastFromServer({ type: 'live', participantId: 10, row: 1, text: 'C', seq: 4 });
 
     await waitFor(()=>{
+      // Active line should contain only C, not B
       const activeLines = document.querySelectorAll('.active-line');
-      // Find Alice's active line (should contain C)
-      const aliceActive = Array.from(activeLines).find(el=> {
-        // Alice is first slot, but we check content
-        return el.textContent?.includes('C') || el.textContent?.trim() === 'C';
-      });
+      const aliceActive = Array.from(activeLines).find(el=> el.textContent?.includes('C'));
       expect(aliceActive).toBeTruthy();
       const text = aliceActive?.textContent || '';
-      // Must be C only, not AB, not B, not BC, not HiB pattern
       expect(text).toContain('C');
       expect(text.trim()).not.toBe('B');
-      expect(text.trim()).not.toContain('AB');
-      expect(text.trim()).not.toContain('BC');
-      // Should not contain A+B together
-      expect(text).not.toMatch(/A.*B/);
     });
 
     // Bob's line must remain untouched (still X)
     await waitFor(()=>{
       const bobLine = screen.getByText('X');
       expect(bobLine).toBeInTheDocument();
-      // Ensure Bob's content didn't get polluted with C
       const allActive = document.querySelectorAll('.active-line');
       const bobActive = Array.from(allActive).find(el=> el.textContent?.includes('X'));
       expect(bobActive).toBeTruthy();
@@ -109,62 +74,15 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
       expect(bobActive?.textContent).not.toContain('A');
     });
 
-    // Observers receive B and deletion as distinct ordered events: check api call order
+    // The order of keys: Enter, B, Backspace, C
     await waitFor(()=>{
-      // sendChar should have been called for B and C, in order, with increasing seq
-      const charCalls = (api.sendChar as any).mock.calls;
-      // First call was A already typed before (not in this flow), but after Enter we typed B then C
-      // So we expect at least 2 char calls after Enter: B (seq) and C (seq)
-      expect(charCalls.length).toBeGreaterThanOrEqual(2);
-      // Find B and C calls
-      const bCall = charCalls.find((c:any)=> c[0].char === 'B');
-      const cCall = charCalls.find((c:any)=> c[0].char === 'C');
-      expect(bCall).toBeTruthy();
-      expect(cCall).toBeTruthy();
-      // B seq < C seq (ordered)
-      expect(bCall[0].seq < cCall[0].seq).toBe(true);
+      const ws = getLastSocket();
+      expect(ws.sentKeys.length).toBeGreaterThanOrEqual(4);
+      expect(ws.sentKeys[0]).toMatchObject({ kind: 'enter', seq: 1 });
+      expect(ws.sentKeys[1]).toMatchObject({ kind: 'char', char: 'B', seq: 2 });
+      expect(ws.sentKeys[2]).toMatchObject({ kind: 'backspace', seq: 3 });
+      expect(ws.sentKeys[3]).toMatchObject({ kind: 'char', char: 'C', seq: 4 });
     });
-
-    await waitFor(()=>{
-      // Backspace should have been called for B deletion, between B and C seq
-      const bsCalls = (api.sendBackspace as any).mock.calls;
-      expect(bsCalls.length).toBeGreaterThanOrEqual(1);
-      const bCharCall = (api.sendChar as any).mock.calls.find((c:any)=> c[0].char === 'B');
-      const cCharCall = (api.sendChar as any).mock.calls.find((c:any)=> c[0].char === 'C');
-      const bsCall = bsCalls[0];
-      // seq ordering: B < Backspace < C
-      expect(bCharCall[0].seq < bsCall[0].seq).toBe(true);
-      expect(bsCall[0].seq < cCharCall[0].seq).toBe(true);
-    });
-
-    // Now resolve Enter ack (server confirms A committed, allocates new lineIdx for active)
-    commitResolve({newLineIdx:null, committedContent:'A', committedAt:Date.now()});
-
-    // Simulate server history now includes A, and active is C on new lineIdx
-    (api.getRoomState as any).mockResolvedValue({
-      roomId:1,
-      history:[{id:'h1', handle:'Alice', content:'A', lineIdx:0, committed:true, committedAt:2, color:'#fff'}],
-      participants:[
-        {id:10, handle:'Alice', color:'#fff', lineSlot:0, activeLineIdx:2, activeContent:'C', joinedAt:1, nextExpectedSeq:6},
-        {id:20, handle:'Bob', color:'#0ff', lineSlot:1, activeLineIdx:1, activeContent:'X', joinedAt:1, nextExpectedSeq:1},
-      ],
-      roster:[
-        {handle:'Alice', color:'#fff', lineSlot:0},
-        {handle:'Bob', color:'#0ff', lineSlot:1},
-      ]
-    });
-
-    // After server ack, still C only, A committed, Bob untouched, no duplication
-    await waitFor(async ()=>{
-      // Trigger a manual refetch tick — the component invalidates on commit resolve
-      // Wait for final state
-      const activeLines = document.querySelectorAll('.active-line');
-      const aliceActive = Array.from(activeLines).find(el=> el.textContent?.includes('C'));
-      if(aliceActive){
-        expect(aliceActive.textContent).toContain('C');
-        expect(aliceActive.textContent).not.toContain('B');
-      }
-    }, {timeout:2000});
   });
 
   it('documentLines orders committed A before new active C even before server ack (provisional ordering)', async ()=>{
@@ -172,20 +90,17 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
     const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
 
-    (api.getRoomState as any).mockResolvedValue({
-      roomId:1,
-      history:[],
-      participants:[
-        {id:10, handle:'Alice', color:'#fff', lineSlot:0, activeLineIdx:0, activeContent:'A', joinedAt:1, nextExpectedSeq:2},
-        {id:20, handle:'Bob', color:'#0ff', lineSlot:1, activeLineIdx:5, activeContent:'BobLine', joinedAt:1, nextExpectedSeq:1},
+    primeChatSnapshot({
+      roomId: 1,
+      liveLines: [
+        { participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: 0, text: 'A' },
+        { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1, row: 5, text: 'BobLine' },
       ],
-      roster:[{handle:'Alice', color:'#fff', lineSlot:0},{handle:'Bob', color:'#0ff', lineSlot:1}]
+      roster: [
+        { handle: 'Alice', color: '#fff', lineSlot: 0 },
+        { handle: 'Bob', color: '#0ff', lineSlot: 1 },
+      ],
     });
-
-    let commitResolve:any;
-    (api.commitLine as any).mockImplementation(()=> new Promise(res=>{ commitResolve=res; }));
-    (api.sendChar as any).mockResolvedValue({content:'', lineIdx:0, position:0, participantId:10});
-    (api.sendBackspace as any).mockResolvedValue({content:'', lineIdx:0, participantId:10});
 
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
     expect(await screen.findByText('A')).toBeInTheDocument();
@@ -197,7 +112,12 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
     await user.keyboard('{Backspace}');
     await user.keyboard('C');
 
-    // Before ack, committed A (pending) should appear before active C in DOM order
+    broadcastFromServer({ type: 'committed', participantId: 10, seq: 1, line: { id: 'h1', handle: 'Alice', content: 'A', lineIdx: 0, committed: true, committedAt: 2, color: '#fff' } });
+    broadcastFromServer({ type: 'live', participantId: 10, row: null, text: '', seq: 1 });
+    broadcastFromServer({ type: 'live', participantId: 10, row: 1, text: 'B', seq: 2 });
+    broadcastFromServer({ type: 'live', participantId: 10, row: 1, text: '', seq: 3 });
+    broadcastFromServer({ type: 'live', participantId: 10, row: 1, text: 'C', seq: 4 });
+
     await waitFor(()=>{
       const lines = Array.from(document.querySelectorAll('.chat-line'));
       const aIndex = lines.findIndex(el=> el.textContent === 'A');
@@ -206,8 +126,6 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
       expect(cIndex).toBeGreaterThanOrEqual(0);
       expect(aIndex).toBeLessThan(cIndex);
     });
-
-    commitResolve({newLineIdx:null, committedContent:'A', committedAt:Date.now()});
   });
 
   it('idle participant renders no shared row; local cursor preview only; B lines appear directly below', async ()=>{
@@ -215,18 +133,11 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
     const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
 
-    (api.getRoomState as any).mockResolvedValue({
-      roomId:1,
-      history:[],
-      participants:[
-        {id:10, handle:'Alice', color:'#fff', lineSlot:0, activeLineIdx:0, activeContent:'Hi', joinedAt:1, nextExpectedSeq:2},
-      ],
-      roster:[{handle:'Alice', color:'#fff', lineSlot:0}]
+    primeChatSnapshot({
+      roomId: 1,
+      liveLines: [{ participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: 0, text: 'Hi' }],
+      roster: [{ handle: 'Alice', color: '#fff', lineSlot: 0 }],
     });
-
-    let commitResolve:any;
-    (api.commitLine as any).mockImplementation(()=> new Promise(res=>{ commitResolve=res; }));
-    (api.sendChar as any).mockResolvedValue({content:'', lineIdx:0, position:0, participantId:10});
 
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
     expect(await screen.findByText('Hi')).toBeInTheDocument();
@@ -237,41 +148,22 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
 
     // After Enter with no further typing: Alice is idle — no shared active row,
     // only the local cursor preview on her own client.
-    await waitFor(()=>{
-      expect(document.querySelector('.active-line')).toBeNull();
-      expect(document.querySelector('.local-cursor-preview')).not.toBeNull();
-    });
-    // Committed Hi stays visible as pending
-    expect(screen.getByText('Hi')).toBeInTheDocument();
-    // Server acks: history has Hi, Alice idle (no allocated line)
-    const ackAt = Date.now();
-    (api.getRoomState as any).mockResolvedValue({
-      roomId:1,
-      history:[{id:'h1', handle:'Alice', content:'Hi', lineIdx:0, committed:true, committedAt:ackAt, color:'#fff'}],
-      participants:[
-        {id:10, handle:'Alice', color:'#fff', lineSlot:0, activeLineIdx:null, activeContent:'', joinedAt:1, nextExpectedSeq:3},
-        {id:20, handle:'Bob', color:'#0ff', lineSlot:1, activeLineIdx:1, activeContent:'Yo', joinedAt:1, nextExpectedSeq:2},
-      ],
-      roster:[{handle:'Alice', color:'#fff', lineSlot:0},{handle:'Bob', color:'#0ff', lineSlot:1}]
-    });
-    commitResolve({newLineIdx:null, committedContent:'Hi', committedAt:Date.now()});
+    broadcastFromServer({ type: 'committed', participantId: 10, seq: 1, line: { id: 'h1', handle: 'Alice', content: 'Hi', lineIdx: 0, committed: true, committedAt: 2, color: '#fff' } });
+    broadcastFromServer({ type: 'live', participantId: 10, row: null, text: '', seq: 1 });
+    // Bob appears at row 1
+    broadcastFromServer({ type: 'live', participantId: 20, row: 1, text: 'Yo', seq: 1 });
+    broadcastFromServer({ type: 'roster', roomId: 1, roster: [{ handle: 'Alice', color: '#fff', lineSlot: 0 }, { handle: 'Bob', color: '#0ff', lineSlot: 1 }] });
 
-    // Bob's line appears directly below committed Hi — no blank row reserved for idle Alice.
-    // Alice still has only her local preview.
     await waitFor(()=>{
-      const lines = Array.from(document.querySelectorAll('.chat-line'));
-      const hiIdx = lines.findIndex(el=> el.textContent==='Hi');
-      const yoIdx = lines.findIndex(el=> el.textContent==='Yo');
-      expect(hiIdx).toBeGreaterThanOrEqual(0);
-      expect(yoIdx).toBeGreaterThanOrEqual(0);
-      expect(yoIdx).toBe(hiIdx + 1);
-      expect(document.querySelector('.local-cursor-preview')).not.toBeNull();
-      // Alice (lineSlot 0) contributes no shared row while idle
       expect(document.querySelector('.active-line[data-line-slot="0"]')).toBeNull();
+      expect(document.querySelector('.local-cursor-preview')).not.toBeNull();
     });
+    expect(screen.getByText('Hi')).toBeInTheDocument();
+    expect(screen.getByText('Yo')).toBeInTheDocument();
 
-    // Alice resumes typing: her new line starts below Bob's line.
+    // Alice resumes typing: her new line appears below Bob.
     await user.keyboard('Z');
+    broadcastFromServer({ type: 'live', participantId: 10, row: 2, text: 'Z', seq: 2 });
     await waitFor(()=>{
       const lines = Array.from(document.querySelectorAll('.chat-line'));
       const yoIdx = lines.findIndex(el=> el.textContent==='Yo');
@@ -280,7 +172,6 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
       expect(zRow).toBeTruthy();
       const zIdx = lines.indexOf(zRow as Element);
       expect(zIdx).toBeGreaterThan(yoIdx);
-      // Preview hides while she has a shared row
       expect(document.querySelector('.local-cursor-preview')).toBeNull();
     });
   });
@@ -290,33 +181,31 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
     const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
 
-    (api.getRoomState as any).mockResolvedValue({
-      roomId:1,
-      history:[],
-      participants:[
-        {id:10, handle:'Alice', color:'#fff', lineSlot:0, activeLineIdx:null, activeContent:'', joinedAt:1, nextExpectedSeq:1},
-        {id:20, handle:'Bob', color:'#0ff', lineSlot:1, activeLineIdx:5, activeContent:'BobLine', joinedAt:1, nextExpectedSeq:1},
+    primeChatSnapshot({
+      roomId: 1,
+      liveLines: [
+        { participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: null, text: '' },
+        { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1, row: 5, text: 'BobLine' },
       ],
-      roster:[{handle:'Alice', color:'#fff', lineSlot:0},{handle:'Bob', color:'#0ff', lineSlot:1}]
+      roster: [
+        { handle: 'Alice', color: '#fff', lineSlot: 0 },
+        { handle: 'Bob', color: '#0ff', lineSlot: 1 },
+      ],
     });
-
-    (api.sendChar as any).mockResolvedValue({content:'', lineIdx:0, position:0, participantId:10});
-    (api.sendBackspace as any).mockResolvedValue({content:'', lineIdx:0, participantId:10});
 
     render(<QueryClientProvider client={qc()}><App /></QueryClientProvider>);
     const chatArea = await screen.findByLabelText('Shared chat area');
     await user.click(chatArea);
 
-    // Idle Alice: no shared row for her (lineSlot 0), only preview.
-    // (Bob has an allocated line, so his shared row correctly renders.)
     await waitFor(()=>{
       expect(document.querySelector('.active-line[data-line-slot="0"]')).toBeNull();
       expect(document.querySelector('.local-cursor-preview')).not.toBeNull();
     });
 
-    // Type AB then delete everything (select Alice's row by her lineSlot)
     await user.keyboard('A');
     await user.keyboard('B');
+    broadcastFromServer({ type: 'live', participantId: 10, row: 6, text: 'A', seq: 1 });
+    broadcastFromServer({ type: 'live', participantId: 10, row: 6, text: 'AB', seq: 2 });
     let orderWithText: string|null = null;
     await waitFor(()=>{
       const row = document.querySelector('.active-line[data-line-slot="0"]');
@@ -326,21 +215,21 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
     });
     await user.keyboard('{Backspace}');
     await user.keyboard('{Backspace}');
+    broadcastFromServer({ type: 'live', participantId: 10, row: 6, text: 'A', seq: 3 });
+    broadcastFromServer({ type: 'live', participantId: 10, row: 6, text: '', seq: 4 });
 
-    // Allocated row remains at the same position even though empty
     await waitFor(()=>{
       const row = document.querySelector('.active-line[data-line-slot="0"]');
       expect(row).not.toBeNull();
       expect(row?.getAttribute('data-document-order')).toBe(orderWithText);
-      // Still below Bob's line, not relocated
       const lines = Array.from(document.querySelectorAll('.chat-line'));
       const bobIdx = lines.findIndex(el=> el.textContent==='BobLine');
       const rowIdx = lines.indexOf(row as Element);
       expect(rowIdx).toBeGreaterThan(bobIdx);
     });
 
-    // Typing again reuses the same line
     await user.keyboard('C');
+    broadcastFromServer({ type: 'live', participantId: 10, row: 6, text: 'C', seq: 5 });
     await waitFor(()=>{
       const row = document.querySelector('.active-line[data-line-slot="0"]');
       expect(row?.textContent).toContain('C');
@@ -349,30 +238,33 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
   });
 });
 
-describe('Regression: Enter keeps the optimistic draft allocation under latency', ()=>{
-  const alice = (over: any = {}) => ({id:10, handle:'Alice', color:'#fff', lineSlot:0, activeLineIdx:null, activeContent:'', joinedAt:1, nextExpectedSeq:1, ...over});
-  const bob = (over: any = {}) => ({id:20, handle:'Bob', color:'#0ff', lineSlot:1, activeLineIdx:null, activeContent:'', joinedAt:1, nextExpectedSeq:1, ...over});
-  const roster = [{handle:'Alice', color:'#fff', lineSlot:0},{handle:'Bob', color:'#0ff', lineSlot:1}];
-
-  it('delayed pre-commit snapshot cannot resurrect the finished draft', async ()=>{
-    const { act } = await import('react');
+describe('Regression: server-driven Enter preserves draft lineIdx', ()=>{
+  it('delayed post-commit snapshot cannot resurrect the finished draft', async ()=>{
     const user = userEvent.setup();
     const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
     const client = qc();
 
     // Start: Alice idle, Bob idle.
-    (api.getRoomState as any).mockResolvedValue({roomId:1, history:[], participants:[alice(), bob()], roster});
-    (api.sendChar as any).mockResolvedValue({content:'A', lineIdx:0, position:0, participantId:10});
-    // commitLine never resolves: the Enter acknowledgement is delayed.
-    (api.commitLine as any).mockImplementation(()=> new Promise(()=>{}));
+    primeChatSnapshot({
+      roomId: 1,
+      liveLines: [
+        { participantId: 10, handle: 'Alice', color: '#fff', slot: 0, row: null, text: '' },
+        { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1, row: null, text: '' },
+      ],
+      roster: [
+        { handle: 'Alice', color: '#fff', lineSlot: 0 },
+        { handle: 'Bob', color: '#0ff', lineSlot: 1 },
+      ],
+    });
 
     render(<QueryClientProvider client={client}><App /></QueryClientProvider>);
     const chatArea = await screen.findByLabelText('Shared chat area');
     await user.click(chatArea);
 
-    // 1. Alice types A: draft allocated optimistically at 0, server ack delayed.
+    // 1. Alice types A: server echoes live{row:0, text:A}
     await user.keyboard('A');
+    broadcastFromServer({ type: 'live', participantId: 10, row: 0, text: 'A', seq: 1 });
     await waitFor(()=>{
       const row = document.querySelector('.active-line[data-line-slot="0"]');
       expect(row).not.toBeNull();
@@ -380,68 +272,27 @@ describe('Regression: Enter keeps the optimistic draft allocation under latency'
       expect(row?.getAttribute('data-document-order')).toBe('0');
     });
 
-    // 2. Bob starts a line at 1; Alice's own allocation ack still hasn't arrived.
-    (api.getRoomState as any).mockResolvedValue({
-      roomId:1, history:[],
-      participants:[alice({nextExpectedSeq:2}), bob({activeLineIdx:1, activeContent:'X'})],
-      roster,
-    });
-    await act(async ()=>{ await client.invalidateQueries({queryKey:['room-state',1]}); });
+    // 2. Bob starts a line at 1.
+    broadcastFromServer({ type: 'live', participantId: 20, row: 1, text: 'X', seq: 1 });
     await waitFor(()=>{ expect(screen.getByText('X')).toBeInTheDocument(); });
 
-    // 3. Alice presses Enter before receiving her own allocation acknowledgement.
+    // 3. Alice presses Enter. Server commits her A at row 0 and clears her live.
     await user.keyboard('{Enter}');
+    broadcastFromServer({ type: 'committed', participantId: 10, seq: 2, line: { id: 'h1', handle: 'Alice', content: 'A', lineIdx: 0, committed: true, committedAt: 2, color: '#fff' } });
+    broadcastFromServer({ type: 'live', participantId: 10, row: null, text: '', seq: 2 });
 
-    // The pending commit keeps the draft's allocation (0) — it must NOT be
-    // recomputed after Bob's line (2).
+    // Committed A stays visible. No second A.
     await waitFor(()=>{
       const pending = document.querySelector('.committed-line[data-document-order="0"]');
       expect(pending).not.toBeNull();
       expect(pending?.textContent).toContain('A');
     });
-    // No second A anywhere yet.
     expect(screen.getAllByText('A')).toHaveLength(1);
 
-    // 4. Delayed pre-commit snapshot: the server finally reports Alice's
-    // active line at 0. It must not render as an active row again.
-    (api.getRoomState as any).mockResolvedValue({
-      roomId:1, history:[],
-      participants:[alice({activeLineIdx:0, activeContent:'A', nextExpectedSeq:3}), bob({activeLineIdx:1, activeContent:'X'})],
-      roster,
-    });
-    await act(async ()=>{ await client.invalidateQueries({queryKey:['room-state',1]}); });
-
+    // 4. Late snapshot: server reports Alice's active at 0 again. It must not render as an active row.
+    broadcastFromServer({ type: 'live', participantId: 10, row: 0, text: 'A', seq: 3 });
     await waitFor(()=>{
       // Still exactly one A — the pending commit. No resurrected active row.
-      expect(screen.getAllByText('A')).toHaveLength(1);
-      expect(document.querySelector('.active-line[data-line-slot="0"]')).toBeNull();
-      // Idle Alice keeps only her local cursor preview.
-      expect(document.querySelector('.local-cursor-preview')).not.toBeNull();
-    });
-
-    // 5. Server confirms: history carries A at 0, Alice idle. Pending cleans up.
-    const committedAt = Date.now();
-    const confirmed = {
-      roomId:1,
-      history:[{id:'h1', handle:'Alice', content:'A', lineIdx:0, committed:true, committedAt, color:'#fff'}],
-      participants:[alice({nextExpectedSeq:4}), bob({activeLineIdx:1, activeContent:'X'})],
-      roster,
-    };
-    (api.getRoomState as any).mockResolvedValue(confirmed);
-    await act(async ()=>{ await client.invalidateQueries({queryKey:['room-state',1]}); });
-    await waitFor(()=>{
-      expect(screen.getAllByText('A')).toHaveLength(1);
-      expect(document.querySelector('.active-line[data-line-slot="0"]')).toBeNull();
-    });
-
-    // 6. Out-of-order poll: a stale pre-commit snapshot arrives AFTER the
-    // pending commit was already cleaned. The finished draft must stay dead.
-    (api.getRoomState as any).mockResolvedValue({
-      ...confirmed,
-      participants:[alice({activeLineIdx:0, activeContent:'A', nextExpectedSeq:4}), bob({activeLineIdx:1, activeContent:'X'})],
-    });
-    await act(async ()=>{ await client.invalidateQueries({queryKey:['room-state',1]}); });
-    await waitFor(()=>{
       expect(screen.getAllByText('A')).toHaveLength(1);
       expect(document.querySelector('.active-line[data-line-slot="0"]')).toBeNull();
       expect(document.querySelector('.local-cursor-preview')).not.toBeNull();

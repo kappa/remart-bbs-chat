@@ -143,7 +143,7 @@ function publicLine(line){
 }
 
 function liveLineOf(p){
-  return {participantId:p.id, handle:p.handle, color:p.color, slot:p.lineSlot, row:p.activeLineIdx, text:p.activeContent};
+  return {participantId:p.id, handle:p.handle, color:p.color, slot:p.lineSlot, row:p.activeLineIdx, text:p.activeContent, joinedAt: p.joinedAt.getTime()};
 }
 
 // Last 100 appended committed lines, sorted by row: the recovery snapshot.

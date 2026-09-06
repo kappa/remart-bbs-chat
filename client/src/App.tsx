@@ -1,15 +1,16 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-useEffect,
-useMemo,
-useRef,
-useState,
-type ClipboardEvent,
-type FormEvent,
-type KeyboardEvent,
-type UIEvent,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ClipboardEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  type UIEvent,
 } from "react";
-import { api, keepaliveApi } from "./api";
+import { api, keepaliveApi, openChatSocket, sendKey, type WsMessage } from "./api";
+import { isValidChar } from "./documentLines";
 
 type Session = {
   roomId: number;
@@ -38,7 +39,6 @@ function playJoinSound() {
     gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
     osc.start();
     osc.stop(ctx.currentTime + 0.3);
-    // Second chirp for BBS-style da-ding
     const osc2 = ctx.createOscillator();
     const gain2 = ctx.createGain();
     osc2.type = "square";
@@ -54,17 +54,6 @@ function playJoinSound() {
   } catch {
     // Audio blocked or unavailable — silent fail, chat remains usable
   }
-}
-
-function isValidChar(char: string): boolean {
-  if (typeof char !== 'string') return false;
-  const arr = Array.from(char);
-  if (arr.length !== 1) return false;
-  if (char === '\n' || char === '\r') return false;
-  const code = char.charCodeAt(0);
-  if (code < 32 && char !== ' ' && char !== '\t') return false;
-  if (code === 127) return false;
-  return true;
 }
 
 /*
@@ -101,8 +90,6 @@ function readSession(): Session | null {
     const value = storageGet("session", SESSION_KEY);
     if (!value) return null;
     const parsed = JSON.parse(value) as Session;
-    // Sessions issued before participant tokens cannot authorize mutations;
-    // treat them as expired so the user rejoins and gets a token.
     if (!parsed || typeof parsed.token !== "string" || !parsed.token) return null;
     return parsed;
   } catch {
@@ -130,28 +117,9 @@ export function App() {
   const [feedback, setFeedback] = useState("");
   const [warning, setWarning] = useState("");
   const [showHelp, setShowHelp] = useState(false);
-  const [optimisticContent, setOptimisticContentState] = useState<string | null>(
-    null,
-  );
-  const [pendingActions, setPendingActions] = useState(0);
-  const [pendingCommits, setPendingCommits] = useState<Array<{id:string, content:string, committedAt:number, handle:string, color:string, lineIdx:number}>>([]);
-  // Optimistic lineIdx for our in-progress draft, assigned on its first character
-  // at the current end of the transcript (mirrors the server's greatest+1 rule).
-  // While set — or while the server reports an activeLineIdx — our draft is a real
-  // shared row. When neither exists we are idle: no shared row, only a local
-  // cursor preview below the transcript on our own client.
-  const [draftLineIdx, setDraftLineIdx] = useState<number|null>(null);
-  // Indices of our own drafts finished via Enter. A delayed pre-commit
-  // snapshot — or an out-of-order poll arriving after the pending commit was
-  // cleaned — may still report our activeLineIdx for one of these; it must
-  // never render as an active row again. Server line indices are never reused,
-  // so remembering a finished index is safe.
-  const finishedDraftIdxsRef = useRef<Set<number>>(new Set());
   const chatRef = useRef<HTMLElement>(null);
   const keyboardRef = useRef<HTMLTextAreaElement>(null);
-  const queueRef = useRef<Promise<unknown>>(Promise.resolve());
-  const optimisticContentRef = useRef<string | null>(null);
-  const pendingActionsRef = useRef(0);
+  const wsRef = useRef<WebSocket | null>(null);
   const wasNearBottomRef = useRef(true);
   const autoJoinAttemptRef = useRef("");
   const prevParticipantIdsRef = useRef<Set<number>>(new Set());
@@ -160,12 +128,14 @@ export function App() {
 
   const lobbyRooms = useQuery({
     queryKey: ["rooms"],
-    queryFn: () => api.listRooms({}),
+    queryFn: () => api.listRooms(),
     enabled: session === null,
     refetchInterval: 1000,
     retry: false,
   });
 
+  // WebSocket is the source of truth: it delivers a snapshot, then live/committed/roster/command.
+  // Polling /api/room-state is the recovery path; it also backs reconnect.
   const roomState = useQuery({
     queryKey: ["room-state", session?.roomId],
     queryFn: () => api.getRoomState({ roomId: session!.roomId }),
@@ -173,11 +143,6 @@ export function App() {
     refetchInterval: 2000,
     retry: false,
   });
-
-  const setOptimisticContent = (content: string | null) => {
-    optimisticContentRef.current = content;
-    setOptimisticContentState(content);
-  };
 
   useEffect(() => {
     if (!session) return;
@@ -192,7 +157,6 @@ export function App() {
     if (!sessionFailed && !participantExpired) return;
     storageRemove("session", SESSION_KEY);
     setSession(null);
-    setOptimisticContent(null);
     setError("Room session ended. Join again.");
   }, [roomState.data, roomState.isError, roomState.isSuccess, session]);
 
@@ -207,75 +171,17 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [session]);
 
-  // Reset seq and pending commits on new session
+  // Reset seq on new session
   useEffect(() => {
     if (session) {
       seqRef.current = 1;
-      setPendingCommits([]);
-      setDraftLineIdx(null);
-      finishedDraftIdxsRef.current.clear();
-      setOptimisticContent(null);
-      optimisticContentRef.current = null;
     }
   }, [session?.participantId]);
 
-  // Clean pendingCommits when server history includes them
-  useEffect(() => {
-    if (!roomState.data?.history || pendingCommits.length === 0) return;
-    const history = roomState.data.history;
-    setPendingCommits((prev) => {
-      const remaining = prev.filter((pc) => {
-        // Keep if not yet in history: check for matching content+handle
-        // For empty commits, match by time proximity since multiple empties can exist
-        const found = history.some((h) => {
-          if (h.handle !== pc.handle) return false;
-          if (h.content !== pc.content) return false;
-          // If content matches and committedAt is after our optimistic commit (within reasonable window)
-          // For empty string, ensure at least one matching empty exists with committedAt >= our commit time - 1s
-          const histTime = h.committedAt || 0;
-          return histTime >= pc.committedAt - 1000;
-        });
-        return !found; // keep only if not found in server history
-      });
-      return remaining.length === prev.length ? prev : remaining;
-    });
-  }, [roomState.data?.history]);
-
+  // Page-hide leaves the room; presence is the WebSocket (no separate heartbeat needed)
   useEffect(() => {
     if (!session) return;
-    let active = true;
     const currentSession = session;
-
-    const sendHeartbeat = async () => {
-      try {
-        const result = await api.heartbeat({
-          roomId: currentSession.roomId,
-          participantId: currentSession.participantId,
-          token: currentSession.token,
-        });
-        if (!active) return;
-        if (!result.alive) {
-          storageRemove("session", SESSION_KEY);
-          setSession(null);
-          setOptimisticContent(null);
-          setError("Room session ended. Join again.");
-          return;
-        }
-        if (result.removed > 0) {
-          await queryClient.invalidateQueries({
-            queryKey: ["room-state", currentSession.roomId],
-          });
-        }
-      } catch {
-        // A transient network miss is not a disconnect; the next heartbeat or
-        // any typing action refreshes presence.
-      }
-    };
-
-    void sendHeartbeat();
-    const heartbeatTimer = window.setInterval(() => {
-      void sendHeartbeat();
-    }, 12_000);
     const leaveOnPageHide = () => {
       void keepaliveApi.leaveRoom({
         roomId: currentSession.roomId,
@@ -286,13 +192,11 @@ export function App() {
     window.addEventListener("pagehide", leaveOnPageHide);
 
     return () => {
-      active = false;
-      window.clearInterval(heartbeatTimer);
       window.removeEventListener("pagehide", leaveOnPageHide);
     };
-  }, [queryClient, session]);
+  }, [session]);
 
-  // WebSocket live updates: apply char/backspace directly, room-update triggers refetch
+  // WebSocket live updates: connect, hello, then handle snapshot/live/committed/roster/command.
   useEffect(() => {
     if (!session) return;
     let ws: WebSocket | null = null;
@@ -301,84 +205,110 @@ export function App() {
 
     const connect = () => {
       if (closed) return;
-      try {
-        const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-        const url = `${protocol}//${window.location.host}`;
-        ws = new WebSocket(url);
-      } catch {
-        // Fallback to polling only if WS unavailable
-        return;
-      }
+      openChatSocket(session)
+        .then((socket) => {
+          if (closed) {
+            try { socket.close(); } catch {}
+            return;
+          }
+          ws = socket;
+          wsRef.current = socket;
 
-      ws.onopen = () => {
-        try {
-          ws?.send(JSON.stringify({ type: "subscribe", roomId: session.roomId }));
-        } catch {}
-      };
-
-      ws.onmessage = (event) => {
-        try {
-          const msg = JSON.parse(event.data);
-          if (msg.roomId && msg.roomId !== session.roomId) return;
-          if (msg.type === "char") {
-            // Don't apply own chars optimistically again (avoid duplication)
-            if (msg.participantId === session.participantId) {
-              // Still ensure server will eventually reconcile via room-state, but no immediate duplicate
-              return;
-            }
-            // Directly apply to query cache to preserve transient corrections
-            queryClient.setQueryData(["room-state", session.roomId], (old: any) => {
-              if (!old) return old;
-              const participants = old.participants?.map((p: any) => {
-                if (p.id !== msg.participantId) return p;
-                // If server sends position, we could reconstruct, but simple append is sufficient
-                // Check if content already ends with this char to avoid double-apply on reconnect
-                const current = p.activeContent || "";
-                // If position matches current length, append; otherwise trust server and append if not duplicate
-                if (msg.char && typeof msg.char === "string") {
-                  // Avoid duplicating if already present at expected position
-                  if (msg.position != null && msg.position < current.length) {
-                    // If char already at position, don't duplicate
-                    if (current[msg.position] === msg.char) return p;
+          socket.onmessage = (event) => {
+            try {
+              const msg: WsMessage = JSON.parse(event.data);
+              if (msg.type === "snapshot") {
+                queryClient.setQueryData(["room-state", session.roomId], () => ({
+                  roomId: msg.roomId,
+                  history: msg.committed ?? [],
+                  participants: msg.liveLines.map((l) => ({
+                    id: l.participantId,
+                    handle: l.handle,
+                    color: l.color,
+                    lineSlot: l.slot,
+                    activeLineIdx: l.row,
+                    activeContent: l.text,
+                    // For our own participant, joinedAt is "now" (we just joined).
+                    // For others, the server should supply their joinedAt; until
+                    // it does, we approximate with a value that lets their prior
+                    // history through.
+                    joinedAt: (l as any).joinedAt ?? (msg.you.participantId === l.participantId ? Date.now() : 0),
+                    nextExpectedSeq: msg.you.participantId === l.participantId ? msg.you.nextSeq : undefined,
+                  })),
+                  roster: msg.roster ?? [],
+                }));
+                return;
+              }
+              if (msg.type === "live") {
+                queryClient.setQueryData(["room-state", session.roomId], (old: any) => {
+                  if (!old) return old;
+                  const existing = old.participants ?? [];
+                  const found = existing.some((p: any) => p.id === msg.participantId);
+                  if (found) {
+                    return {
+                      ...old,
+                      participants: existing.map((p: any) => {
+                        if (p.id !== msg.participantId) return p;
+                        return { ...p, activeLineIdx: msg.row, activeContent: msg.text };
+                      }),
+                    };
                   }
-                  return {...p, activeContent: current + msg.char, activeLineIdx: msg.lineIdx ?? p.activeLineIdx};
+                  // New participant via live message — add them. Handle/color
+                  // may be filled in by a subsequent roster message.
+                  return {
+                    ...old,
+                    participants: [...existing, {
+                      id: msg.participantId,
+                      handle: `user-${msg.participantId}`,
+                      color: '#ccc',
+                      lineSlot: msg.participantId,
+                      activeLineIdx: msg.row,
+                      activeContent: msg.text,
+                      joinedAt: Date.now(),
+                    }],
+                  };
+                });
+                return;
+              }
+              if (msg.type === "committed") {
+                queryClient.setQueryData(["room-state", session.roomId], (old: any) => {
+                  if (!old) return old;
+                  // Append, dedupe by id, keep last 100 (server caps, but defensively truncate).
+                  const existing = old.history ?? [];
+                  const dedup = existing.filter((h: any) => h.id !== msg.line.id);
+                  return { ...old, history: [...dedup, msg.line].slice(-100) };
+                });
+                return;
+              }
+              if (msg.type === "roster") {
+                queryClient.setQueryData(["room-state", session.roomId], (old: any) => {
+                  if (!old) return old;
+                  return { ...old, roster: msg.roster ?? [] };
+                });
+                return;
+              }
+              if (msg.type === "command") {
+                if (msg.name === "help") {
+                  setShowHelp(true);
+                } else if (msg.name === "roster") {
+                  setFeedback("Roster refreshed");
                 }
-                return p;
-              });
-              return {...old, participants};
-            });
-            return;
-          }
-          if (msg.type === "backspace") {
-            if (msg.participantId === session.participantId) return;
-            queryClient.setQueryData(["room-state", session.roomId], (old: any) => {
-              if (!old) return old;
-              const participants = old.participants?.map((p: any) => {
-                if (p.id !== msg.participantId) return p;
-                const current = p.activeContent || "";
-                if (current.length === 0) return p;
-                return {...p, activeContent: current.slice(0,-1), activeLineIdx: msg.lineIdx ?? p.activeLineIdx};
-              });
-              return {...old, participants};
-            });
-            return;
-          }
-          if (msg.type === "room-update" || msg.type === "commit") {
-            void queryClient.invalidateQueries({ queryKey: ["room-state", session.roomId] });
-          }
-        } catch {
-          // Non-JSON or ping — ignore
-        }
-      };
+                return;
+              }
+            } catch {
+              // Non-JSON or unknown — ignore
+            }
+          };
 
-      ws.onclose = () => {
-        if (closed) return;
-        reconnectTimer = window.setTimeout(connect, 1200) as unknown as number;
-      };
-
-      ws.onerror = () => {
-        try { ws?.close(); } catch {}
-      };
+          socket.onclose = () => {
+            if (closed) return;
+            reconnectTimer = window.setTimeout(connect, 1200) as unknown as number;
+          };
+        })
+        .catch(() => {
+          if (closed) return;
+          reconnectTimer = window.setTimeout(connect, 1200) as unknown as number;
+        });
     };
 
     connect();
@@ -387,6 +317,7 @@ export function App() {
       closed = true;
       if (reconnectTimer) window.clearTimeout(reconnectTimer);
       try { ws?.close(); } catch {}
+      wsRef.current = null;
     };
   }, [queryClient, session]);
 
@@ -428,27 +359,6 @@ export function App() {
     }
   }, [ownParticipant]);
 
-  // Allocate our draft line optimistically on its first character: it takes the
-  // current end of the transcript, matching the server's greatest+1 rule.
-  // No-ops when the draft is already allocated or the server has allocated one.
-  // (The server's idx is stale while its line is still in pendingCommits —
-  // we committed it locally — or while it names a finished draft, e.g. from a
-  // delayed pre-commit snapshot. Either way it counts as unallocated here.)
-  const ensureDraftAllocated = () => {
-    if (draftLineIdx != null) return;
-    const serverIdx = (ownParticipant as any)?.activeLineIdx ?? null;
-    const stale =
-      serverIdx != null &&
-      (pendingCommits.some((pc) => pc.lineIdx === serverIdx) ||
-        finishedDraftIdxsRef.current.has(serverIdx));
-    if (!stale && serverIdx != null) return;
-    let maxKnown = -1;
-    for (const h of visibleHistory) if ((h as any).lineIdx > maxKnown) maxKnown = (h as any).lineIdx;
-    for (const pc of pendingCommits) if (pc.lineIdx > maxKnown) maxKnown = pc.lineIdx;
-    for (const p of participants) if ((p as any).activeLineIdx != null && (p as any).activeLineIdx > maxKnown) maxKnown = (p as any).activeLineIdx;
-    setDraftLineIdx(maxKnown + 1);
-  };
-
   // --- Scrollback belongs to the viewer, not the snapshot ---
   // Server returns only last 100 committed lines as bounded recovery snapshot.
   // Viewer accumulates everything seen since join so upward reading never loses text.
@@ -463,7 +373,7 @@ export function App() {
   useEffect(() => {
     if (!roomState.data?.history || !ownParticipant) return;
     const joinedAt = (ownParticipant as any).joinedAt;
-    if (!joinedAt) return;
+    if (joinedAt == null) return;
     setHistoryAccum((prev) => {
       let changed = false;
       const next = new Map(prev);
@@ -488,8 +398,7 @@ export function App() {
 
   // Active content is real chat content: every visible character is already
   // legitimate, even before Enter commits the line to scrollback.
-  const currentContent =
-    optimisticContent ?? ownParticipant?.activeContent ?? "";
+  const currentContent = ownParticipant?.activeContent ?? "";
   const visibleHistory = useMemo(() => {
     if (!ownParticipant) return [];
     // Accumulated scrollback since arrival, sorted by server-assigned order.
@@ -524,45 +433,16 @@ export function App() {
       order: line.lineIdx,
       line,
     }));
-    // Optimistic pending commits: keep finished line visible before server confirms
-    const pendingRows = pendingCommits.map((pc) => ({
-      kind: "committed" as const,
-      key: `pending:${pc.id}`,
-      order: pc.lineIdx,
-      line: {
-        id: pc.id,
-        handle: pc.handle,
-        content: pc.content,
-        lineIdx: pc.lineIdx,
-        committed: true,
-        committedAt: pc.committedAt,
-        color: pc.color,
-      },
-    }));
 
     const activeRows = participants.flatMap((participant) => {
-      const isOwn = session != null && participant.id === session.participantId;
       const serverIdx: number | null = (participant as any).activeLineIdx ?? null;
-      // Our own server allocation is stale while its line sits in pendingCommits
-      // (we already committed that line locally), or while it names a draft we
-      // finished via Enter (delayed pre-commit snapshot / out-of-order poll):
-      // it must not render as an active row again.
-      const staleOwn =
-        isOwn && serverIdx != null &&
-        (pendingCommits.some((pc) => pc.lineIdx === serverIdx) ||
-          finishedDraftIdxsRef.current.has(serverIdx));
-      // A shared active row exists only for an allocated line: the server's
-      // activeLineIdx, or our own optimistic draft (first char typed, server
-      // hasn't allocated yet). An idle participant — no allocation — renders no
-      // shared row at all; their own client shows a local cursor preview instead.
+      // A shared active row exists only for an allocated line.
       // Note: an allocated line backspaced to empty keeps its row and position.
-      let order: number | null = staleOwn ? null : serverIdx;
-      if (order == null && isOwn) order = draftLineIdx;
-      if (order == null) return [];
+      if (serverIdx == null) return [];
       return [{
         kind: "active" as const,
         key: `active:${participant.id}`,
-        order,
+        order: serverIdx,
         participant,
       }];
     });
@@ -571,18 +451,18 @@ export function App() {
     // never its type, determines where it renders. Enter therefore changes a
     // row from active to committed without moving the text, and deferred
     // ownership ensures first typer comes first.
-    return [...committedRows, ...pendingRows, ...activeRows].sort((left, right) => {
+    return [...committedRows, ...activeRows].sort((left, right) => {
       if (left.order !== right.order) return left.order - right.order;
       return left.key.localeCompare(right.key);
     });
-  }, [participants, visibleHistory, pendingCommits, session, draftLineIdx]);
+  }, [participants, visibleHistory]);
   const documentSignature = documentLines
     .map((row) =>
       row.kind === "active"
         ? `${row.key}:${row.order}:${row.participant.activeContent}`
         : `${row.key}:${row.order}`,
     )
-    .join("\u0000") + `\u0000own:${draftLineIdx}:${optimisticContent ?? ""}`;
+    .join("\u0000");
 
   useEffect(() => {
     if (!roomState.data?.participants) return;
@@ -597,12 +477,8 @@ export function App() {
     let hasNewcomer = false;
     for (const id of currentIds) {
       if (!prevParticipantIdsRef.current.has(id)) {
-        // Ignore our own initial join (already in prev after first load)
-        if (id !== session?.participantId || prevParticipantIdsRef.current.size > 0) {
-          // Only beep if it's someone else, or second+ person
-          if (id !== session?.participantId) {
-            hasNewcomer = true;
-          }
+        if (id !== session?.participantId) {
+          hasNewcomer = true;
         }
       }
     }
@@ -611,19 +487,6 @@ export function App() {
       playJoinSound();
     }
   }, [roomState.data?.participants, session?.participantId]);
-
-  useEffect(() => {
-    if (
-      optimisticContent === null ||
-      pendingActions !== 0 ||
-      !ownParticipant
-    ) {
-      return;
-    }
-    if (ownParticipant.activeContent === optimisticContent) {
-      setOptimisticContent(null);
-    }
-  }, [optimisticContent, ownParticipant, pendingActions]);
 
   useEffect(() => {
     const chat = chatRef.current;
@@ -638,28 +501,7 @@ export function App() {
       chat.scrollHeight - chat.scrollTop - chat.clientHeight <= 80;
   };
 
-  const enqueue = (operation: () => Promise<unknown>) => {
-    pendingActionsRef.current += 1;
-    setPendingActions(pendingActionsRef.current);
-
-    queueRef.current = queueRef.current
-      .then(operation)
-      .then(() => queryClient.invalidateQueries({ queryKey: ["room-state"] }))
-      .catch((reason: unknown) => {
-        setOptimisticContent(null);
-        setError(reason instanceof Error ? reason.message : "Action failed");
-      })
-      .finally(() => {
-        pendingActionsRef.current = Math.max(0, pendingActionsRef.current - 1);
-        setPendingActions(pendingActionsRef.current);
-      });
-  };
-
   const rememberHandle = (cleanHandle: string) => {
-    // localStorage is not real authentication, only prototype convenience.
-    // The participants_handle_nocase_unique index enforces one handle across
-    // all rooms. A per-tab ?name= override lets one browser test many users
-    // without clobbering another test caller's remembered handle.
     if (!hasNameOverride()) {
       storageSet("local", HANDLE_KEY, cleanHandle);
     }
@@ -679,12 +521,8 @@ export function App() {
     };
     rememberHandle(cleanHandle);
     storageSet("session", SESSION_KEY, JSON.stringify(nextSession));
-    // A previous visit to this room may still be cached. Dropping it before
-    // activating the new session prevents stale roster data from immediately
-    // being mistaken for an expired participant.
     queryClient.removeQueries({ queryKey: ["room-state", room.id], exact: true });
     setSession(nextSession);
-    setOptimisticContent(null);
   };
 
   const joinListedRoom = async (room: { id: number; name: string }) => {
@@ -754,242 +592,39 @@ export function App() {
     void createAndJoin(false, preferredId);
   }, [handle, joining, session]);
 
-  const clearActiveCommand = async (
-    activeSession: Session,
-    characterCount: number,
-  ) => {
-    for (let index = 0; index < characterCount; index += 1) {
-      const seq = seqRef.current++;
-      await api.sendBackspace({
-        roomId: activeSession.roomId,
-        participantId: activeSession.participantId,
-        token: activeSession.token,
-        seq,
-      });
-    }
-  };
-
-  const refreshRoster = (commandLength = 0) => {
-    if (!session) return;
-    const activeSession = session;
-    if (commandLength > 0) setOptimisticContent("");
-    enqueue(async () => {
-      await clearActiveCommand(activeSession, commandLength);
-      await Promise.all([
-        api.getRoster({ roomId: activeSession.roomId }),
-        queryClient.invalidateQueries({
-          queryKey: ["room-state", activeSession.roomId],
-        }),
-      ]);
-      setFeedback("Roster refreshed");
-    });
-  };
-
-  const leave = (commandLength = 0) => {
-    if (!session) return;
-    const activeSession = session;
-    if (commandLength > 0) setOptimisticContent("");
-    enqueue(async () => {
-      await clearActiveCommand(activeSession, commandLength);
-      await api.leaveRoom({
-        roomId: activeSession.roomId,
-        participantId: activeSession.participantId,
-        token: activeSession.token,
-      });
-      storageRemove("session", SESSION_KEY);
-      setSession(null);
-      setOptimisticContent(null);
-      setFeedback("");
-      setWarning("");
-      setShowHelp(false);
-      setError("");
-    });
-  };
-
-  const onPaste = (event: ClipboardEvent<HTMLElement>) => {
-    if (!session) return;
-    event.preventDefault();
-
-    const clipboardCharacters = Array.from(
-      event.clipboardData.getData("text"),
-    );
-    const limitedCharacters = clipboardCharacters.slice(0, 100);
-    const validCharacters = limitedCharacters.filter(
-      (char) => isValidChar(char) || char === ' ' ,
-    );
-    const baseContent =
-      optimisticContentRef.current ?? ownParticipant?.activeContent ?? "";
-    const acceptedCharacters = validCharacters;
-    const messages: string[] = [];
-
-    if (clipboardCharacters.length > 100) {
-      messages.push("Paste limited to 100 characters");
-    }
-    if (messages.length > 0) setWarning(messages.join(" · "));
-    if (acceptedCharacters.length === 0) {
+  // Send a keystroke over the WebSocket; server is the source of truth for
+  // ordering and echo (live/committed/command).
+  const sendKeyOverSocket = (kind: "char" | "backspace" | "enter", char?: string) => {
+    const ws = wsRef.current;
+    if (!ws || ws.readyState !== 1) {
+      setError("Connection lost; refresh to reconnect.");
       return;
     }
-
-    ensureDraftAllocated();
-    setOptimisticContent(`${baseContent}${acceptedCharacters.join("")}`);
-    const activeSession = session;
-    // Fire each char with seq, ordered stream but concurrent sends — server buffers out-of-order
-    for (const char of acceptedCharacters) {
-      const seq = seqRef.current++;
-      api.sendChar({
-        roomId: activeSession.roomId,
-        participantId: activeSession.participantId,
-        token: activeSession.token,
-        char,
-        seq,
-      }).then(() => {
-        void queryClient.invalidateQueries({ queryKey: ["room-state", activeSession.roomId] });
-      }).catch((reason: unknown) => {
-        setError(reason instanceof Error ? reason.message : "Send failed");
-      });
-    }
+    const seq = seqRef.current++;
+    sendKey(ws, { type: "key", kind, seq, char });
   };
 
   const appendCharacter = (char: string) => {
     if (!session) return;
 
-    if (!isValidChar(char) && char !== ' ') {
-      // Allow space explicitly, and any Unicode letter
+    if (!isValidChar(char) && char !== " ") {
       if (Array.from(char).length !== 1) return;
-      if (char === '\n' || char === '\r') return;
+      if (char === "\n" || char === "\r") return;
     }
 
-    const activeContent =
-      optimisticContentRef.current ?? ownParticipant?.activeContent ?? "";
-    ensureDraftAllocated();
-    setOptimisticContent(`${activeContent}${char}`);
-    const activeSession = session;
-    const seq = seqRef.current++;
-    // Immediate send with seq — server will buffer out-of-order, preserving order without blocking UI
-    api.sendChar({
-      roomId: activeSession.roomId,
-      participantId: activeSession.participantId,
-      token: activeSession.token,
-      char,
-      seq,
-    }).then((res:any) => {
-      if(res?.buffered){
-        // Buffered by server, will be applied when earlier seq arrives — no rollback needed
-        return;
-      }
-      // Server will broadcast via WS, but invalidate as fallback for polling clients
-      void queryClient.invalidateQueries({ queryKey: ["room-state", activeSession.roomId] });
-    }).catch((reason: unknown) => {
-      // Roll back optimistic on failure (except 202 which is not an error)
-      const msg = reason instanceof Error ? reason.message : "";
-      if(msg.includes("202") || msg.includes("buffered")) return;
-      setOptimisticContent(optimisticContentRef.current?.slice(0, -1) ?? null);
-      setError(reason instanceof Error ? reason.message : "Send failed");
-    });
+    sendKeyOverSocket("char", char);
   };
 
   const eraseCharacter = () => {
     if (!session) return;
-    const activeContent =
-      optimisticContentRef.current ?? ownParticipant?.activeContent ?? "";
+    const activeContent = ownParticipant?.activeContent ?? "";
     if (activeContent.length === 0) return;
-
-    setOptimisticContent(activeContent.slice(0, -1));
-    const seq = seqRef.current++;
-    api.sendBackspace({
-      roomId: session.roomId,
-      participantId: session.participantId,
-      token: session.token,
-      seq,
-    }).then((res:any) => {
-      if(res?.buffered) return;
-      void queryClient.invalidateQueries({ queryKey: ["room-state", session.roomId] });
-    }).catch((reason: unknown) => {
-      setError(reason instanceof Error ? reason.message : "Backspace failed");
-    });
+    sendKeyOverSocket("backspace");
   };
 
   const submitActiveLine = () => {
     if (!session) return;
-    const activeContent =
-      optimisticContentRef.current ?? ownParticipant?.activeContent ?? "";
-    const command = activeContent.trim();
-
-    if (command === "l") {
-      refreshRoster(activeContent.length);
-      return;
-    }
-    if (command === "?") {
-      setOptimisticContent("");
-      setShowHelp(true);
-      const activeSession = session;
-      enqueue(() => clearActiveCommand(activeSession, activeContent.length));
-      return;
-    }
-    if (command === "q") {
-      leave(activeContent.length);
-      return;
-    }
-    // Allow empty lines: multiple Enters should insert empty lines
-    // Separate responsibilities: keep finished line visible (pendingCommits) AND start fresh buffer (optimisticContent="")
-    const contentAtCommit = activeContent;
-    // The line being committed is the line currently being edited. The server's
-    // activeLineIdx is authoritative when known; otherwise keep the optimistic
-    // draftLineIdx allocated on the first character. Recomputing here would
-    // lose the draft's allocation if a remote line arrived in the meantime,
-    // and a delayed pre-commit snapshot would then resurrect the finished
-    // draft as a second active row. Only with neither (Enter on an untouched
-    // buffer) allocate after max known.
-    let commitLineIdx: number;
-    if (ownParticipant?.activeLineIdx != null && pendingCommits.length === 0) {
-      commitLineIdx = ownParticipant.activeLineIdx;
-    } else if (draftLineIdx != null) {
-      commitLineIdx = draftLineIdx;
-    } else {
-      let maxKnown = -1;
-      for (const h of visibleHistory) if (h.lineIdx > maxKnown) maxKnown = h.lineIdx;
-      for (const pc of pendingCommits) if (pc.lineIdx > maxKnown) maxKnown = pc.lineIdx;
-      for (const p of participants) if (p.activeLineIdx != null && p.activeLineIdx > maxKnown) maxKnown = p.activeLineIdx;
-      commitLineIdx = maxKnown + 1;
-      if (visibleHistory.length === 0 && pendingCommits.length === 0 && commitLineIdx < 0) commitLineIdx = 0;
-    }
-    // This draft is finished: even a delayed pre-commit snapshot reporting our
-    // activeLineIdx must not render it as an active row again.
-    finishedDraftIdxsRef.current.add(commitLineIdx);
-    const pendingId = `pending-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
-    // Immediately start fresh local buffer for new line. The draft lineIdx is
-    // cleared: until the next first character there is no allocated line, so
-    // no shared row renders — only the local cursor preview below the transcript.
-    setOptimisticContent("");
-    setDraftLineIdx(null);
-    // Keep finished line visible optimistically until server confirms
-    setPendingCommits((prev) => [...prev, {
-      id: pendingId,
-      content: contentAtCommit,
-      committedAt: Date.now(),
-      handle: session.handle,
-      color: ownParticipant?.color ?? "#ccc",
-      lineIdx: commitLineIdx,
-    }]);
-    const seq = seqRef.current++;
-    api.commitLine({
-      roomId: session.roomId,
-      participantId: session.participantId,
-      token: session.token,
-      seq,
-    }).then((res:any) => {
-      if(res?.buffered){
-        // Buffered, server will apply in order — keep pending commit until history includes it
-        return;
-      }
-      // Server will broadcast room-update, which triggers refetch that will clear pending commit
-      void queryClient.invalidateQueries({ queryKey: ["room-state", session.roomId] });
-    }).catch((reason: unknown) => {
-      // On failure, remove pending commit and restore content
-      setPendingCommits((prev) => prev.filter(pc => pc.id !== pendingId));
-      setOptimisticContent(contentAtCommit);
-      setError(reason instanceof Error ? reason.message : "Commit failed");
-    });
+    sendKeyOverSocket("enter");
   };
 
   const onKeyDown = (event: KeyboardEvent<HTMLElement>) => {
@@ -1036,6 +671,63 @@ export function App() {
     }
   };
 
+  const onPaste = (event: ClipboardEvent<HTMLElement>) => {
+    if (!session) return;
+    event.preventDefault();
+
+    const clipboardCharacters = Array.from(
+      event.clipboardData.getData("text"),
+    );
+    const limitedCharacters = clipboardCharacters.slice(0, 100);
+    const validCharacters = limitedCharacters.filter(
+      (char) => isValidChar(char) || char === " ",
+    );
+    const messages: string[] = [];
+
+    if (clipboardCharacters.length > 100) {
+      messages.push("Paste limited to 100 characters");
+    }
+    if (messages.length > 0) setWarning(messages.join(" · "));
+    if (validCharacters.length === 0) {
+      return;
+    }
+
+    for (const char of validCharacters) {
+      appendCharacter(char);
+    }
+  };
+
+  const refreshRoster = () => {
+    if (!session) return;
+    // Send a single "l" character followed by Enter so the server's command
+    // path clears the line and the server sends a `command:roster` to us.
+    sendKeyOverSocket("char", "l");
+    sendKeyOverSocket("enter");
+  };
+
+  const showHelpCommand = () => {
+    if (!session) return;
+    sendKeyOverSocket("char", "?");
+    sendKeyOverSocket("enter");
+  };
+
+  const leave = () => {
+    if (!session) return;
+    const activeSession = session;
+    // q + Enter: server's command path closes our socket and removes us.
+    sendKeyOverSocket("char", "q");
+    sendKeyOverSocket("enter");
+    // Optimistically clear local session; if the server keeps us (e.g. q
+    // wasn't alone, e.g. " q"), the next snapshot will refresh state.
+    storageRemove("session", SESSION_KEY);
+    setSession(null);
+    setFeedback("");
+    setWarning("");
+    setShowHelp(false);
+    setError("");
+    void activeSession;
+  };
+
   if (!session) {
     const rooms = lobbyRooms.data?.rooms ?? [];
     const hasHandle = handle.trim().length > 0;
@@ -1076,7 +768,7 @@ export function App() {
             {rooms.length ? (
               <div className="lobby-rooms">
                 {rooms.map((room) => {
-                  const full = room.occupancy >= room.max;
+                  const full = (room.occupancy ?? 0) >= (room.max ?? 10);
                   return (
                     <div
                       className={`lobby-room${full ? " full" : ""}`}
@@ -1170,7 +862,6 @@ export function App() {
           if (row.kind === "committed") {
             const { line } = row;
             const isSystemLine = line.content.startsWith("* ");
-            // Preserve author's color even after they leave — use stored snapshot first
             const lineColor = (line as any).color ?? colorByHandle.get(line.handle) ?? (isSystemLine ? "var(--dim)" : "var(--text)");
             return (
               <div
@@ -1190,9 +881,7 @@ export function App() {
 
           const { participant } = row;
           const isOwnLine = participant.id === session.participantId;
-          const content = isOwnLine
-            ? (optimisticContent ?? participant.activeContent)
-            : participant.activeContent;
+          const content = participant.activeContent;
           return (
             <div
               className="chat-line active-line"
