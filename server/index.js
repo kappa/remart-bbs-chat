@@ -94,49 +94,10 @@ function cleanupStaleInRoom(room, excludeId=null){
     if(p.lastSeen.getTime() < cutoff) stale.push(p);
   }
   if(stale.length===0) return 0;
-  let nextIdx = greatestLineIdx(room)+1;
   for(const s of stale){
-    // Spec 3.4 + 10: nonempty active line remains as committed text; empty disappears
-    if(s.activeContent && s.activeContent.length>0){
-      const commitIdx = s.activeLineIdx != null ? s.activeLineIdx : nextIdx++;
-      room.lines.push({
-        id:`line-${s.id}-${Date.now()}`,
-        handle:s.handle,
-        content:s.activeContent,
-        committed:true,
-        lineIdx:commitIdx,
-        createdAt:new Date(s.lastSeen.getTime()),
-        committedAt:s.lastSeen.getTime(),
-        colorSnapshot:s.color
-      });
-      // keep nextIdx in sync if we used it
-      if(s.activeLineIdx == null) {
-        // nextIdx already incremented
-      } else {
-        // ensure nextIdx stays ahead
-        if(commitIdx >= nextIdx) nextIdx = commitIdx+1;
-      }
-    }
-    room.lines.push({
-      id:`leave-${s.id}-${Date.now()}-${nextIdx}`,
-      handle:s.handle,
-      content:`* ${s.handle} left`,
-      committed:true,
-      lineIdx:nextIdx++,
-      createdAt:new Date(),
-      committedAt:Date.now(),
-      colorSnapshot:s.color
-    });
-    room.charEvents = room.charEvents.filter(e=>e.handle!==s.handle);
-    if(s.socket){ try{ s.socket.close(); }catch{} }
-    room.participants.delete(s.id);
+    removeParticipant(room, s, new Date(s.lastSeen.getTime()));
+    if(!rooms.has(room.id)) return stale.length; // ephemeral room removed
   }
-  // ephemeral room cleanup
-  if(room.participants.size===0 && !room.isLobby){
-    rooms.delete(room.id);
-    return stale.length; // room gone, caller should handle
-  }
-  broadcastRoom(room);
   return stale.length;
 }
 
@@ -251,9 +212,24 @@ function handleKey(participant, room, msg){
     applyBackspace(participant);
     return broadcast(room, liveMessage(participant, seq));
   }
-  const line = commitLive(participant, room, new Date());
-  broadcast(room, committedMessage(line, participant.id, seq));
-  broadcast(room, liveMessage(participant, seq));
+  if(msg.kind==='enter'){
+    const commandName = COMMANDS[participant.activeContent];
+    if(commandName){
+      participant.activeContent = '';
+      participant.activeLineIdx = null;
+      participant.lastSeen = new Date();
+      broadcast(room, liveMessage(participant, seq));
+      sendTo(participant, {type:'command', name:commandName});
+      if(commandName === 'leave'){
+        removeParticipant(room, participant, new Date());
+      }
+      return;
+    }
+    const line = commitLive(participant, room, new Date());
+    broadcast(room, committedMessage(line, participant.id, seq));
+    broadcast(room, liveMessage(participant, seq));
+    return;
+  }
 }
 
 function applyCharOperation(participant, room, char, seqForBroadcast){
@@ -326,6 +302,57 @@ function drainBufferedOps(participant, room){
     }
   }
 }
+
+function rosterMessage(room){
+  return {type:'roster', roomId:room.id, roster:rosterOf(room)};
+}
+
+function removeParticipant(room, participant, at){
+  const now = at instanceof Date ? at : new Date();
+  const draftCommittedAt = participant.lastSeen && participant.lastSeen.getTime()
+    ? participant.lastSeen.getTime()
+    : now.getTime();
+  const committedLines = [];
+  if(participant.activeContent && participant.activeContent.length>0){
+    const commitIdx = participant.activeLineIdx != null ? participant.activeLineIdx : greatestLineIdx(room)+1;
+    const line = {
+      id:`line-${participant.id}-${Date.now()}`,
+      handle:participant.handle,
+      content:participant.activeContent,
+      committed:true,
+      lineIdx:commitIdx,
+      createdAt:new Date(draftCommittedAt),
+      committedAt:draftCommittedAt,
+      colorSnapshot:participant.color
+    };
+    room.lines.push(line);
+    committedLines.push(line);
+  }
+  const leaveLine = {
+    id:`leave-${participant.id}-${Date.now()}`,
+    handle:participant.handle,
+    content:`* ${participant.handle} left`,
+    committed:true,
+    lineIdx:greatestLineIdx(room)+1,
+    createdAt:now,
+    committedAt:now.getTime(),
+    colorSnapshot:participant.color
+  };
+  room.lines.push(leaveLine);
+  room.charEvents = room.charEvents.filter(e=>e.handle!==participant.handle);
+  if(participant.socket){ try{ participant.socket.close(); }catch{} }
+  room.participants.delete(participant.id);
+  if(room.participants.size===0 && !room.isLobby){
+    rooms.delete(room.id);
+    return participant;
+  }
+  for(const line of committedLines) broadcast(room, committedMessage(line, null, null));
+  broadcast(room, committedMessage(leaveLine, null, null));
+  broadcast(room, rosterMessage(room));
+  return participant;
+}
+
+const COMMANDS = { l:'roster', '?':'help', q:'leave' };
 
 function handleSeqOp(participant, room, seq, opType, payload){
   // Returns {status: 'applied'|'buffered'|'duplicate'|'legacy', result, expected}
@@ -458,7 +485,9 @@ app.post('/api/join', (req,res)=>{
   });
 
   const roster = Array.from(room.participants.values()).map(p=>({handle:p.handle, color:p.color, lineSlot:p.lineSlot}));
-  broadcastRoom(room);
+  const joinLine = room.lines[room.lines.length-1];
+  broadcast(room, committedMessage(joinLine, null, null));
+  broadcast(room, rosterMessage(room));
   res.json({participant:{id:participant.id, roomId:participant.roomId, handle:participant.handle, token:participant.token, color:participant.color, lineSlot:participant.lineSlot, activeLineIdx:participant.activeLineIdx, joinedAt:participant.joinedAt.getTime()}, roster, room:{id:room.id, name:room.name}});
 });
 
@@ -471,40 +500,7 @@ app.post('/api/leave', (req,res)=>{
   if(!participant) return res.json({freed:false});
   if(!checkParticipantAuth(participant, token)) return res.status(401).json({error:'invalid token'});
 
-  const gIdx = greatestLineIdx(room);
-  const now = new Date();
-
-  if(participant.activeContent && participant.activeContent.length>0){
-    const commitIdx = participant.activeLineIdx != null ? participant.activeLineIdx : gIdx+1;
-    room.lines.push({
-      id:`line-${participant.id}-${Date.now()}`,
-      handle:participant.handle,
-      content:participant.activeContent,
-      committed:true,
-      lineIdx:commitIdx,
-      createdAt:now,
-      committedAt:now.getTime(),
-      colorSnapshot:participant.color
-    });
-  }
-  room.lines.push({
-    id:`leave-${participant.id}-${Date.now()}`,
-    handle:participant.handle,
-    content:`* ${participant.handle} left`,
-    committed:true,
-    lineIdx:gIdx+1,
-    createdAt:now,
-    committedAt:now.getTime(),
-    colorSnapshot:participant.color
-  });
-  room.charEvents = room.charEvents.filter(e=>e.handle!==participant.handle);
-  room.participants.delete(participant.id);
-
-  if(room.participants.size===0 && !room.isLobby){
-    rooms.delete(room.id);
-    return res.json({freed:true});
-  }
-  broadcastRoom(room);
+  removeParticipant(room, participant, new Date());
   res.json({freed:true});
 });
 
@@ -759,6 +755,8 @@ export {
   sendTo,
   snapshotMessage,
   rosterOf,
+  rosterMessage,
+  removeParticipant,
   publicLine,
   liveLineOf,
   pingSockets,
