@@ -18,8 +18,12 @@ It describes intent, not implemented behavior.
 
 ## Active specs and plans
 
-`docs/superpowers/` holds only active superpowers specs and plans. It does not
-exist right now because there are none. Anything found there is current.
+`docs/superpowers/` holds only active superpowers specs and plans. Anything
+found there is current.
+
+- `docs/superpowers/specs/2026-09-05-websocket-server-echo-design.md` —
+  approved design for TODO tasks 11, 10, and 7 (WebSocket chat transport,
+  server echo, no Vite dev server), absorbing issues 2 and 3.
 
 ## Archive (historical, not authoritative)
 
