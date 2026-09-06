@@ -234,7 +234,7 @@ client. `char` must satisfy the character rule described under
 { type: "snapshot", roomId: number,
   you: { participantId: number, nextSeq: number },
   liveLines: Array<{ participantId: number, handle: string, color: string,
-                     slot: number, row: number | null, text: string, joinedAt: number }>,
+                     slot: number, row: number | null, text: string }>,
   committed: Array<{ id: string, row: number, text: string, handle: string,
                      color: string, committedAt: number }>,
   roster: Array<{ participantId: number, handle: string, color: string, slot: number }> }
