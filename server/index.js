@@ -197,7 +197,65 @@ function snapshotMessage(room, participant){
   };
 }
 
-// --- Ordered operation helpers with seq buffering ---
+// Keystroke handling functions
+function liveMessage(p, seq){
+  return {type:'live', participantId:p.id, row:p.activeLineIdx, text:p.activeContent, seq};
+}
+
+function committedMessage(line, participantId, seq){
+  return {type:'committed', participantId, seq, line:publicLine(line)};
+}
+
+function newLineId(participant){
+  return `line-${participant.id}-${Date.now()}-${Math.random().toString(36).slice(2,6)}`;
+}
+
+function storeLine(room, participant, text, row, at){
+  const line = {id:newLineId(participant), handle:participant.handle, content:text, committed:true, lineIdx:row, createdAt:at, committedAt:at.getTime(), colorSnapshot:participant.color};
+  room.lines.push(line);
+  return line;
+}
+
+// The first character claims the next row; backspacing to empty keeps it.
+function applyChar(participant, room, char){
+  if(participant.activeLineIdx == null) participant.activeLineIdx = greatestLineIdx(room)+1;
+  participant.activeContent += char;
+}
+
+function applyBackspace(participant){
+  participant.activeContent = participant.activeContent.slice(0,-1);
+}
+
+function commitLive(participant, room, at){
+  const row = participant.activeLineIdx != null ? participant.activeLineIdx : greatestLineIdx(room)+1;
+  const line = storeLine(room, participant, participant.activeContent, row, at);
+  participant.activeContent = '';
+  participant.activeLineIdx = null;
+  return line;
+}
+
+const KEY_KINDS = new Set(['char','backspace','enter']);
+
+// One ordered socket: equal seq applies, lower is a replay, higher is a gap.
+function handleKey(participant, room, msg){
+  const seq = msg.seq;
+  if(typeof seq !== 'number' || !KEY_KINDS.has(msg.kind)) return sendTo(participant, {type:'error', code:'invalid-message'});
+  if(seq < participant.nextExpectedSeq) return;
+  if(seq > participant.nextExpectedSeq) return sendTo(participant, {type:'error', code:'seq-gap', expected:participant.nextExpectedSeq});
+  participant.nextExpectedSeq++;
+  if(msg.kind==='char'){
+    if(isValidChar(msg.char)) applyChar(participant, room, msg.char);
+    return broadcast(room, liveMessage(participant, seq));
+  }
+  if(msg.kind==='backspace'){
+    applyBackspace(participant);
+    return broadcast(room, liveMessage(participant, seq));
+  }
+  const line = commitLive(participant, room, new Date());
+  broadcast(room, committedMessage(line, participant.id, seq));
+  broadcast(room, liveMessage(participant, seq));
+}
+
 function applyCharOperation(participant, room, char, seqForBroadcast){
   if(participant.activeLineIdx == null){
     participant.activeLineIdx = greatestLineIdx(room)+1;
@@ -633,6 +691,7 @@ wss.on('connection', (ws)=>{
     const participant = ws.participant;
     if(participant.socket!==ws || !ws.room.participants.has(participant.id)) return;
     participant.lastSeen = new Date();
+    if(msg && msg.type==='key') return handleKey(participant, ws.room, msg);
     sendWs(ws, {type:'error', code:'invalid-message'});
   });
   ws.on('pong', ()=>{ if(ws.participant) ws.participant.lastSeen = new Date(); });
@@ -640,7 +699,7 @@ wss.on('connection', (ws)=>{
 });
 
 // Presence is the socket: pings every 12 s, pongs refresh lastSeen.
-export function pingSockets(){
+function pingSockets(){
   for(const room of rooms.values()){
     for(const p of room.participants.values()){
       const ws = p.socket;
@@ -690,12 +749,19 @@ export {
   applyBackspaceOperation,
   applyCommitOperation,
   drainBufferedOps,
+  handleKey,
+  applyChar,
+  applyBackspace,
+  commitLive,
+  liveMessage,
+  committedMessage,
   broadcast,
   sendTo,
   snapshotMessage,
   rosterOf,
   publicLine,
   liveLineOf,
+  pingSockets,
 };
 
 // Test helpers

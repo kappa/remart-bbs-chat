@@ -145,3 +145,140 @@ describe('Server static handling', () => {
     assert.ok((await res.text()).length > 0);
   });
 });
+
+async function roomWithTwo() {
+  const roomId = await newRoom(baseUrl);
+  const alice = await join(baseUrl, roomId, 'Alice');   // announcement row 0
+  const bob = await join(baseUrl, roomId, 'Bob');       // announcement row 1
+  const a = await connect(wsUrl, alice);
+  const b = await connect(wsUrl, bob);
+  return { roomId, alice, bob, a, b, done: () => { a.ws.close(); b.ws.close(); } };
+}
+const key = (seq, kind, char) => (char === undefined ? { type: 'key', seq, kind } : { type: 'key', seq, kind, char });
+
+describe('Keystrokes', () => {
+  it('a character echoes the whole live line to sender and observer', async () => {
+    const { alice, a, b, done } = await roomWithTwo();
+    a.send(key(1, 'char', 'A'));
+    const expected = { type: 'live', participantId: alice.participantId, row: 2, text: 'A', seq: 1 };
+    assert.deepEqual(await a.next((m) => m.type === 'live'), expected);
+    assert.deepEqual(await b.next((m) => m.type === 'live'), expected);
+    done();
+  });
+
+  it('backspace shortens the line; on an empty line it still echoes and advances seq', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    a.send(key(1, 'backspace'));
+    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: null, text: '', seq: 1 });
+    a.send(key(2, 'char', 'A'));
+    a.send(key(3, 'char', 'B'));
+    a.send(key(4, 'backspace'));
+    await a.next((m) => m.type === 'live' && m.seq === 3);
+    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: 'A', seq: 4 });
+    done();
+  });
+
+  it('enter commits the line in place and clears the live line', async () => {
+    const { alice, a, b, done } = await roomWithTwo();
+    a.send(key(1, 'char', 'A'));
+    a.send(key(2, 'enter'));
+    const committed = await b.next((m) => m.type === 'committed');
+    assert.equal(committed.participantId, alice.participantId);
+    assert.equal(committed.seq, 2);
+    assert.equal(committed.line.row, 2);
+    assert.equal(committed.line.text, 'A');
+    assert.equal(committed.line.handle, 'Alice');
+    assert.equal(committed.line.color, alice.color);
+    const cleared = await b.next((m) => m.type === 'live');
+    assert.deepEqual(cleared, { type: 'live', participantId: alice.participantId, row: null, text: '', seq: 2 });
+    assert.ok(a.messages.some((m) => m.type === 'committed' && m.seq === 2), 'sender receives its own commit');
+    done();
+  });
+
+  it('enter while idle commits an empty line on a fresh row', async () => {
+    const { a, done } = await roomWithTwo();
+    a.send(key(1, 'enter'));
+    const committed = await a.next((m) => m.type === 'committed');
+    assert.equal(committed.line.text, '');
+    assert.equal(committed.line.row, 2);
+    done();
+  });
+
+  it('A Enter B Backspace C in one burst: A committed, C live, Bob untouched', async () => {
+    const { alice, bob, a, b, done } = await roomWithTwo();
+    b.send(key(1, 'char', 'X'));
+    await a.next((m) => m.type === 'live' && m.participantId === bob.participantId);
+    a.send(key(1, 'char', 'A'));
+    a.send(key(2, 'enter'));
+    a.send(key(3, 'char', 'B'));
+    a.send(key(4, 'backspace'));
+    a.send(key(5, 'char', 'C'));
+    await b.next((m) => m.type === 'live' && m.seq === 5);
+    const aliceEvents = b.messages.filter((m) => m.participantId === alice.participantId).map((m) => (m.type === 'live' ? `live:${m.text}@${m.row}` : `committed:${m.line.text}@${m.line.row}`));
+    assert.deepEqual(aliceEvents, ['live:A@3', 'committed:A@3', 'live:@null', 'live:B@4', 'live:@4', 'live:C@4']);
+    const fresh = await connect(wsUrl, alice);
+    const bobLive = fresh.snapshot.liveLines.find((l) => l.participantId === bob.participantId);
+    assert.deepEqual([bobLive.row, bobLive.text], [2, 'X']);
+    const aliceLive = fresh.snapshot.liveLines.find((l) => l.participantId === alice.participantId);
+    assert.deepEqual([aliceLive.row, aliceLive.text], [4, 'C']);
+    assert.ok(fresh.snapshot.committed.some((l) => l.text === 'A' && l.row === 3));
+    fresh.ws.close();
+    done();
+  });
+
+  it('a replayed sequence number is ignored', async () => {
+    const { a, done } = await roomWithTwo();
+    a.send(key(1, 'char', 'A'));
+    a.send(key(1, 'char', 'A'));
+    a.send(key(2, 'char', 'B'));
+    const last = await a.next((m) => m.type === 'live' && m.seq === 2);
+    assert.equal(last.text, 'AB');
+    assert.equal(a.messages.filter((m) => m.type === 'live').length, 2);
+    done();
+  });
+
+  it('a gap in sequence numbers is reported and nothing is applied', async () => {
+    const { a, done } = await roomWithTwo();
+    a.send(key(3, 'char', 'A'));
+    const err = await a.next((m) => m.type === 'error');
+    assert.deepEqual(err, { type: 'error', code: 'seq-gap', expected: 1 });
+    a.send(key(1, 'char', 'B'));
+    assert.equal((await a.next((m) => m.type === 'live')).text, 'B');
+    done();
+  });
+
+  it('an invalid character is a no-op that still advances seq', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    a.send(key(1, 'char', '\n'));
+    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: null, text: '', seq: 1 });
+    a.send(key(2, 'char', 'Ж'));
+    assert.equal((await a.next((m) => m.type === 'live')).text, 'Ж');
+    done();
+  });
+
+  it('a key without a numeric seq or with an unknown kind is invalid-message', async () => {
+    const { a, done } = await roomWithTwo();
+    a.send({ type: 'key', kind: 'char', char: 'A' });
+    assert.equal((await a.next((m) => m.type === 'error')).code, 'invalid-message');
+    a.send({ type: 'key', seq: 1, kind: 'shout' });
+    assert.equal((await a.next((m) => m.type === 'error')).code, 'invalid-message');
+    a.send(key(1, 'char', 'A'));
+    assert.equal((await a.next((m) => m.type === 'live')).text, 'A');
+    done();
+  });
+
+  it('a reconnect snapshot carries nextSeq and the last 100 committed lines by row', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    for (let seq = 1; seq <= 120; seq++) a.send(key(seq, 'enter'));
+    await a.next((m) => m.type === 'live' && m.seq === 120);
+    const fresh = await connect(wsUrl, alice);
+    assert.equal(fresh.snapshot.you.nextSeq, 121);
+    const rows = fresh.snapshot.committed.map((l) => l.row);
+    assert.equal(rows.length, 100);
+    assert.deepEqual(rows, [...rows].sort((x, y) => x - y));
+    assert.equal(rows[0], 22);
+    assert.equal(rows[99], 121);
+    fresh.ws.close();
+    done();
+  });
+});
