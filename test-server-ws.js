@@ -148,8 +148,8 @@ describe('Server static handling', () => {
 
 async function roomWithTwo() {
   const roomId = await newRoom(baseUrl);
-  const alice = await join(baseUrl, roomId, 'Alice');   // announcement row 0
-  const bob = await join(baseUrl, roomId, 'Bob');       // announcement row 1
+  const alice = await join(baseUrl, roomId, 'Alice');
+  const bob = await join(baseUrl, roomId, 'Bob');
   const a = await connect(wsUrl, alice);
   const b = await connect(wsUrl, bob);
   return { roomId, alice, bob, a, b, done: () => { a.ws.close(); b.ws.close(); } };
@@ -280,5 +280,121 @@ describe('Keystrokes', () => {
     assert.equal(rows[99], 121);
     fresh.ws.close();
     done();
+  });
+});
+
+describe('Commands', () => {
+  it('l clears the line and returns a roster command without committing', async () => {
+    const { alice, a, b, done } = await roomWithTwo();
+    a.send(key(1, 'char', 'l'));
+    a.send(key(2, 'enter'));
+    const cleared = await b.next((m) => m.type === 'live' && m.seq === 2);
+    assert.deepEqual(cleared, { type: 'live', participantId: alice.participantId, row: null, text: '', seq: 2 });
+    assert.deepEqual(await a.next((m) => m.type === 'command'), { type: 'command', name: 'roster' });
+    await settle();
+    assert.ok(!a.messages.some((m) => m.type === 'committed' && m.line.text === 'l'));
+    assert.ok(!b.messages.some((m) => m.type === 'command'), 'observers do not receive commands');
+    done();
+  });
+
+  it('? returns a help command', async () => {
+    const { a, done } = await roomWithTwo();
+    a.send(key(1, 'char', '?'));
+    a.send(key(2, 'enter'));
+    assert.deepEqual(await a.next((m) => m.type === 'command'), { type: 'command', name: 'help' });
+    done();
+  });
+
+  it('a command letter with surrounding spaces is ordinary chat', async () => {
+    const { a, done } = await roomWithTwo();
+    a.send(key(1, 'char', ' '));
+    a.send(key(2, 'char', 'q'));
+    a.send(key(3, 'enter'));
+    const committed = await a.next((m) => m.type === 'committed');
+    assert.equal(committed.line.text, ' q');
+    done();
+  });
+
+  it('q leaves: sender gets the command and is closed, observers get the announcement and roster', async () => {
+    const { alice, bob, a, b } = await roomWithTwo();
+    a.send(key(1, 'char', 'q'));
+    a.send(key(2, 'enter'));
+    assert.deepEqual(await a.next((m) => m.type === 'command'), { type: 'command', name: 'leave' });
+    await a.closed;
+    const left = await b.next((m) => m.type === 'committed' && m.line.text === '* Alice left');
+    assert.equal(left.participantId, null);
+    assert.equal(left.seq, null);
+    assert.equal(left.line.color, alice.color);
+    const roster = await b.next((m) => m.type === 'roster');
+    assert.deepEqual(roster.roster.map((r) => r.participantId), [bob.participantId]);
+    assert.ok(!b.messages.some((m) => m.type === 'committed' && m.line.text === 'q'), 'the command text is not preserved');
+    b.ws.close();
+  });
+});
+
+describe('Join, leave, and cleanup broadcasts', () => {
+  it('a join sends the announcement then the roster to existing sockets', async () => {
+    const roomId = await newRoom(baseUrl);
+    const alice = await join(baseUrl, roomId, 'Alice');
+    const a = await connect(wsUrl, alice);
+    const bob = await join(baseUrl, roomId, 'Bob');
+    const joined = await a.next((m) => m.type === 'committed');
+    assert.equal(joined.line.text, '* Bob joined');
+    assert.equal(joined.line.row, 1);
+    assert.equal(joined.line.color, bob.color);
+    const roster = await a.next((m) => m.type === 'roster');
+    assert.deepEqual(roster.roster.map((r) => r.handle), ['Alice', 'Bob']);
+    a.ws.close();
+  });
+
+  it('HTTP leave preserves nonempty text, announces, updates the roster, and closes the socket', async () => {
+    const { alice, a, b } = await roomWithTwo();
+    a.send(key(1, 'char', 'h'));
+    a.send(key(2, 'char', 'i'));
+    await b.next((m) => m.type === 'live' && m.seq === 2);
+    await post(baseUrl, '/api/leave', { roomId: alice.roomId, participantId: alice.participantId, token: alice.token });
+    const preserved = await b.next((m) => m.type === 'committed');
+    assert.deepEqual([preserved.line.text, preserved.line.row, preserved.line.color], ['hi', 2, alice.color]);
+    const left = await b.next((m) => m.type === 'committed');
+    assert.deepEqual([left.line.text, left.line.row], ['* Alice left', 3]);
+    assert.equal((await b.next((m) => m.type === 'roster')).roster.length, 1);
+    await a.closed;
+    b.ws.close();
+  });
+
+  it('leaving with an empty live line preserves nothing', async () => {
+    const { alice, b } = await roomWithTwo();
+    await post(baseUrl, '/api/leave', { roomId: alice.roomId, participantId: alice.participantId, token: alice.token });
+    const first = await b.next((m) => m.type === 'committed');
+    assert.equal(first.line.text, '* Alice left');
+    b.ws.close();
+  });
+
+  it('stale cleanup preserves text at the last-seen time and announces', async () => {
+    const { alice, bob, a, b } = await roomWithTwo();
+    a.send(key(1, 'char', 'z'));
+    await b.next((m) => m.type === 'live');
+    const room = rooms.get(alice.roomId);
+    const lastSeen = new Date(Date.now() - 60000);
+    room.participants.get(alice.participantId).lastSeen = lastSeen;
+    serverModule.cleanupStaleInRoom(room);
+    const preserved = await b.next((m) => m.type === 'committed');
+    assert.deepEqual([preserved.line.text, preserved.line.committedAt], ['z', lastSeen.getTime()]);
+    assert.equal((await b.next((m) => m.type === 'committed')).line.text, '* Alice left');
+    assert.deepEqual((await b.next((m) => m.type === 'roster')).roster.map((r) => r.participantId), [bob.participantId]);
+    b.ws.close();
+  });
+
+  it('committed lines keep the author color after leaving', async () => {
+    const { alice, a, b } = await roomWithTwo();
+    a.send(key(1, 'char', 'x'));
+    a.send(key(2, 'enter'));
+    await b.next((m) => m.type === 'live' && m.seq === 2);
+    await post(baseUrl, '/api/leave', { roomId: alice.roomId, participantId: alice.participantId, token: alice.token });
+    await b.next((m) => m.type === 'roster');
+    const colors = b.messages.filter((m) => m.type === 'committed' && m.line.handle === 'Alice').map((m) => m.line.color);
+    assert.ok(colors.length >= 2);
+    assert.ok(colors.every((c) => c === alice.color));
+    b.ws.close();
   });
 });
