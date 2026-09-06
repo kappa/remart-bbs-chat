@@ -1,8 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { App } from './App';
+import { FakeWebSocket } from './testing/fakeWebSocket';
 import userEvent from '@testing-library/user-event';
 import { api } from './api';
-import { renderJoined, serverSend, snapshot, line, alice, bob, idle, typing } from './testing/roomFixtures';
+import { renderJoined, serverSend, snapshot, line, alice, bob, idle, typing, storeSession, queryClient } from './testing/roomFixtures';
 
 vi.mock('./api', () => ({
   api: { listRooms: vi.fn(), getOrCreateRoom: vi.fn(), joinRoom: vi.fn(), leaveRoom: vi.fn(), getRoster: vi.fn() },
@@ -12,10 +15,19 @@ vi.mock('./api', () => ({
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.clearAllMocks(); (api.listRooms as any).mockResolvedValue({ rooms: [] }); });
 
 describe('Rendering from server state', () => {
-  it('shows Connecting until the snapshot arrives', async () => {
-    const { ws } = await renderJoined(snapshot());
+  it('shows Connecting until the snapshot arrives, then Reconnecting after a close', async () => {
+    storeSession();
+    render(<QueryClientProvider client={queryClient()}><App /></QueryClientProvider>);
+    expect(await screen.findByText('Connecting...')).toBeInTheDocument();
+    const ws = await waitFor(() => {
+      const socket = FakeWebSocket.latest();
+      if (!socket.sent.some((m) => m.type === 'hello')) throw new Error('no hello yet');
+      return socket;
+    });
+    expect(screen.getByText('Connecting...')).toBeInTheDocument();
+    serverSend(ws, snapshot());
     expect(screen.queryByText('Connecting...')).not.toBeInTheDocument();
-    ws.serverClose();
+    act(() => ws.serverClose());
     expect(await screen.findByText('Reconnecting...')).toBeInTheDocument();
   });
 
