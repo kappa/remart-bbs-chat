@@ -31,6 +31,44 @@ checkboxes. Keep task numbers stable; execute the open tasks in this order:
 | 9 | 15 — Join-sound switch | Needs a working chirp from task 20. |
 | 10 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
 
+## Working a task
+
+These rules apply to every task below and are written for an agent that has
+only this file, `AGENTS.md`, and the repository.
+
+- Read `AGENTS.md` first, then the task. The task's **Location** names the
+  code to read; read it before changing anything. If the code disagrees with
+  the task, the code is right about the present and the task is right about
+  the goal: say so in the commit message and do the goal.
+- Work test-first: write the failing test, watch it fail, make it pass, then
+  refactor. A test that passes before the change proves nothing.
+- One task per branch and per commit series; never mix tasks. Commit messages
+  say what changed and why, in plain sentences, with no trailers, links to
+  chat sessions, or tool names.
+- Update the docs named in the task in the same commit as the code:
+  `docs/PROTOCOL.md` for anything on the wire, `docs/USER_EXPERIENCE.md` for
+  anything a user notices, `docs/DESIGN.md` for a changed rationale, and the
+  "Behavior to preserve" list in `AGENTS.md` for a changed rule.
+- Before claiming done, run all of these and paste the results into the
+  commit message or the report:
+
+  ```sh
+  npm test
+  npm --prefix client test
+  npm --prefix client run typecheck
+  npm --prefix client run build
+  npm run check:browser
+  ```
+
+  The browser check needs a built client and a `google-chrome` binary. If it
+  cannot run, say so; do not skip it silently.
+- When the task names a decision it does not settle, and the choice would
+  change what the user sees or what goes over the wire, stop and report
+  instead of guessing. Everything else is yours to decide; write the decision
+  down in the commit message.
+- Close the GitHub issue named in **Source** when the task is merged, with a
+  one-line comment naming the commit.
+
 ## 1. Require participant authorization for mutations
 
 - [x] **High priority** (done: per-participant token issued at join, required for char/backspace/commit/heartbeat/leave)
@@ -101,23 +139,66 @@ checkboxes. Keep task numbers stable; execute the open tasks in this order:
 ## 5. Delete Unicode characters without corrupting surrogate pairs
 
 - [ ] **Bug**
-- **Location:** `server/index.js` `applyBackspace`. Since server echo this is
-  the only deletion site: the client sends a `backspace` keystroke and renders
-  the echoed live line, so no client code changes.
-- **Problem:** `slice(0, -1)` deletes one UTF-16 code unit. Deleting `😀` leaves
-  an unpaired surrogate instead of empty text; this was reproduced.
-- **Suggested fix:** Delete one code point on the server, for example
-  `Array.from(text).slice(0, -1).join('')`. Decide whether a combining
-  sequence (a base character plus marks, or an emoji with modifiers) counts as
-  one unit or several, and write it down; code point is acceptable for now.
-  Task 14 adds forward deletion and caret movement and must use the same unit.
-- **Acceptance:** One backspace removes a single emoji without malformed
-  text, and all viewers converge. Cover ASCII, Cyrillic, supplementary Unicode
-  characters, and the chosen behavior for combining sequences, in
-  `test-server-ws.js`.
-- **Protocol docs:** Update [PROTOCOL.md](docs/PROTOCOL.md) with the deletion unit
-  and any changed validation or position semantics, replacing the current
-  UTF-16 deletion limitation.
+- **Location:** `server/index.js` `applyBackspace` (one line: `liveText.slice(0,-1)`).
+  Since server echo this is the only deletion site: the client sends a
+  `backspace` keystroke and renders the echoed live line, so no client code
+  changes. Tests: `test-server-ws.js`, the "Keystrokes" block, next to
+  "backspace shortens the line".
+- **Problem:** `slice(0, -1)` deletes one UTF-16 code unit. Deleting `😀`
+  leaves an unpaired surrogate instead of empty text; this was reproduced.
+- **Facts to rely on:**
+  - Input already arrives one code point at a time. `isValidChar` on both
+    sides accepts a string only if `Array.from(char).length === 1`, and the
+    client splits pasted text with `Array.from`, so a combining sequence such
+    as `e` + U+0301 reaches the server as two `char` keystrokes and is stored
+    as two code points.
+  - Live text is therefore a sequence of code points, and the deletion unit
+    that matches the input unit is one code point.
+- **Decision (settled here):** Backspace deletes one code point. A combining
+  mark or an emoji modifier is its own code point and takes its own
+  Backspace. Grapheme clusters (`Intl.Segmenter`) are not used now; if a
+  later task wants grapheme deletion it changes the unit on both input and
+  deletion together. Task 14 adds forward deletion and caret movement and
+  must use this same unit.
+- **Suggested fix:** Replace the body of `applyBackspace` with a code-point
+  deletion, for example:
+
+  ```js
+  function applyBackspace(participant){
+    const cps = Array.from(participant.liveText);
+    participant.liveText = cps.slice(0, -1).join('');
+  }
+  ```
+
+  Nothing else on the server changes: row ownership, the empty-line echo,
+  and sequence handling stay as they are.
+- **Guardrails:**
+  - Do not touch `isValidChar` or the paste splitting; they already work in
+    code points.
+  - Do not change the `live` message shape or add a deletion-unit field to
+    the protocol; the unit is a rule, documented in prose.
+  - Do not add client-side deletion logic; the client must keep rendering
+    only what the server echoes.
+  - Backspace on an empty line must still echo the unchanged live line and
+    advance `seq` (an existing test covers it; keep it green).
+- **Tests (write first, in `test-server-ws.js`):**
+  - `😀` then Backspace echoes `text: ''` and the row is kept.
+  - `aЖ😀` then Backspace echoes `aЖ`; a second Backspace echoes `a`.
+  - `e` + U+0301 then Backspace echoes `e` (documents the combining-mark
+    rule).
+  - Each new test must fail on the current code: the first one currently
+    echoes a lone surrogate.
+- **Docs:** In `docs/PROTOCOL.md` under the socket "Edge cases", add one
+  sentence: Backspace removes one code point; combining marks are separate
+  code points. In `docs/USER_EXPERIENCE.md`, in the typing section that
+  describes Backspace, add that an emoji or a Cyrillic letter is one
+  character to delete. Add the code-point rule to the "Behavior to preserve"
+  list in `AGENTS.md` next to the Unicode-input bullet.
+- **Success criteria:**
+  - The three new server tests fail before the change and pass after it.
+  - `npm test` passes with no other test changed.
+  - The client suite, type check, build, and `npm run check:browser` pass.
+  - The three doc edits are in the same commit as the code.
 
 ## 6. Repair the build entry point and setup documentation
 
@@ -287,65 +368,104 @@ checkboxes. Keep task numbers stable; execute the open tasks in this order:
 - [ ] **Requested feature, high priority**
 - **Goal:** Seed a new participant's transcript with up to 20 existing committed
   lines, then continue showing live typing and subsequent committed lines.
-- **Code:** [Room storage, join handler, and snapshot assembly](server/index.js),
-  [join-time filtering](client/src/roomState.ts),
-  [the session's joinedAt](client/src/useRoomConnection.ts),
-  [wire types](client/src/protocol.ts), and
-  [document ordering helpers](client/src/documentLines.ts).
-  Review `room.lines`, `snapshotMessage`, `/api/join`, the two
-  `committedAt >= joinedAt` checks in `applyServerMessage` (`snapshot` and
-  `committed`), and `readSession` in `App.tsx`, which rejects a stored session
-  without `joinedAt`.
+- **Location:**
+  - `server/index.js`: the `/api/join` route (it runs `cleanupStaleInRoom`,
+    computes `joinRowIdx`, builds the participant, stores the join
+    announcement through `storeLine`, and returns `participant` with
+    `joinedAt`); `snapshotMessage` (last 100 lines of `room.lines` sorted by
+    `row`).
+  - `client/src/roomState.ts`: `applyServerMessage` drops lines with
+    `committedAt < joinedAt` in its `snapshot` and `committed` cases.
+  - `client/src/useRoomConnection.ts`: `RoomSession` carries `joinedAt` and
+    passes it to the reducer.
+  - `client/src/App.tsx`: the `Session` type, `readSession` (rejects a stored
+    session without a numeric `joinedAt`), and `finishJoin` (builds the
+    session from the join response).
+  - `client/src/api.ts`: `JoinedParticipant` type of the join response.
+  - Tests: `test-server-api.js` (join), `test-server-ws.js` (snapshot),
+    `client/src/roomState.test.ts`, `client/src/App.rendering.test.tsx`
+    ("lines committed before the join are not shown"),
+    `client/src/App.regression.test.tsx` (truncated snapshot, session switch),
+    and the fixtures in `client/src/testing/roomFixtures.tsx` (`SESSION`).
 - **Existing behavior:** The server stores committed lines in memory in
-  `room.lines`, and the `snapshot` sent on every socket connect carries the
-  last 100 sorted by row. The client accumulates every committed line seen
-  since the session began and drops lines committed before the session's
-  `joinedAt`, which comes from the join response. No database or new
-  persistence service is needed. The 100-line snapshot limit does not bound
-  stored history.
-- **Scope and interpretation:**
-  - Count logical committed transcript lines, not screen rows produced by
-    wrapping. Use transcript order (`row`) to select the last 20 and show
-    them oldest to newest; commit arrival order can differ during concurrent
-    typing. Preserve author color snapshots and blank lines.
-  - Treat existing join/leave announcements as transcript lines within the 20.
-    Select the historical window before adding the new participant's own join
-    announcement. Live drafts are separate current state, not part of the 20.
-  - Show all available committed lines when fewer than 20 exist. Keep rooms
-    ephemeral: history disappears when the room is deleted or the server
-    restarts. Persistence across empty rooms or restarts is outside this task.
-- **Work:**
-  - Define the initial history selection in the server's join/snapshot contract.
-    Capture it at a defined point and deliver later events without gaps or
-    duplicates, including commits occurring during join.
-  - Replace blanket pre-join filtering with the selected initial window plus
-    subsequent events. Do not simply expose the entire 100-line recovery snapshot.
-  - Seed the viewer's accumulated history once for a new session. Later snapshots
-    or reconnections must not truncate already-seen scrollback to 20 lines or
-    introduce older pre-join lines outside the selected window. Deduplicate by
-    stable line identity and reset history when changing sessions/rooms.
-  - Reuse existing in-memory storage. Keep the initial 20-line display limit
-    distinct from storage retention and recovery limits; do not trim `room.lines`
-    to 20 without accounting for recovery and monotonic line-index allocation.
-  - Update [UX](docs/USER_EXPERIENCE.md), [design](docs/DESIGN.md),
-    [README](README.md), and [agent guidance](AGENTS.md) when implemented to
-    replace the current promise that no pre-join text is shown.
-- **Tests:** Add server selection/snapshot tests and client rendering tests for
-  rooms with 0, fewer than 20, exactly 20, and more than 20 existing lines.
-  Cover commit order differing from transcript order, blank/system lines,
-  departed-author colors, concurrent join/commit, reconnect deduplication,
-  accumulated scrollback longer than 20, and room switching.
+  `room.lines`; the `snapshot` sent on every socket connect carries the last
+  100 sorted by row. The client accumulates every committed line seen since
+  the session began and hides lines committed before the session's
+  `joinedAt`. No database or new persistence service is needed. The 100-line
+  snapshot limit does not bound stored history.
+- **Decision (settled here): a row boundary chosen at join.** At join, before
+  the participant's own announcement is stored, the server selects the last
+  20 committed lines by row and records the smallest row among them as the
+  participant's `historyFromRow` (when the room has no committed lines, use
+  `joinRowIdx`). The client shows a committed line when
+  `line.row >= historyFromRow || line.committedAt >= joinedAt`. The first
+  clause is the 20-line window, exact by construction (rows are unique per
+  line and ordered as the transcript). The second clause keeps a line whose
+  row was claimed before the join but committed after it, so a line the
+  newcomer watched being typed does not vanish when it commits. `joinedAt`
+  stays; `historyFromRow` is added next to it everywhere `joinedAt` travels:
+  join response, stored session, hook, reducer.
+- **Work, in this order:**
+  1. Server test in `test-server-api.js`: join responses carry
+     `participant.historyFromRow` equal to the row of the 20th-newest line, or
+     the join announcement's row when fewer than 20 exist (cover 0, 5, 20, 25
+     existing lines; drive lines through a socket with Enter as the existing
+     snapshot test does). Then implement in `/api/join`: compute before
+     `storeLine(... joined ...)`, store on the participant object, include in
+     the response. Order the candidate lines by `row`, not by array order;
+     `room.lines` is in commit order, which differs during concurrent typing.
+  2. Client types: add `historyFromRow: number` to `JoinedParticipant`
+     (`api.ts`), `Session` (`App.tsx`), `RoomSession`
+     (`useRoomConnection.ts`), and the `SESSION` fixture. `readSession`
+     rejects a stored session without a numeric `historyFromRow`, the same
+     way it rejects one without `joinedAt` (users from before this change
+     rejoin once).
+  3. Reducer tests in `roomState.test.ts`, then change `applyServerMessage`
+     to take `{ joinedAt, historyFromRow }` and apply the rule above in both
+     the `snapshot` and `committed` cases. Cases: exactly 20 shown from 25;
+     all 5 shown from 5; a line with a row below the boundary but committed
+     after `joinedAt` is shown; a line with a row below the boundary and
+     committed before `joinedAt` is hidden; a later, truncated snapshot adds
+     nothing older and removes nothing.
+  4. Rendering test: a snapshot with 25 committed lines and
+     `historyFromRow` set to the 6th line's row renders the last 20 in row
+     order with their stored colors, including a `* Bob joined` announcement
+     and a blank line inside the window.
+  5. Docs (same commit): `docs/PROTOCOL.md` join response example and field
+     list, the stored-session shape under "Identity and stored state", the
+     "Client behavior" sentence about hidden lines, and the snapshot section
+     (the 100-line snapshot is unchanged; the window is a client rule fed by
+     the join response). `docs/DESIGN.md` line "Nothing from before you
+     joined is shown" becomes the 20-line rule with its reason (enough to
+     follow the conversation, not the whole history). `docs/USER_EXPERIENCE.md`
+     bullet "You see everything written since you joined. Nothing from before
+     you..." becomes: the last 20 lines from before you joined, then
+     everything since. `AGENTS.md` "Behavior to preserve": replace the
+     `joinedAt` sentence with the two-clause rule.
+- **Guardrails:**
+  - Do not trim `room.lines`, change the 100-line snapshot, or add a second
+    history request; the window is a filter over what the snapshot already
+    carries.
+  - Do not remove `joinedAt`; the second clause needs it.
+  - Do not select by `committedAt`: millisecond ties make the count inexact.
+  - Do not count live lines or the newcomer's own announcement in the 20; the
+    boundary is computed before that announcement exists.
+  - Keep `applyServerMessage` pure and keep its identity-preserving returns
+    (a no-op message returns the same object).
+  - Keep the reconnect behavior: a later snapshot never removes accumulated
+    lines and never adds lines older than the window.
 - **Acceptance:** New participants see exactly the last 20 existing committed
   transcript lines (or all if fewer), in server transcript order and original
   colors, plus current live state and subsequent events. Existing viewers lose
   no scrollback. Resizing does not change which logical lines were selected.
-- **Order:** Implement after task 10 so it uses the final server-echo rendering
-  path. Include its tests under task 9 before proceeding to final helper
-  consolidation.
-- **Protocol docs:** Update [PROTOCOL.md](docs/PROTOCOL.md) with initial-history
-  payloads, the 20-line selection rule and join boundary, snapshot/event ordering,
-  and reconnect behavior. Replace the current no-pre-join-history description
-  and update join/snapshot examples in the same change as the feature.
+- **Success criteria:**
+  - The new server, reducer, and rendering tests fail before their step and
+    pass after it; the whole server and client suites pass.
+  - `npm run check:browser` passes; then extend it or check by hand: Alice
+    commits 25 lines, Bob joins and sees lines 6 to 25 followed by
+    `* Bob joined`; Alice's tab still shows all 25.
+  - Type check and build pass; the four doc files are updated in the same
+    commit.
 
 ## Product issues from GitHub
 
@@ -360,62 +480,195 @@ Close the GitHub issue when the task is done.
 
 - [ ] **Bug**
 - **Source:** [GitHub issue #2](https://github.com/kappa/remart-bbs-chat/issues/2).
-- **Location:** `client/src/App.tsx` session view: the chat area's click
-  handler that focuses the hidden keyboard textarea, and the transcript rows.
+- **Location:** `client/src/App.tsx`: the session view's
+  `<section id="chat-area" ... onClick={focusKeyboard}>`, `focusKeyboard`
+  (focuses the hidden `.keyboard-capture` textarea with `preventScroll`),
+  `onKeyDown` (attached to the same section), and the `Escape` listener on
+  `document` that closes help, which is the pattern for a document-level key
+  listener. Transcript rows are keyed by `row.key` from `computeDocumentLines`
+  (line ids for committed rows, participant ids for live rows). Tests:
+  `client/src/App.rendering.test.tsx` and the fixtures in
+  `client/src/testing/roomFixtures.tsx` (`renderJoined`).
 - **Problem:** Selecting a piece of the transcript with the mouse is lost the
-  moment the button is released. The click handler on the chat area focuses
-  the hidden textarea on every click, including the mouseup that ends a drag,
-  and focusing a textarea collapses the document selection. Re-renders that
-  replace row elements can also drop a selection.
-- **Suggested fix:** Focus the keyboard only when the click did not end a
-  selection: check `window.getSelection()` for a non-collapsed range before
-  focusing, or focus on `mousedown` without a subsequent drag. Keep row keys
-  stable so echo updates re-render in place (row keys already use line ids
-  and participant ids; verify no wrapper element is recreated). Typing must
-  still work after a plain click, and a selection must not block typing when
-  the user starts typing again.
+  moment the button is released. The `click` that ends a drag runs
+  `focusKeyboard`, and focusing a textarea collapses the document selection.
+  A second effect: clicking non-focusable transcript text blurs the textarea,
+  so after a selection the next keystroke goes nowhere until the user clicks
+  again.
+- **Decision (settled here):**
+  - The chat area's click handler focuses the keyboard only when the document
+    selection is collapsed. Read it at click time with
+    `window.getSelection()`; treat `null`, `rangeCount === 0`, or
+    `isCollapsed` as "no selection".
+  - Typing must work without a click after a selection. Move keystroke
+    handling to a `document` `keydown` listener that is active only while a
+    session exists and only when `document.activeElement` is the body, the
+    chat section, or the keyboard textarea. When it accepts a key, it focuses
+    the textarea (so mobile input and later keys land there) and handles the
+    key exactly as `onKeyDown` does today. Keys arriving while a button, the
+    lobby input, or the help overlay has focus are left alone.
+- **Suggested fix:**
+  1. Test first (rendering suite): render joined; create a range over a
+     committed line's text node and add it to `window.getSelection()`; fire a
+     `click` on the chat area; assert `document.activeElement` is not the
+     textarea and the selection is still not collapsed. A second test: with a
+     collapsed selection, the click focuses the textarea (this passes today;
+     it guards the regression).
+  2. Change `focusKeyboard`'s caller on the section to a small handler that
+     checks the selection and then calls `focusKeyboard`. Keep the "Type"
+     button and the post-join focus timer calling `focusKeyboard` directly.
+  3. Test: after the selection test's click, `fireEvent.keyDown(document.body,
+     { key: 'A' })` sends `{ kind: 'char', char: 'A' }` over the fake socket
+     and focuses the textarea. And: with a roster button focused, the same
+     keydown sends nothing.
+  4. Register the document listener in an effect keyed on `session`, reuse the
+     `onKeyDown` logic (extract the key-to-keystroke mapping into a function
+     both paths call), and remove or keep the section's `onKeyDown` as a
+     no-op; keeping both must not send a keystroke twice, so test that one
+     `A` produces exactly one `char` message.
+  5. Verify by hand in Chrome and Firefox: drag across three lines, release,
+     press Ctrl+C, paste elsewhere; then type without clicking and see the
+     text echo.
+- **Guardrails:**
+  - Do not call `preventDefault` on `mousedown` in the chat area; that is what
+    would stop the browser from selecting text at all.
+  - Do not change `user-select` in CSS.
+  - Do not move focus on `mousedown`; the selection has not happened yet.
+  - Ctrl+C, Ctrl+V, Ctrl+A and other modifier combinations must keep their
+    browser meaning: the existing early return on `metaKey || ctrlKey ||
+    altKey` in the key handler stays.
+  - Do not re-render the transcript on selection changes; nothing in state
+    should track the selection.
+  - Row keys stay as they are; do not wrap the transcript in a new element
+    that is recreated on every message.
 - **Acceptance:** Select text across several transcript lines with the mouse,
   release, and the selection stays; Ctrl+C copies it. A plain click still
   focuses input. Incoming echoes and committed lines do not clear an existing
-  selection. Works on desktop browsers; on mobile the native selection
-  handles behave as usual.
-- **Tests:** Client test that a mouseup with a non-collapsed selection does
-  not focus the textarea, and that a click with a collapsed selection does.
-- **Protocol docs:** none.
+  selection. Typing after a selection, without clicking, still reaches the
+  room. On mobile the native selection handles behave as usual.
+- **Success criteria:**
+  - The selection-click test and the document-keydown test fail before the
+    change and pass after it; the double-send test passes.
+  - Every existing client test passes unchanged, in particular the fast-input
+    tests in `App.race.test.tsx`, which type through the chat area.
+  - `npm run check:browser` passes (it clicks the chat area before typing).
+  - The manual Chrome and Firefox check is recorded in the commit message.
+  - `docs/USER_EXPERIENCE.md` mentions that transcript text can be selected
+    and copied.
 
 ## 14. Edit the live line with arrows, Delete, Home, and End
 
 - [ ] **Requested feature**
 - **Source:** [GitHub issue #3](https://github.com/kappa/remart-bbs-chat/issues/3).
-- **Location:** `client/src/App.tsx` key handling and live-line rendering;
-  `server/index.js` keystroke handling and live-line state;
-  `docs/PROTOCOL.md` keystroke and `live` message schemas.
+- **Depends on:** task 5 (the code-point deletion unit). Do task 5 first.
+- **Location:**
+  - `server/index.js`: `KEY_KINDS`, `handleKey` (sequence rules, then one
+    branch per kind), `applyChar` (appends and claims a row on the first
+    character), `applyBackspace`, `commitLive` and the command branch (both
+    clear `liveText` and `liveRow`), `liveMessage` (`{type, participantId,
+    row, text, seq}`), `liveLineOf` (snapshot live lines), `removeParticipant`
+    (preserves nonempty live text).
+  - `client/src/protocol.ts`: `KeyInput`, `LiveLine`, the `live` message.
+  - `client/src/App.tsx`: `onKeyDown` (returns early on any modifier; handles
+    Backspace, Enter, single characters), `onKeyboardInput` (mobile input
+    events by `inputType`), `onPaste`, and the own live row rendering, which
+    prints `participant.text` followed by the `.caret` span.
+  - `client/src/roomState.ts`: the `live` case copies `row` and `text`.
+  - `client/src/theme.css`: `.caret`.
+  - Tests: `test-server-ws.js` "Keystrokes" block, `client/src/roomState.test.ts`,
+    `client/src/App.race.test.tsx`, `client/src/App.rendering.test.tsx`,
+    `client/src/App.regression.test.tsx`.
 - **Problem:** A live line can only be appended to and backspaced. Arrow
   keys, Ctrl+Arrow, Delete, Home, and End do nothing, so a typo early in a
   long line means deleting everything after it.
-- **Suggested fix:** Give each live line a caret position kept on the server,
-  since the server owns the live line. Add keystroke kinds for caret movement
-  and forward deletion (for example `left`, `right`, `word-left`,
-  `word-right`, `home`, `end`, `delete`); `char` inserts at the caret and
-  `backspace` deletes before it. Echo the caret with the live line so the
-  author's client draws the caret at the right place; observers only need
-  the text. Count in code points, not UTF-16 units, and coordinate with
-  task 5 so both deletion directions use the same unit. Word boundaries:
-  whitespace-delimited is enough. Keep Enter committing the whole line
-  regardless of caret position.
+- **Decisions (settled here):**
+  - The server owns the caret, as it owns the live line. Each participant
+    gets `liveCaret`, an index in code points into `liveText`, 0 when the
+    line is empty.
+  - New keystroke kinds: `left`, `right`, `word-left`, `word-right`, `home`,
+    `end`, `delete`. `char` inserts at the caret and moves it right by one;
+    `backspace` deletes the code point before the caret; `delete` deletes the
+    code point after it. Each is one `key` message with its own `seq`, so
+    replay, duplicate, and gap rules apply unchanged.
+  - Word boundaries are whitespace-delimited. `word-left` moves to the start
+    of the word before the caret (skipping whitespace first); `word-right`
+    moves to the end of the word after the caret (skipping whitespace first).
+  - The `live` message and snapshot live lines gain `caret: number`. It is
+    sent to everyone; only the author's client renders it.
+  - Movement on an idle line (no row) is a no-op that still echoes and
+    advances `seq`, like Backspace on an empty line does today. Movement does
+    not claim a row; only `char` does.
+  - Enter commits the whole line regardless of caret position and resets the
+    caret to 0; the commands `l`, `?`, `q` match the whole `liveText` as
+    before.
+  - Client keys: ArrowLeft, ArrowRight, Home, End, Delete; Ctrl+ArrowLeft and
+    Ctrl+ArrowRight (also Alt+Arrow on macOS) for words. The early return on
+    modifiers stays for every other key, so copy and paste keep working.
+    Mobile: `inputType === 'deleteContentForward'` maps to `delete`; caret
+    movement is not available from the on-screen keyboard and that is fine.
+  - Paste inserts at the caret because it is a burst of `char` keystrokes.
+- **Suggested fix, in this order:**
+  1. Server tests first, one per kind, on a line `abc def` with the caret
+     placed by the keys themselves: `left` from the end then `char x` gives
+     `abc dexf` and caret 7; `home` then `delete` gives `bc def`; `delete` at
+     the end and `left` at 0 are no-ops that echo; `word-left` twice from the
+     end lands at 0; `word-right` from 0 lands after `abc`; Unicode: on
+     `aЖ😀` `left` then `backspace` removes `Ж`; the snapshot's live line
+     carries `caret`; commit resets the caret to 0; an unknown kind is still
+     `invalid-message`.
+  2. Server implementation: keep `liveText` a string, operate on
+     `Array.from(liveText)` in one helper `editLive(participant, kind, char)`
+     that returns nothing and updates `liveText` and `liveCaret`; clamp the
+     caret into `[0, length]`; reset the caret wherever the line is cleared.
+     Add `caret` to `liveMessage` and `liveLineOf`.
+  3. Client types and reducer: extend `KeyInput`, add `caret` to `LiveLine`
+     and the `live` message, copy it in the reducer, and keep the
+     identity-preserving return when nothing changed (now including the
+     caret).
+  4. Client keys: test that ArrowLeft, Home, Delete, and Ctrl+ArrowRight send
+     the right kinds and that Ctrl+C sends nothing; then map them in the
+     shared key handler (see task 13 if it landed first; otherwise
+     `onKeyDown`).
+  5. Rendering: test that the own live row draws the caret at the echoed
+     position (text `abc`, caret 1: `a`, caret, `bc`) and that an observer's
+     row has no caret. Implement by splitting `Array.from(text)` at the caret.
+     Mid-line, the caret should not push text sideways: render the code point
+     under the caret in a span with a bottom border and no extra width; at
+     the end of the line keep the existing `.caret` block.
+  6. Docs (same commit): `docs/PROTOCOL.md` "Client to server" list, the
+     `live` schema, the snapshot live-line schema, the edge cases (idle-line
+     movement, deletion unit, word rule); `docs/USER_EXPERIENCE.md` typing
+     section (replace the sentence that you backspace the whole thing and
+     retype it); `AGENTS.md` behavior list (caret owned by the server, code
+     point unit).
+- **Guardrails:**
+  - Never index `liveText` by UTF-16 unit; every position is a code point.
+  - The client never predicts the caret or the text; it renders the echo.
+    Before the echo arrives, nothing moves.
+  - Do not add a separate caret message; the caret rides on `live`.
+  - Do not change row allocation, sequence rules, the command matching, or
+    the preserved-line behavior on leave.
+  - Do not render the caret for other participants and do not send the
+    author's caret to the roster or committed messages.
+  - Keep Backspace on an empty line and Enter on an idle line exactly as they
+    are (existing tests).
+  - Do not touch the local preview row (the caret shown when idle) except to
+    keep it the existing end-of-line block.
 - **Acceptance:** Left/Right move one character, Ctrl+Left/Right one word,
   Home/End to the ends, Delete removes the character after the caret,
   Backspace the one before; typing inserts at the caret. Everyone sees the
   resulting text after the echo, only the author sees the caret. Emoji and
   Cyrillic move and delete as single characters. Paste inserts at the caret.
   Mobile input without these keys is unaffected.
-- **Tests:** Server tests for each new keystroke kind including boundaries
-  (caret at 0, at the end, empty line) and Unicode; client tests that keys
-  are sent, that nothing renders before echo, and that the caret is drawn at
-  the echoed position.
-- **Protocol docs:** Add the new keystroke kinds, the caret field on `live`
-  and snapshot live lines, and the code-point unit to
-  [PROTOCOL.md](docs/PROTOCOL.md) in the same change.
+- **Success criteria:**
+  - New server, reducer, key-mapping, and rendering tests fail before their
+    step and pass after; both suites pass in full.
+  - Type check and build pass; `npm run check:browser` passes and is extended
+    with one sequence: type `abd`, Left, type `c`, Enter, and both tabs show
+    `abcd` committed.
+  - The three doc files are updated in the same commit; the sequence
+    diagram in PROTOCOL.md still renders (it is Mermaid, not JSON) and shows
+    `caret` on its `live` messages.
 
 ## 15. Add a client-side switch to turn off the join sound
 
@@ -529,33 +782,95 @@ Close the GitHub issue when the task is done.
 
 - [ ] **Bug**
 - **Source:** [GitHub issue #8](https://github.com/kappa/remart-bbs-chat/issues/8).
-- **Location:** `client/index.html` viewport meta; `client/src/theme.css`
-  layout of `#container` and `#chat-area`; `client/src/App.tsx` scroll
-  handling and the hidden keyboard textarea.
+- **Location:**
+  - `client/index.html`: the viewport meta
+    (`width=device-width, initial-scale=1, viewport-fit=cover`).
+  - `client/src/theme.css`: `html, body, #root` are `height:100%` with
+    `overflow:hidden`; `#container` is a flex row with `height:100vh` then
+    `height:100dvh`; `#chat-area` scrolls (`overflow-y:auto`); `#roster` is a
+    160px sticky column; `.keyboard-capture` is the hidden textarea, fixed at
+    `left:2px; bottom:2px`, 2px square.
+  - `client/src/App.tsx`: `wasNearBottomRef`, the effect that sets
+    `chat.scrollTop = chat.scrollHeight` when `documentLines` change and the
+    reader was near the bottom, `onChatScroll` (near-bottom means within
+    80px), and `focusKeyboard`.
+  - `docs/USER_EXPERIENCE.md` "On a phone" section.
+  - Tests: `client/src/App.regression.test.tsx` "a reader scrolled up is not
+    yanked down", which shows how the tests fake `scrollHeight` and
+    `clientHeight`.
 - **Problem:** On phones the chat works, but when the on-screen keyboard
-  opens it covers the bottom of the transcript, which is where the caret and
-  the newest lines are. The layout uses the full layout viewport, which does
-  not shrink when the keyboard appears on iOS Safari and, depending on
-  settings, on Android Chrome.
-- **Suggested fix:** Size the session layout to the visual viewport: add
-  `interactive-widget=resizes-content` to the viewport meta for browsers
-  that honor it, and listen to `window.visualViewport` `resize` and `scroll`
-  events to set the chat area's height to `visualViewport.height` (or a CSS
-  variable used by the layout). When the keyboard opens and the reader was
-  at the bottom, scroll the chat to the bottom again so the caret row stays
-  visible. Prefer `100dvh` over `100vh` where the CSS uses viewport units.
-  Keep the roster usable in the reduced space (it may collapse to a strip on
-  narrow screens; that is a separate decision).
+  opens it covers the bottom of the transcript, where the caret and the
+  newest lines are. The layout fills the layout viewport, which does not
+  shrink when the keyboard appears on iOS Safari and, depending on settings,
+  on Android Chrome; the page is scrolled instead, and the fixed textarea at
+  the bottom edge invites iOS to scroll the page to reveal it.
+- **Decisions (settled here):**
+  - Size the session layout to the visual viewport, driven by
+    `window.visualViewport`: on its `resize` and `scroll` events set two CSS
+    variables on the `#container` element, `--app-height` to
+    `visualViewport.height` in px and `--app-offset` to
+    `visualViewport.offsetTop` in px. CSS uses
+    `height: var(--app-height, 100dvh)` and
+    `transform: translateY(var(--app-offset, 0px))` on `#container`.
+  - Add `interactive-widget=resizes-content` to the viewport meta; browsers
+    that honor it shrink the layout viewport and the variables then simply
+    match it.
+  - Move `.keyboard-capture` to the top-left corner (`top:2px; left:2px`)
+    so focusing it never asks the browser to scroll the bottom edge into
+    view.
+  - When the visual viewport shrinks and the reader was near the bottom
+    (`wasNearBottomRef`), scroll the chat to the bottom again after the
+    resize, using the same rule the transcript effect uses.
+  - Desktop is untouched by construction: without a keyboard the visual
+    viewport equals the layout viewport, so the variables equal `100dvh` and
+    offset 0. Browsers without `visualViewport` keep the CSS fallbacks.
+- **Suggested fix, in this order:**
+  1. Test first (regression suite): before rendering, define
+     `window.visualViewport` as an object with `height`, `offsetTop`, and
+     `addEventListener`/`removeEventListener` that store the listeners;
+     render joined; set `height` to 400 and `offsetTop` to 120 and call the
+     stored `resize` listener inside `act`; assert the container's inline
+     style has `--app-height: 400px` and `--app-offset: 120px`; with the
+     chat faked as scrolled to the bottom (see the existing scroll test),
+     assert `scrollTop` equals `scrollHeight` after the resize; with it
+     scrolled up, assert `scrollTop` is unchanged. Also assert the listeners
+     are removed on unmount.
+  2. Implement the effect in `App.tsx`, active only while a session exists,
+     reading `window.visualViewport` once and returning if it is undefined.
+  3. CSS and meta changes as decided; keep `100dvh` as the fallback and keep
+     the existing `100vh` line before it for older browsers.
+  4. Manual check on a real iPhone (Safari) and a real Android phone (Chrome):
+     open a room, tap the chat, type a long line; the caret row and the
+     newest lines stay above the keyboard; close the keyboard and the layout
+     is whole again; rotate the phone. Record model, OS version, browser
+     version, and the outcome for each in the commit message. If no device is
+     available, say so in the report and stop before merging; the desktop
+     checks alone do not close this task.
+  5. Update the "On a phone" section of `docs/USER_EXPERIENCE.md`.
+- **Guardrails:**
+  - Do not change the desktop layout, the roster width, or the scroll rules
+    for readers who scrolled up ("Do not force-scroll a viewer reading older
+    text" in `AGENTS.md`).
+  - Do not use `position:fixed` for the whole layout or lock `body` scrolling
+    with JavaScript; the transform-plus-height approach is enough.
+  - Do not scroll the window yourself except through the chat area's
+    `scrollTop`.
+  - Do not add a dependency for viewport handling.
+  - The hidden textarea must stay tiny and effectively invisible; moving it
+    must not make it visible or focusable by tab order changes.
+  - Keep the help overlay usable: it uses `100dvh` in its own max-height and
+    should follow the same variable if it overflows on a phone.
 - **Acceptance:** On iOS Safari and Android Chrome, tapping the chat opens
   the keyboard and the caret row and the newest lines remain visible above
   it; closing the keyboard restores the layout; typing a long line keeps the
   caret in view. Desktop layout is unchanged.
-- **Tests:** A jsdom test for the visual-viewport handler (stub
-  `visualViewport`, fire resize, assert the height variable and the
-  bottom-follow scroll). Record a manual check on a real iOS and Android
-  device in the commit message; there is no automated mobile browser run.
-- **Protocol docs:** none. Note the mobile behavior in
-  [USER_EXPERIENCE.md](docs/USER_EXPERIENCE.md).
+- **Success criteria:**
+  - The visual-viewport test fails before the change and passes after it;
+    the existing scroll regression test still passes.
+  - Both suites, the type check, the build, and `npm run check:browser` pass
+    (the headless check has no keyboard and must see no difference).
+  - The commit message records the two device checks with versions.
+  - `docs/USER_EXPERIENCE.md` "On a phone" describes the behavior.
 
 ## 20. Restore the join sound
 
