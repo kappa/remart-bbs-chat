@@ -63,9 +63,9 @@ globally within the process; they can repeat after a restart. A room holds its
 participants, committed lines, and subscribed sockets. No database, durable
 log, or event replay exists; restarting the server loses everything.
 
-Each participant has one live line (draft text plus an optional shared row). A
+Each participant has one live line (its text plus an optional shared row). A
 first character allocates `greatestLineIdx(room) + 1`. Committing preserves
-that row and clears draft ownership; committing without an allocated row
+that row and clears the live line; committing without an allocated row
 creates a fresh one. Backspacing a live line to empty retains its row.
 `lineSlot` is a reusable roster slot from 0 to 9, not transcript order.
 
@@ -161,7 +161,7 @@ checks. The server assigns a free color, slot, and secret participant token,
 initializes the sequence at 1, creates a join announcement, and sends
 `committed` (the announcement) and then `roster` to existing sockets. The join
 response is the only message that carries the token: it contains neither
-history nor `nextSeq` nor draft text. Its roster follows participant insertion
+history nor `nextSeq` nor live text. Its roster follows participant insertion
 order, unlike the sorted roster endpoint.
 
 | Status | Error string |
@@ -175,7 +175,7 @@ order, unlike the sorted roster endpoint.
 
 If cleanup deletes the room because its last occupant was stale, the handler
 recreates the room under the same id and name, carrying over the committed
-lines (preserved stale drafts and leave notices), then completes the join in
+lines (preserved live lines and leave notices), then completes the join in
 that live room. A successful join is therefore always followed by a
 discoverable room. Stale handles are reusable once their occupants are cleaned.
 
@@ -258,7 +258,7 @@ by slot; idle ones have `row: null` and `text: ""`.
 { type: "live", participantId: number, row: number | null, text: string, seq: number }
 { type: "committed", participantId: number | null, seq: number | null,
   line: { id: string, row: number, text: string, handle: string, color: string, committedAt: number } }
-{ type: "roster", roomId: number, roster: Array<{ participantId: number, handle: string, color: string, slot: number }> }
+{ type: "roster", roster: Array<{ participantId: number, handle: string, color: string, slot: number }> }
 ```
 
 `live` replaces the named participant's live line entirely. `row: null` with
@@ -330,9 +330,9 @@ so `" q"` is committed as text.
 ### Leave, stale cleanup, and `q`
 
 HTTP leave, stale cleanup, and the `q` command all run one removal path. A
-nonempty live line is preserved as a committed line stamped at the
-participant's last activity; then a `* <handle> left` announcement is added at
-removal time. Both are broadcast as `committed` with `participantId: null` and
+nonempty live line is preserved as a committed line: a deliberate leave stamps
+it at leave time, stale cleanup at the participant's last activity. Then a
+`* <handle> left` announcement is added at removal time. Both are broadcast as `committed` with `participantId: null` and
 `seq: null`, followed by `roster`. The participant's socket is closed. An
 emptied non-lobby room is deleted without broadcasts; newly created rooms that
 never had a participant are not removed by the stale sweep.
