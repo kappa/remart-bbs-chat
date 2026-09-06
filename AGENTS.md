@@ -125,7 +125,10 @@ the maintained docs as each change is implemented. Use TODO's recommended order.
 
 ## Change discipline
 
-Keep code well covered by meaningful tests. Cover core behavior, failure paths,
+Work test-first (TDD): for every code change, write the failing test first,
+watch it fail for the right reason, then make the minimal fix that turns it
+green. Commit each task separately before starting the next piece of work;
+never bundle independent tasks into one commit. Keep code well covered by meaningful tests. Cover core behavior, failure paths,
 and important edge cases; add or update tests alongside behavioral changes.
 Tests should verify observable behavior, including interactions across client
 and server where relevant, rather than mirror implementation details.
