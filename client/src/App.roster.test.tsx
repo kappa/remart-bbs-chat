@@ -24,7 +24,7 @@ describe('Roster', () => {
   it('a roster message adds and removes people', async () => {
     const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
     await screen.findByText('Bob');
-    serverSend(ws, { type: 'roster', roomId: 1, roster: [alice, carol] });
+    serverSend(ws, { type: 'roster', roster: [alice, carol] });
     expect(await screen.findByText('Carol')).toBeInTheDocument();
     expect(screen.queryByText('Bob')).not.toBeInTheDocument();
   });
@@ -38,7 +38,7 @@ describe('Roster', () => {
     const spy = vi.spyOn(globalThis as any, 'AudioContext');
     const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
     expect(spy).not.toHaveBeenCalled();
-    serverSend(ws, { type: 'roster', roomId: 1, roster: [alice, bob, carol] });
+    serverSend(ws, { type: 'roster', roster: [alice, bob, carol] });
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
   });
