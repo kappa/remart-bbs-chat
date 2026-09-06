@@ -342,3 +342,211 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
   payloads, the 20-line selection rule and join boundary, snapshot/event ordering,
   and reconnect behavior. Replace the current no-pre-join-history description
   and update join/snapshot examples in the same change as the feature.
+
+## Product issues from GitHub
+
+Tasks 13 to 19 come from the repository's GitHub issues, one task per issue,
+imported 2026-09-06. Task numbers stay stable; the GitHub issue number is in
+each task's **Source** line. These are product requests, not review findings.
+They have no fixed order relative to tasks 1 to 12, except where a task says
+so, and they assume the server-echo rendering path from tasks 10 and 11.
+Close the GitHub issue when the task is done.
+
+## 13. Keep a transcript text selection after the mouse is released
+
+- [ ] **Bug**
+- **Source:** [GitHub issue #2](https://github.com/kappa/remart-bbs-chat/issues/2).
+- **Location:** `client/src/App.tsx` session view: the chat area's click
+  handler that focuses the hidden keyboard textarea, and the transcript rows.
+- **Problem:** Selecting a piece of the transcript with the mouse is lost the
+  moment the button is released. The click handler on the chat area focuses
+  the hidden textarea on every click, including the mouseup that ends a drag,
+  and focusing a textarea collapses the document selection. Re-renders that
+  replace row elements can also drop a selection.
+- **Suggested fix:** Focus the keyboard only when the click did not end a
+  selection: check `window.getSelection()` for a non-collapsed range before
+  focusing, or focus on `mousedown` without a subsequent drag. Keep row keys
+  stable so echo updates re-render in place (row keys already use line ids
+  and participant ids; verify no wrapper element is recreated). Typing must
+  still work after a plain click, and a selection must not block typing when
+  the user starts typing again.
+- **Acceptance:** Select text across several transcript lines with the mouse,
+  release, and the selection stays; Ctrl+C copies it. A plain click still
+  focuses input. Incoming echoes and committed lines do not clear an existing
+  selection. Works on desktop browsers; on mobile the native selection
+  handles behave as usual.
+- **Tests:** Client test that a mouseup with a non-collapsed selection does
+  not focus the textarea, and that a click with a collapsed selection does.
+- **Protocol docs:** none.
+
+## 14. Edit the live line with arrows, Delete, Home, and End
+
+- [ ] **Requested feature**
+- **Source:** [GitHub issue #3](https://github.com/kappa/remart-bbs-chat/issues/3).
+- **Location:** `client/src/App.tsx` key handling and live-line rendering;
+  `server/index.js` keystroke handling and live-line state;
+  `docs/PROTOCOL.md` keystroke and `live` message schemas.
+- **Problem:** A live line can only be appended to and backspaced. Arrow
+  keys, Ctrl+Arrow, Delete, Home, and End do nothing, so a typo early in a
+  long line means deleting everything after it.
+- **Suggested fix:** Give each live line a caret position kept on the server,
+  since the server owns the live line. Add keystroke kinds for caret movement
+  and forward deletion (for example `left`, `right`, `word-left`,
+  `word-right`, `home`, `end`, `delete`); `char` inserts at the caret and
+  `backspace` deletes before it. Echo the caret with the live line so the
+  author's client draws the caret at the right place; observers only need
+  the text. Count in code points, not UTF-16 units, and coordinate with
+  task 5 so both deletion directions use the same unit. Word boundaries:
+  whitespace-delimited is enough. Keep Enter committing the whole line
+  regardless of caret position.
+- **Acceptance:** Left/Right move one character, Ctrl+Left/Right one word,
+  Home/End to the ends, Delete removes the character after the caret,
+  Backspace the one before; typing inserts at the caret. Everyone sees the
+  resulting text after the echo, only the author sees the caret. Emoji and
+  Cyrillic move and delete as single characters. Paste inserts at the caret.
+  Mobile input without these keys is unaffected.
+- **Tests:** Server tests for each new keystroke kind including boundaries
+  (caret at 0, at the end, empty line) and Unicode; client tests that keys
+  are sent, that nothing renders before echo, and that the caret is drawn at
+  the echoed position.
+- **Protocol docs:** Add the new keystroke kinds, the caret field on `live`
+  and snapshot live lines, and the code-point unit to
+  [PROTOCOL.md](docs/PROTOCOL.md) in the same change.
+
+## 15. Add a client-side switch to turn off the join sound
+
+- [ ] **Requested feature**
+- **Source:** [GitHub issue #4](https://github.com/kappa/remart-bbs-chat/issues/4).
+- **Location:** `client/src/App.tsx` join-sound playback and the roster
+  footer; browser `localStorage`.
+- **Problem:** The two-tone chirp on every join cannot be turned off.
+- **Suggested fix:** A checkbox in the roster footer labeled "Join sound",
+  on by default, stored under a `remart-bbs-chat.sound` key in localStorage
+  (through the existing storage helpers, which tolerate blocked storage).
+  Consult the setting where the sound is played. Any later sounds (task 17's
+  mention bell) respect the same switch or get their own; decide there.
+- **Acceptance:** Unchecking the box stops the chirp for later joins in this
+  browser; the choice survives a reload; the default is on. No server change.
+- **Tests:** Roster test that a newcomer does not construct an AudioContext
+  when the setting is off, and does when it is on; a storage test for the
+  persisted value.
+- **Protocol docs:** none. Mention the switch in
+  [USER_EXPERIENCE.md](docs/USER_EXPERIENCE.md).
+
+## 16. Make URLs in transcript lines clickable
+
+- [ ] **Requested feature**
+- **Source:** [GitHub issue #5](https://github.com/kappa/remart-bbs-chat/issues/5).
+- **Location:** `client/src/App.tsx` transcript row rendering; possibly a
+  small pure helper next to `client/src/documentLines.ts`.
+- **Problem:** A pasted link is plain text; the reader has to copy it out.
+- **Suggested fix:** At render time, split a line's text into text and link
+  segments with a conservative matcher (`http://` and `https://` followed by
+  non-whitespace, trailing punctuation excluded) and render links as anchors
+  opening in a new tab with `rel="noopener noreferrer"`. Keep the author
+  color and monospace look; underline is enough to mark a link. Stored text
+  and the wire format do not change. Apply to committed lines; for live
+  lines decide whether a half-typed URL should already be a link (probably
+  not until committed). Make sure the chat area's focus-on-click handler
+  does not swallow the click on an anchor.
+- **Acceptance:** A committed line containing `https://example.com/x` shows
+  that span as a link that opens in a new tab; surrounding text is unchanged;
+  text that merely looks like a domain without a scheme is not linked; no
+  HTML injection is possible (text stays text, only anchors are created).
+- **Tests:** Helper tests for the matcher (scheme required, trailing period
+  or comma excluded, several links in one line, Unicode around links);
+  rendering test that the anchor exists with the right href and attributes.
+- **Protocol docs:** none.
+
+## 17. Ring a bell and highlight `@nickname` mentions
+
+- [ ] **Requested feature**
+- **Source:** [GitHub issue #6](https://github.com/kappa/remart-bbs-chat/issues/6).
+- **Location:** `client/src/App.tsx` transcript row rendering and the
+  committed-line handling in the room-state path; the sound helper.
+- **Problem:** Someone addressing you with `@yourname` is easy to miss, and
+  the mention looks like any other text.
+- **Suggested fix:** Client-side only: every client knows its own handle and
+  the roster. When a committed line (not a live line, so the bell does not
+  ring on every keystroke of a half-typed name) contains `@handle` matching a
+  roster handle case-insensitively, render that token in the mentioned
+  participant's color for everyone, and play a distinct short bell on the
+  mentioned participant's client only. Mentions of handles that have since
+  left keep plain text. Respect the sound switch from task 15 or add a
+  second switch. Do not ring for lines committed before joining or for
+  snapshot replays after a reconnect: ring only for a `committed` message
+  seen for the first time.
+- **Acceptance:** Bob commits "hi @Alice"; Alice hears the bell once and
+  both see `@Alice` in Alice's color. `@alice` matches too. A line seen again
+  through a reconnect snapshot does not ring again. The join chirp and the
+  mention bell are distinguishable.
+- **Tests:** Helper tests for mention detection; rendering test for the
+  colored token; a test that the bell plays exactly once for a new committed
+  line addressed to the own handle and not for others or for snapshot lines.
+- **Protocol docs:** none.
+
+## 18. Private messages from the roster
+
+- [ ] **Requested feature**
+- **Source:** [GitHub issue #7](https://github.com/kappa/remart-bbs-chat/issues/7).
+- **Location:** `client/src/App.tsx` roster and session view;
+  `server/index.js` socket message handling; `docs/PROTOCOL.md`.
+- **Problem:** There is no way to say something to one person without the
+  whole room seeing it.
+- **Requested shape:** Click a nickname in the roster, type one line, press
+  Enter; the recipient sees it as a popup. Keep it that simple.
+- **Suggested fix:** Brainstorm and spec before implementing; this is the
+  first feature that adds a message type outside the shared transcript.
+  Points to settle: the private line is typed in a separate one-line input
+  (in the roster footer or a small overlay), not in the shared live line, so
+  the transcript and sequence numbers are untouched; a new client message
+  `private { to: participantId, text }` and a server message to the recipient
+  only `private { from: participantId, handle, color, text }`; the server
+  validates the sender's socket, the recipient's presence, and the text
+  (same character rule, a length cap); nothing is stored and nothing is
+  replayed on reconnect; the recipient sees a popup with sender handle in
+  the sender's color that dismisses on Escape, click, or a timeout; the
+  sender gets brief feedback ("sent to Bob" or "Bob has left"). Escape
+  cancels the private input and returns focus to the chat.
+- **Acceptance:** Alice clicks Bob in the roster, types "lunch?", presses
+  Enter; Bob sees a popup from Alice, Carol sees nothing, the transcript is
+  unchanged. Sending to someone who has left reports it. Private messages
+  are not in snapshots.
+- **Tests:** Server tests for delivery to the recipient only, rejection of
+  unknown recipients and bad text, and absence from snapshots; client tests
+  for the input flow, the popup, and dismissal.
+- **Protocol docs:** Add both messages, validation, and the no-persistence
+  rule to [PROTOCOL.md](docs/PROTOCOL.md); describe the feature in
+  [USER_EXPERIENCE.md](docs/USER_EXPERIENCE.md).
+
+## 19. Keep the typing position above the on-screen keyboard on mobile
+
+- [ ] **Bug**
+- **Source:** [GitHub issue #8](https://github.com/kappa/remart-bbs-chat/issues/8).
+- **Location:** `client/index.html` viewport meta; `client/src/theme.css`
+  layout of `#container` and `#chat-area`; `client/src/App.tsx` scroll
+  handling and the hidden keyboard textarea.
+- **Problem:** On phones the chat works, but when the on-screen keyboard
+  opens it covers the bottom of the transcript, which is where the caret and
+  the newest lines are. The layout uses the full layout viewport, which does
+  not shrink when the keyboard appears on iOS Safari and, depending on
+  settings, on Android Chrome.
+- **Suggested fix:** Size the session layout to the visual viewport: add
+  `interactive-widget=resizes-content` to the viewport meta for browsers
+  that honor it, and listen to `window.visualViewport` `resize` and `scroll`
+  events to set the chat area's height to `visualViewport.height` (or a CSS
+  variable used by the layout). When the keyboard opens and the reader was
+  at the bottom, scroll the chat to the bottom again so the caret row stays
+  visible. Prefer `100dvh` over `100vh` where the CSS uses viewport units.
+  Keep the roster usable in the reduced space (it may collapse to a strip on
+  narrow screens; that is a separate decision).
+- **Acceptance:** On iOS Safari and Android Chrome, tapping the chat opens
+  the keyboard and the caret row and the newest lines remain visible above
+  it; closing the keyboard restores the layout; typing a long line keeps the
+  caret in view. Desktop layout is unchanged.
+- **Tests:** A jsdom test for the visual-viewport handler (stub
+  `visualViewport`, fire resize, assert the height variable and the
+  bottom-follow scroll). Record a manual check on a real iOS and Android
+  device in the commit message; there is no automated mobile browser run.
+- **Protocol docs:** none. Note the mobile behavior in
+  [USER_EXPERIENCE.md](docs/USER_EXPERIENCE.md).
