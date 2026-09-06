@@ -21,7 +21,6 @@ export const api = {
   joinRoom:(args:{roomId:number, handle:string}):Promise<{participant:Participant & {token:string}, roster:RosterEntry[], room?:Room}> => fetchJson('/api/join', {method:'POST', body:JSON.stringify(args)}),
   leaveRoom:(args:{roomId:number, participantId:number, token?:string}):Promise<{freed:boolean}> => fetchJson('/api/leave', {method:'POST', body:JSON.stringify(args)}),
   getRoster:(args:{roomId:number}):Promise<{participants:RosterEntry[]}> => fetchJson(`/api/roster?roomId=${args.roomId}`),
-  getRoomState:(args:{roomId:number}):Promise<{history:HistoryLine[], participants:Participant[], roster:RosterEntry[]}> => fetchJson(`/api/room-state?roomId=${args.roomId}`),
 };
 
 export const keepaliveApi = {
@@ -50,7 +49,19 @@ export type WsClientMessage =
   | { type: 'hello'; roomId: number; participantId: number; token: string }
   | { type: 'key'; kind: 'char' | 'backspace' | 'enter'; seq: number; char?: string };
 
-export function openChatSocket(session: { roomId: number; participantId: number; token: string }): Promise<WebSocket> {
+export class SocketRejected extends Error {
+  code: string;
+  constructor(code: string) {
+    super(`WebSocket rejected: ${code}`);
+    this.code = code;
+  }
+}
+
+// Opens the socket, performs the hello handshake, and resolves with the
+// connection plus the initial snapshot. The snapshot is delivered to the
+// caller because the socket's message handler is not attached until after
+// the handshake resolves; re-reading it from the socket is impossible.
+export function openChatSocket(session: { roomId: number; participantId: number; token: string }): Promise<{ socket: WebSocket; snapshot: Extract<WsMessage, { type: 'snapshot' }> }> {
   return new Promise((resolve, reject) => {
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const url = `${protocol}//${window.location.host}/ws`;
@@ -61,6 +72,7 @@ export function openChatSocket(session: { roomId: number; participantId: number;
       reject(e);
       return;
     }
+    let settled = false;
     const cleanup = () => {
       ws.onopen = null;
       ws.onerror = null;
@@ -71,32 +83,41 @@ export function openChatSocket(session: { roomId: number; participantId: number;
       try {
         ws.send(JSON.stringify({ type: 'hello', roomId: session.roomId, participantId: session.participantId, token: session.token }));
       } catch (e) {
-        reject(e);
-        cleanup();
+        if (!settled) { settled = true; cleanup(); reject(e); }
         try { ws.close(); } catch {}
       }
     };
     ws.onmessage = (event) => {
+      if (settled) return;
       try {
         const msg = JSON.parse(event.data);
-        if (msg.type === 'snapshot') {
+        if (msg.type === 'error') {
+          settled = true;
           cleanup();
-          resolve(ws);
+          reject(new SocketRejected(msg.code ?? 'error'));
+          try { ws.close(); } catch {}
+          return;
+        }
+        if (msg.type === 'snapshot') {
+          settled = true;
+          cleanup();
+          resolve({ socket: ws, snapshot: msg });
         }
       } catch {}
     };
     ws.onerror = () => {
-      cleanup();
-      reject(new Error('WebSocket connection failed'));
+      if (!settled) { settled = true; cleanup(); reject(new SocketRejected('connection-failed')); }
     };
     ws.onclose = () => {
-      cleanup();
-      reject(new Error('WebSocket closed before snapshot'));
+      if (!settled) { settled = true; cleanup(); reject(new SocketRejected('closed-before-snapshot')); }
     };
     setTimeout(() => {
-      cleanup();
-      try { ws.close(); } catch {}
-      reject(new Error('WebSocket handshake timeout'));
+      if (!settled) {
+        settled = true;
+        cleanup();
+        try { ws.close(); } catch {}
+        reject(new SocketRejected('handshake-timeout'));
+      }
     }, 5000);
   });
 }

@@ -9,7 +9,7 @@ import {
   type KeyboardEvent,
   type UIEvent,
 } from "react";
-import { api, keepaliveApi, openChatSocket, sendKey, type WsMessage } from "./api";
+import { api, keepaliveApi, openChatSocket, sendKey, SocketRejected, type WsMessage } from "./api";
 import { isValidChar } from "./documentLines";
 
 type Session = {
@@ -134,31 +134,18 @@ export function App() {
     retry: false,
   });
 
-  // WebSocket is the source of truth: it delivers a snapshot, then live/committed/roster/command.
-  // Polling /api/room-state is the recovery path; it also backs reconnect.
-  const roomState = useQuery({
-    queryKey: ["room-state", session?.roomId],
-    queryFn: () => api.getRoomState({ roomId: session!.roomId }),
-    enabled: session !== null,
-    refetchInterval: 2000,
-    retry: false,
-  });
+  // The socket is the only source of room state: a snapshot on hello, then
+  // live/committed/roster/command events. Recovery is reconnect + fresh
+  // snapshot; there is no HTTP polling.
+  const [room, setRoom] = useState<{ roomId: number; history: any[]; participants: any[]; roster: any[] } | null>(null);
+  const [connecting, setConnecting] = useState(false);
 
-  useEffect(() => {
-    if (!session) return;
-
-    const sessionFailed = roomState.isError;
-    const participantExpired =
-      roomState.isSuccess &&
-      !roomState.data.participants.some(
-        (participant) => participant.id === session.participantId,
-      );
-
-    if (!sessionFailed && !participantExpired) return;
+  const endSession = (message: string) => {
     storageRemove("session", SESSION_KEY);
     setSession(null);
-    setError("Room session ended. Join again.");
-  }, [roomState.data, roomState.isError, roomState.isSuccess, session]);
+    setRoom(null);
+    setError(message);
+  };
 
   const focusKeyboard = () => {
     keyboardRef.current?.focus({ preventScroll: true });
@@ -203,51 +190,61 @@ export function App() {
     let closed = false;
     let reconnectTimer: number | null = null;
 
+    const scheduleReconnect = () => {
+      if (closed) return;
+      setConnecting(true);
+      reconnectTimer = window.setTimeout(connect, 1200) as unknown as number;
+    };
+
     const connect = () => {
       if (closed) return;
+      setConnecting(true);
       openChatSocket(session)
-        .then((socket) => {
+        .then(({ socket, snapshot }) => {
           if (closed) {
             try { socket.close(); } catch {}
             return;
           }
           ws = socket;
           wsRef.current = socket;
+          setConnecting(false);
+
+          const applySnapshot = (msg: Extract<WsMessage, { type: 'snapshot' }>) => {
+            setRoom({
+              roomId: msg.roomId,
+              history: msg.committed ?? [],
+              participants: msg.liveLines.map((l) => ({
+                id: l.participantId,
+                handle: l.handle,
+                color: l.color,
+                lineSlot: l.slot,
+                activeLineIdx: l.row,
+                activeContent: l.text,
+                joinedAt: (l as any).joinedAt ?? (msg.you.participantId === l.participantId ? Date.now() : 0),
+                nextExpectedSeq: msg.you.participantId === l.participantId ? msg.you.nextSeq : undefined,
+              })),
+              roster: msg.roster ?? [],
+            });
+          };
+          // The handshake consumed the snapshot before this handler existed.
+          applySnapshot(snapshot);
 
           socket.onmessage = (event) => {
             try {
               const msg: WsMessage = JSON.parse(event.data);
               if (msg.type === "snapshot") {
-                queryClient.setQueryData(["room-state", session.roomId], () => ({
-                  roomId: msg.roomId,
-                  history: msg.committed ?? [],
-                  participants: msg.liveLines.map((l) => ({
-                    id: l.participantId,
-                    handle: l.handle,
-                    color: l.color,
-                    lineSlot: l.slot,
-                    activeLineIdx: l.row,
-                    activeContent: l.text,
-                    // For our own participant, joinedAt is "now" (we just joined).
-                    // For others, the server should supply their joinedAt; until
-                    // it does, we approximate with a value that lets their prior
-                    // history through.
-                    joinedAt: (l as any).joinedAt ?? (msg.you.participantId === l.participantId ? Date.now() : 0),
-                    nextExpectedSeq: msg.you.participantId === l.participantId ? msg.you.nextSeq : undefined,
-                  })),
-                  roster: msg.roster ?? [],
-                }));
+                applySnapshot(msg);
                 return;
               }
               if (msg.type === "live") {
-                queryClient.setQueryData(["room-state", session.roomId], (old: any) => {
+                setRoom((old) => {
                   if (!old) return old;
                   const existing = old.participants ?? [];
-                  const found = existing.some((p: any) => p.id === msg.participantId);
+                  const found = existing.some((p) => p.id === msg.participantId);
                   if (found) {
                     return {
                       ...old,
-                      participants: existing.map((p: any) => {
+                      participants: existing.map((p) => {
                         if (p.id !== msg.participantId) return p;
                         return { ...p, activeLineIdx: msg.row, activeContent: msg.text };
                       }),
@@ -271,17 +268,17 @@ export function App() {
                 return;
               }
               if (msg.type === "committed") {
-                queryClient.setQueryData(["room-state", session.roomId], (old: any) => {
+                setRoom((old) => {
                   if (!old) return old;
                   // Append, dedupe by id, keep last 100 (server caps, but defensively truncate).
                   const existing = old.history ?? [];
-                  const dedup = existing.filter((h: any) => h.id !== msg.line.id);
+                  const dedup = existing.filter((h) => h.id !== msg.line.id);
                   return { ...old, history: [...dedup, msg.line].slice(-100) };
                 });
                 return;
               }
               if (msg.type === "roster") {
-                queryClient.setQueryData(["room-state", session.roomId], (old: any) => {
+                setRoom((old) => {
                   if (!old) return old;
                   return { ...old, roster: msg.roster ?? [] };
                 });
@@ -302,12 +299,19 @@ export function App() {
 
           socket.onclose = () => {
             if (closed) return;
-            reconnectTimer = window.setTimeout(connect, 1200) as unknown as number;
+            wsRef.current = null;
+            scheduleReconnect();
           };
         })
-        .catch(() => {
+        .catch((reason) => {
           if (closed) return;
-          reconnectTimer = window.setTimeout(connect, 1200) as unknown as number;
+          // The server rejected the session itself; retrying cannot help.
+          if (reason instanceof SocketRejected &&
+              (reason.code === 'unknown-participant' || reason.code === 'unauthorized')) {
+            endSession("Room session ended. Join again.");
+            return;
+          }
+          scheduleReconnect();
         });
     };
 
@@ -319,7 +323,8 @@ export function App() {
       try { ws?.close(); } catch {}
       wsRef.current = null;
     };
-  }, [queryClient, session]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session?.participantId]);
 
   useEffect(() => {
     if (!feedback) return;
@@ -345,7 +350,7 @@ export function App() {
     return () => document.removeEventListener("keydown", closeOnEscape);
   }, [session, showHelp]);
 
-  const participants = roomState.data?.participants ?? [];
+  const participants = room?.participants ?? [];
   const ownParticipant = participants.find(
     (participant) => participant.id === session?.participantId,
   );
@@ -371,13 +376,13 @@ export function App() {
 
   // Merge latest snapshot into accum, filtered by joinedAt (no pre-join history)
   useEffect(() => {
-    if (!roomState.data?.history || !ownParticipant) return;
+    if (!room?.history || !ownParticipant) return;
     const joinedAt = (ownParticipant as any).joinedAt;
     if (joinedAt == null) return;
     setHistoryAccum((prev) => {
       let changed = false;
       const next = new Map(prev);
-      for (const line of roomState.data.history) {
+      for (const line of room.history) {
         if ((line as any).committedAt < joinedAt) continue;
         const existing = next.get(line.id);
         if (!existing) {
@@ -394,7 +399,7 @@ export function App() {
       }
       return changed ? next : prev;
     });
-  }, [roomState.data?.history, (ownParticipant as any)?.joinedAt]);
+  }, [room?.history, (ownParticipant as any)?.joinedAt]);
 
   // Active content is real chat content: every visible character is already
   // legitimate, even before Enter commits the line to scrollback.
@@ -405,13 +410,13 @@ export function App() {
     // Snapshot cutoff does not delete viewer history.
     // Include current snapshot immediately so first paint isn't empty before accum effect runs.
     const map = new Map(historyAccum);
-    for (const line of roomState.data?.history ?? []) {
+    for (const line of room?.history ?? []) {
       if ((line as any).committedAt < (ownParticipant as any).joinedAt) continue;
       if (!map.has(line.id)) map.set(line.id, line as any);
     }
     const all = Array.from(map.values()) as any[];
     return all.sort((a, b) => a.lineIdx - b.lineIdx);
-  }, [historyAccum, ownParticipant, roomState.data?.history]);
+  }, [historyAccum, ownParticipant, room?.history]);
   const colorByHandle = useMemo(
     () =>
       new Map(
@@ -465,8 +470,8 @@ export function App() {
     .join("\u0000");
 
   useEffect(() => {
-    if (!roomState.data?.participants) return;
-    const currentIds = new Set(roomState.data.participants.map(p => p.id));
+    if (!room?.participants) return;
+    const currentIds = new Set(room.participants.map(p => p.id));
     if (!hasInitializedParticipantsRef.current) {
       // First load — don't beep, just remember
       hasInitializedParticipantsRef.current = true;
@@ -486,7 +491,7 @@ export function App() {
     if (hasNewcomer) {
       playJoinSound();
     }
-  }, [roomState.data?.participants, session?.participantId]);
+  }, [room?.participants, session?.participantId]);
 
   useEffect(() => {
     const chat = chatRef.current;
@@ -521,7 +526,6 @@ export function App() {
     };
     rememberHandle(cleanHandle);
     storageSet("session", SESSION_KEY, JSON.stringify(nextSession));
-    queryClient.removeQueries({ queryKey: ["room-state", room.id], exact: true });
     setSession(nextSession);
   };
 
@@ -898,7 +902,7 @@ export function App() {
           );
         })}
 
-        {roomState.isLoading ? (
+        {connecting ? (
           <div className="chat-line system-line">Connecting...</div>
         ) : null}
         {/* Local cursor preview: shown only on our own client, only while we

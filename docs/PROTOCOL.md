@@ -1,85 +1,89 @@
-# Current client/server protocol
+# Client/server protocol
 
-This describes the implementation inspected on 2026-09-05, not the planned
-server-echo/WebSocket rewrite. Chat input currently travels over HTTP. WebSocket
-delivers updates, while HTTP snapshots supply authoritative recovery state.
-The client displays its own typing optimistically. The planned transport and
-20-line join history changes in [TODO.md](../TODO.md) are not implemented.
+This describes the implemented behavior: chat input travels over one WebSocket
+per participant, the server is the single authority that echoes every keystroke,
+and HTTP serves rooms, join, leave, and roster. There is no optimistic client
+rendering and no HTTP chat mutation endpoint.
 
 Sources: [server routes and socket handlers](../server/index.js),
-[HTTP client](../client/src/api.ts), [client behavior](../client/src/App.tsx),
-and [development proxy](../client/vite.config.ts). Server behavior is the source
-of truth for wire fields; some client TypeScript declarations omit fields or
-incorrectly exclude `null`.
+[HTTP client and socket helpers](../client/src/api.ts), and
+[client behavior](../client/src/App.tsx). Server behavior is the source of
+truth for wire fields.
+
+## Terminology
+
+| Term | Meaning | Name in code |
+| --- | --- | --- |
+| Live line | The line a participant is typing right now. At most one per participant; none while idle. | `activeContent`, `activeLineIdx` |
+| Committed line | A line finished with Enter, or preserved when its author leaves. Never changes again. | `room.lines` |
+| Row | A position in the shared transcript, assigned by the server. Live and committed lines share one numbering. | `lineIdx`, `row` in socket payloads |
+| Keystroke | One client message: a character, a backspace, or Enter. | `key` |
+| Sequence number | The client's running count of its keystrokes, starting at 1, used to detect replayed duplicates. | `seq` |
+| Snapshot | Everything needed to render a room, sent when a socket connects. | `snapshot` |
+| Announcement | A committed line the server writes when someone joins or leaves. | content starts with `* ` |
 
 ## Transport and conventions
 
 | Direction | Transport | Purpose |
 | --- | --- | --- |
-| Browser → server | HTTP GET | Rooms, roster, room snapshots |
-| Browser → server | HTTP POST with JSON | Create/select room, join, leave, heartbeat, character, backspace, commit |
-| Browser → server | WebSocket JSON | Subscribe to room; optional application ping |
-| Server → requesting browser | HTTP JSON response | Requested data, operation result, or error |
-| Server → subscribed sockets | WebSocket JSON | Character/backspace events, commit events, room-change notifications |
+| Browser → server | HTTP GET | Rooms, roster, health |
+| Browser → server | HTTP POST with JSON | Create/select room, join, leave |
+| Browser → server | WebSocket JSON at `/ws` | `hello` handshake, then `key` keystrokes |
+| Server → requesting browser | HTTP JSON response | Requested data or error |
+| Server → participant socket | WebSocket JSON | Snapshot, live-line echo, committed lines, roster, command results, errors |
 
-- Express and WebSocket share one HTTP server, on `PORT` or port 3000.
-  The browser uses relative HTTP URLs on its page origin.
-- The browser opens `ws://<window.location.host>/`, or `wss://` for an HTTPS
-  page. There is no configured WebSocket subprotocol, version, or dedicated path;
-  the server's WebSocket upgrade handler is not restricted to `/`.
-- Vite serves on port 5173 and proxies `/api` and `/health` to port 3000.
-  It does not proxy the application's root WebSocket connection.
-- HTTP POST bodies and application WebSocket messages are JSON objects.
-  The HTTP wrapper sets `Content-Type: application/json`, including on GETs.
-  WebSocket broadcasts are JSON text messages.
-- Successful HTTP requests return 200 unless documented as 202. Creation does
-  not use 201. Explicit route errors use `{"error":"message"}`. Malformed JSON,
-  oversized bodies, and unexpected exceptions use Express's default handling;
-  there is no uniform custom JSON error middleware. Unknown API GET routes can
-  return an empty 404 when static serving is enabled; other unmatched routes
-  fall through to Express's default handling.
+- Express and the WebSocket server share one HTTP server, on `PORT` or port
+  3000. The browser uses relative HTTP URLs on its page origin.
+- The browser connects to `ws://<window.location.host>/ws`, or `wss://` for an
+  HTTPS page. Only the `/ws` path accepts socket connections.
+- There is no development proxy: the client is always served by Express from
+  `client/dist`.
+- HTTP request/response bodies and socket messages are JSON objects; socket
+  frames are JSON text. Unknown fields are ignored.
+- Successful HTTP requests return 200. Creation does not use 201. Explicit
+  route errors use `{"error":"message"}`. Malformed JSON, oversized bodies, and
+  unexpected exceptions use Express's default handling. Unknown API routes
+  return an empty 404 when static serving is enabled; otherwise they fall
+  through to Express's default handling.
 - IDs are JSON numbers in responses. Room and participant lookup generally
   applies JavaScript `Number()` to supplied IDs. Prefer numeric IDs in requests;
-  this is not a strictly validated schema. Unknown properties are ignored.
-- `joinedAt`, `lastSeen`, and `committedAt` are milliseconds since Unix epoch.
-  The raw-history endpoint additionally exposes `createdAt` as an ISO date string.
+  this is not a strictly validated schema.
+- `joinedAt` and `committedAt` are milliseconds since Unix epoch. `lastSeen` is
+  internal and never sent.
 - Joining issues an unpredictable per-participant token (32 lowercase hex
-  characters). Every participant mutation — character, backspace, commit,
-  heartbeat, and leave — must carry it as the JSON `token` field alongside
-  `roomId` and `participantId`. Missing or incorrect tokens are rejected with
-  `401 {"error":"invalid token"}` and change nothing. Knowing public
-  room/participant IDs alone no longer permits mutations. Socket
-  subscriptions do not require joining and carry no token yet. Express uses
-  unrestricted `cors()`; the socket handler performs no application origin check.
+  characters). It authorizes the socket `hello` and HTTP leave. Missing or
+  incorrect tokens are rejected and change nothing. No snapshot, roster, or
+  broadcast ever exposes the token. Express uses unrestricted `cors()`; the
+  socket handler performs no application origin check.
 
 ## Identity and stored state
 
 Rooms and participants are in-memory objects. IDs start at 1 and increment
 globally within the process; they can repeat after a restart. A room holds its
-participants, committed lines, recent character events, and subscribed sockets.
-No database, durable log, or event replay endpoint exists.
+participants, committed lines, and subscribed sockets. No database, durable
+log, or event replay exists; restarting the server loses everything.
 
-Each participant has one draft (`activeContent`) and an optional shared row
-(`activeLineIdx`). A first character allocates `greatestLineIdx(room) + 1`.
-Committing preserves that index and clears draft ownership; committing without
-an allocated row creates a fresh index. Backspacing a draft to empty retains
-its index. `lineSlot` is a reusable roster slot from 0 to 9, not transcript order.
+Each participant has one live line (draft text plus an optional shared row). A
+first character allocates `greatestLineIdx(room) + 1`. Committing preserves
+that row and clears draft ownership; committing without an allocated row
+creates a fresh one. Backspacing a live line to empty retains its row.
+`lineSlot` is a reusable roster slot from 0 to 9, not transcript order.
 
 Join and leave announcements are ordinary committed records whose content is
-`* <handle> joined` or `* <handle> left`. The wire format has no system-line flag.
-Stored colors survive the author's departure. Colors are allocated from:
+`* <handle> joined` or `* <handle> left`. The wire format has no system-line
+flag. Stored colors survive the author's departure. Colors are allocated from:
 
 ```json
 ["#00FFFF","#FFFF00","#FF00FF","#00FF00","#FF8000","#80FF00","#FF0080","#00FF80","#8080FF","#FF8080"]
 ```
 
 The browser stores `{roomId, roomName, participantId, handle, token}` under
-`remart-bbs-chat.session` in sessionStorage. Sessions stored before tokens
-existed are treated as expired: the client discards them and the user rejoins. Its default handle is stored under
-`remart-bbs-chat.handle` in localStorage. `?name=` overrides the default without
-overwriting it; `?room=` requests a preferred room through the normal room
-selection endpoint. These URL parameters are client conveniences, not server
-authentication or socket parameters.
+`remart-bbs-chat.session` in sessionStorage. Sessions without a token are
+treated as expired: the client discards them and the user rejoins. Its default
+handle is stored under `remart-bbs-chat.handle` in localStorage. `?name=`
+overrides the default without overwriting it; `?room=` requests a preferred
+room through the normal room selection endpoint. These URL parameters are
+client conveniences, not server authentication or socket parameters.
 
 ## HTTP endpoint reference
 
@@ -147,15 +151,18 @@ Example response (timestamps illustrative):
 }
 ```
 
+`lineSlot` and `activeLineIdx` in this response are the roster slot and live
+row; they are renamed to `slot` and `liveRow` in the next change.
+
 The server converts a truthy handle to a string, trims it, and limits it to 32
 UTF-16 code units. Handles are unique case-insensitively across all rooms.
 The target room is cleaned of stale participants before duplicate/capacity
 checks. The server assigns a free color, slot, and secret participant token,
-initializes sequence 1, creates a join announcement, and sends `room-update`
-to existing subscribers. The join response is the only message that carries
-the token: it contains neither history nor `nextExpectedSeq` nor draft text.
-No snapshot, roster, or broadcast ever exposes the token. Its roster follows
-participant insertion order, unlike the sorted roster endpoint.
+initializes the sequence at 1, creates a join announcement, and sends
+`committed` (the announcement) and then `roster` to existing sockets. The join
+response is the only message that carries the token: it contains neither
+history nor `nextSeq` nor draft text. Its roster follows participant insertion
+order, unlike the sorted roster endpoint.
 
 | Status | Error string |
 | --- | --- |
@@ -170,9 +177,7 @@ If cleanup deletes the room because its last occupant was stale, the handler
 recreates the room under the same id and name, carrying over the committed
 lines (preserved stale drafts and leave notices), then completes the join in
 that live room. A successful join is therefore always followed by a
-discoverable room: the next room-state request returns 200 with the new
-participant and their join announcement. Stale handles are reusable once
-their occupants are cleaned.
+discoverable room. Stale handles are reusable once their occupants are cleaned.
 
 ### GET /api/roster?roomId=1
 
@@ -182,79 +187,7 @@ their occupants are cleaned.
 
 Sorted by `lineSlot`. Does not clean stale participants. Missing room:
 404 `{"error":"room not found"}`. Note the response key is `participants`,
-whereas join and room-state embed this reduced representation under `roster`.
-
-### GET /api/room-state?roomId=1
-
-The main client's authoritative recovery snapshot:
-
-```ts
-{
-  roomId: number,
-  history: Array<{
-    id: string, handle: string, content: string, lineIdx: number,
-    committed: boolean, committedAt: number, color: string
-  }>,
-  participants: Array<{
-    id: number, handle: string, color: string, lineSlot: number,
-    activeLineIdx: number | null, activeContent: string,
-    joinedAt: number, lastSeen: number, nextExpectedSeq: number
-  }>,
-  roster: Array<{ handle: string, color: string, lineSlot: number }>
-}
-```
-
-The server takes the **last 100 appended committed records**, then sorts that
-subset by `lineIdx`. This is not necessarily the highest 100 line indices:
-participants can commit earlier allocated rows later. Participants and roster
-are sorted by slot. No stale cleanup or presence refresh occurs on this GET.
-Missing room: 404 `{"error":"room not found"}`.
-
-The snapshot does not filter by viewer identity or join time. The client does
-that locally, excluding records with `committedAt < ownParticipant.joinedAt`,
-and accumulates seen records by ID beyond the snapshot limit. Newcomers do not
-currently see the proposed last 20 lines. Snapshot truncation does not truncate
-server storage: `room.lines` grows for the lifetime of the room.
-
-### GET /api/room/:id
-
-An additional endpoint not used by `client/src/api.ts`. Returns:
-
-```ts
-{
-  participants: Array<{
-    id: number, handle: string, color: string, lineSlot: number,
-    activeLineIdx: number | null, activeContent: string, joinedAt: number
-  }>,
-  history: Array<{
-    id: string, handle: string, content: string, committed: true,
-    lineIdx: number, createdAt: string, committedAt: number,
-    colorSnapshot: string
-  }>
-}
-```
-
-Unlike room-state, it exposes **all** stored history in append order, raw
-`colorSnapshot` and `createdAt` fields, and participants in insertion order.
-It omits `roomId`, `roster`, `lastSeen`, and `nextExpectedSeq`. Missing room:
-404 `{"error":"not found"}`. Treat line IDs as opaque strings.
-
-### POST /api/heartbeat
-
-```ts
-// Request
-{ roomId: number, participantId: number, token: string }
-// 200 response
-{ alive: boolean, removed: number }
-```
-
-The token is required: a missing or incorrect token returns
-`401 {"error":"invalid token"}` without refreshing presence.
-
-Missing room or participant returns `{alive:false, removed:0}` rather than 404.
-Otherwise refreshes that participant's `lastSeen` before cleaning other stale
-participants. `removed` counts participants removed by this cleanup. May emit
-`room-update` when others are removed. No sequence number is involved.
+whereas socket payloads embed this reduced representation under `roster`.
 
 ### POST /api/leave
 
@@ -268,277 +201,156 @@ participants. `removed` counts participants removed by this cleanup. May emit
 The token is required: a missing or incorrect token returns
 `401 {"error":"invalid token"}` and the participant stays in the room.
 
-Missing room or participant returns `{freed:false}`. A successful leave preserves
-nonempty draft text as a committed line, adds a leave announcement, removes the
-participant and their character-event records, and returns `{freed:true}`.
-If participants remain, emits `room-update`. Otherwise deletes the room without
-that broadcast. No dedicated leave event or socket close is sent. Buffered input
-for the participant is not drained as part of leave. Leave is outside sequence
-ordering and can race with in-flight typing.
+Missing room or participant returns `{freed:false}`. A successful leave runs
+the single leave path (see [Leave, stale cleanup, and `q`](#leave-stale-cleanup-and-q)):
+nonempty live text is preserved as a committed line, a leave announcement is
+added, the participant's socket is closed, and remaining sockets receive the
+`committed` messages and then `roster`. If the room empties it is deleted
+without broadcasts.
 
 On `pagehide`, the browser sends this same JSON as an `application/json` Blob via
 `navigator.sendBeacon`. If unavailable or throwing, it falls back to a POST fetch
 with `keepalive:true`. A false return from `sendBeacon` does not trigger the
 fallback. The client does not inspect the leave response on this exit path.
 
-### POST /api/char, /api/backspace, /api/commit
-
-These three endpoints carry the actual chat input. Request shapes:
-
-```ts
-// /api/char
-{ roomId: number, participantId: number, token: string, char: string, seq?: number }
-// /api/backspace and /api/commit
-{ roomId: number, participantId: number, token: string, seq?: number }
-```
-
-Neither backspace nor commit sends draft content or a line index. The server
-operates on its stored draft. All three first validate room, participant,
-and token:
-
-| Status | Error string |
-| --- | --- |
-| 404 | `room not found` |
-| 404 | `user not in room` |
-| 401 | `invalid token` (missing or incorrect token; nothing is applied) |
-| 400 | `invalid char` (character endpoint only) |
-
-Character validation requires a string with `Array.from(char).length === 1`,
-rejects CR, LF, DEL, and C0 controls other than tab. Spaces and supplementary
-Unicode characters are allowed. This counts code points, not grapheme clusters;
-it is not comprehensive validation of printable Unicode. There is no line-length
-cap or application typing throttle. The server does not enforce the client's
-100-character paste limit; each accepted pasted character is a separate POST.
-
-Applied (or legacy) 200 responses:
-
-```ts
-// /api/char
-{ content: string, lineIdx: number, position: number, participantId: number }
-// /api/backspace; lineIdx may be null for an unallocated empty draft
-{ content: string, lineIdx: number | null, participantId: number }
-// /api/commit; no next row is reserved
-{ newLineIdx: null, committedContent: string, committedAt: number }
-```
-
-Character `position` is resulting JavaScript string length minus one, in UTF-16
-code units. Backspace removes one UTF-16 code unit with `slice(0,-1)`, which can
-corrupt emoji. A backspace on empty content refreshes presence but broadcasts
-nothing for that operation. A commit on empty content still creates a line.
-Successful applied operations refresh presence.
-
-These normal responses omit `seq`, `expected`, and status flags. A request that
-unblocks buffered operations returns its own immediate result, not the state
-after the subsequent drain. For example, character seq 1 can return `content:"A"`
-even though draining buffered commit seq 2 has already cleared the draft.
-
-## Sequence numbers and delivery guarantees
-
-All three chat endpoints share one sequence counter per participant, starting
-at 1. The browser assigns it in input order and sends normal typing operations
-concurrently. This counter is unrelated to the room-wide `lineIdx`.
-
-| Incoming seq | Server action | HTTP result |
-| --- | --- | --- |
-| Missing or null | Apply immediately; do not advance the sequence counter or drain buffered operations | 200 normal result |
-| Less than expected | Do not apply again | 200 duplicate result |
-| Equal to expected | Apply, advance counter, drain consecutive buffered operations | 200 normal result |
-| Greater than expected | Store operation in the participant's Map and refresh presence | 202 buffered result |
-
-Normal buffered response for any of the three routes:
-
-```json
-{"buffered":true,"expected":1,"received":2,"participantId":1}
-```
-
-This means accepted for later processing, not applied. It contains no content or
-line index. There is no later HTTP completion response; eventual application
-produces socket notifications and becomes visible in snapshots.
-
-Duplicate character/backspace response:
-
-```ts
-{
-  content: string, lineIdx: number | null, participantId: number,
-  duplicate: true, expected: number
-}
-```
-
-This reports the **current** draft, not the original operation's result.
-Duplicate character responses omit `position`. Duplicate commit response:
-
-```ts
-{ newLineIdx: null, committedContent: "", committedAt: number,
-  duplicate: true, expected: number }
-```
-
-Its timestamp is the retry-handling time, not the original commit timestamp.
-Duplicates do not refresh `lastSeen` or broadcast. The empty-backspace branch
-also contains response variants without `participantId`/`expected`, but those
-buffered/duplicate branches are not reached with normal numeric sequences:
-that branch only admits an expected sequence or legacy input.
-
-There is no integer/range/type validation for `seq`, buffer bound, gap timeout,
-or automatic retry. Reusing a future buffered sequence overwrites its Map entry.
-A missing operation can stall all later operations indefinitely. The client
-increments before sending and does not retransmit failures. It raises its next
-sequence to the server's `nextExpectedSeq` when a snapshot reports a higher value;
-that does not repair an earlier missing sequence. HTTP error responses are
-converted to plain `Error` messages by the client, losing structured status data.
-
 ## WebSocket message reference
 
-### Browser → server
+All messages are JSON text frames. Unknown fields are ignored.
 
-On socket open, the browser sends:
+### Client to server
 
-```json
-{"type":"subscribe","roomId":1}
+```ts
+{ type: "hello", roomId: number, participantId: number, token: string }
+{ type: "key", seq: number, kind: "char", char: string }
+{ type: "key", seq: number, kind: "backspace" }
+{ type: "key", seq: number, kind: "enter" }
 ```
 
-If the room exists, the server adds the socket to its subscriber Set and replies:
+`hello` must be the first message on a socket. `key` carries one keystroke.
+Paste is a burst of `char` keystrokes, capped at 100 code points on the
+client. `char` must satisfy the character rule described under
+[Edge cases](#edge-cases-1).
 
-```json
-{"type":"subscribed","roomId":1}
+### Server to the sender only
+
+```ts
+{ type: "snapshot", roomId: number,
+  you: { participantId: number, nextSeq: number },
+  liveLines: Array<{ participantId: number, handle: string, color: string,
+                     slot: number, row: number | null, text: string, joinedAt: number }>,
+  committed: Array<{ id: string, row: number, text: string, handle: string,
+                     color: string, committedAt: number }>,
+  roster: Array<{ participantId: number, handle: string, color: string, slot: number }> }
+{ type: "command", name: "roster" | "help" | "leave" }
+{ type: "error", code: "unauthorized" | "unknown-participant" | "seq-gap" | "invalid-message",
+  expected?: number }
 ```
 
-This acknowledgment contains no snapshot, participant identity, revision, or
-replay position. Joining by HTTP and subscribing are independent operations.
-Subscribing to a missing room is silently ignored. There is no unsubscribe
-message. Subscribing again to a different room does not remove the socket from
-the old room's Set; close cleanup tracks only the last room. The normal client
-instead closes and replaces its socket when the session changes.
+`snapshot.committed` holds the last 100 appended committed lines, sorted by
+row — not necessarily the highest 100 rows, since participants can commit
+earlier allocated rows later. `you.nextSeq` is the sequence number the server
+expects next from this participant. `liveLines` lists every participant, sorted
+by slot; idle ones have `row: null` and `text: ""`.
 
-The server also accepts an application-level ping and responds on that socket:
+### Server to everyone in the room
 
-```json
-{"type":"ping"}
+```ts
+{ type: "live", participantId: number, row: number | null, text: string, seq: number }
+{ type: "committed", participantId: number | null, seq: number | null,
+  line: { id: string, row: number, text: string, handle: string, color: string, committedAt: number } }
+{ type: "roster", roomId: number, roster: Array<{ participantId: number, handle: string, color: string, slot: number }> }
 ```
 
-```json
-{"type":"pong"}
-```
+`live` replaces the named participant's live line entirely. `row: null` with
+empty text means idle. `committed` adds one committed line; after a commit the
+server also sends `live` with `row: null` for that participant. `seq` is the
+keystroke that caused the message; server-initiated changes (leave
+preservation, announcements) use `participantId: null` and `seq: null`.
+`roster` follows any join or leave. Every room message reaches all open
+participant sockets in the room, the author's included.
 
-The current browser does not send this ping. It does not refresh participant
-presence and is separate from WebSocket control frames and HTTP heartbeat.
-Malformed JSON, unknown message types, and client-sent chat operations over the
-socket are silently ignored; there is no socket error-response envelope.
+### Sequence rules
 
-### Server → all room subscribers
+For each `key` the server compares `seq` with the participant's expected value,
+starting at 1:
 
-Every open socket in the room Set receives these, including the author's socket
-if subscribed. The server does not associate a socket with a participant.
+| Incoming seq | Action |
+| --- | --- |
+| Equal | Apply, advance, echo |
+| Lower | Ignore silently: a replay of an applied keystroke |
+| Higher | Send `error seq-gap` with `expected`; apply nothing |
 
-| Type | Fields beyond `type` | Meaning |
-| --- | --- | --- |
-| `room-update` | `roomId` | Invalidate/refetch room state; contains no state itself |
-| `char` | `roomId`, `participantId`, `char`, `lineIdx`, `position`, `handle`, `seq` | One character appended |
-| `backspace` | `roomId`, `participantId`, `lineIdx`, `position`, `handle`, `seq` | One UTF-16 code unit removed; position is resulting content length |
-| `commit` | `roomId`, `participantId`, `lineIdx`, `committedContent`, `seq` | Draft committed at this line index |
+There is no buffer for out-of-order keystrokes. A single socket delivers in
+order; a gap can only come from a client bug or a lost send, and the client
+recovers by resyncing.
 
-Examples of individual messages (each is a separate JSON frame):
+### Commands
 
-```json
-{"type":"char","roomId":1,"participantId":1,"char":"A","lineIdx":2,"position":0,"handle":"Alice","seq":1}
-```
+Enter on a live line whose text is exactly `l`, `?`, or `q` does not commit.
+The server clears the live line, broadcasts `live` with empty text and
+`row: null`, and sends `command` to the sender. For `q` the server then runs
+the leave path (preserve nonempty text, announcement, roster) and closes the
+socket. Surrounding whitespace makes it ordinary chat: the comparison is exact,
+so `" q"` is committed as text.
 
-```json
-{"type":"backspace","roomId":1,"participantId":1,"lineIdx":2,"position":0,"handle":"Alice","seq":2}
-```
+### Edge cases
 
-```json
-{"type":"room-update","roomId":1}
-```
+- Backspace on an empty live line: advance the sequence number and echo `live`
+  unchanged, so the sender's queue drains. No row is allocated.
+- Enter on an idle participant: commit an empty line on a fresh row.
+- A second `hello` for a participant that already has a socket replaces the
+  old socket, which is closed. This covers a tab reconnecting before its old
+  connection times out.
+- Anything other than `hello` as the first message, or a `hello` with a bad
+  token: `error unauthorized` and close. `hello` for a room or participant
+  that no longer exists: `error unknown-participant` and close.
+- Malformed JSON or an unknown `type` after `hello`: `error invalid-message`,
+  connection stays open. A `key` without a numeric `seq` or with an unknown
+  `kind` is also `invalid-message` and is not applied.
+- A `char` keystroke whose character fails validation is applied as a no-op:
+  it advances the sequence number and echoes `live` unchanged. An unexpected
+  character can therefore never wedge the stream. The client validates before
+  sending. Validation requires a string with `Array.from(char).length === 1`,
+  rejecting CR, LF, DEL, and C0 controls other than tab. Spaces and
+  supplementary Unicode characters are allowed. This counts code points, not
+  grapheme clusters; it is not comprehensive validation of printable Unicode.
 
-```json
-{"type":"commit","roomId":1,"participantId":1,"lineIdx":2,"committedContent":"","seq":3}
-```
-
-Character/backspace `seq` is null for legacy requests without a sequence.
-A legacy commit sends only `room-update`, not a `commit` event. Commit events
-omit the committed record's ID, timestamp, color, and handle, so they are not
-equivalent to a history record. There is no event ID or room revision.
-
-Per applied operation, server emission order is:
+### Emission order
 
 | Trigger | Socket messages, in order |
 | --- | --- |
-| Character | `char`, then `room-update` |
-| Nonempty backspace | `backspace`, then `room-update` |
-| Empty backspace | None for this operation |
-| Sequenced commit | `room-update`, then `commit` |
-| Legacy commit | `room-update` only |
-| Join | `room-update` (cleanup can cause an earlier notification too) |
-| Leave/stale removal with survivors | `room-update` |
-| Last participant removed | No final room notification; room is deleted |
+| Character or backspace | `live` |
+| Enter (non-command) | `committed`, then `live` (`row: null`, empty text) |
+| Command (`l`, `?`) | `live` (cleared), then `command` to the sender only |
+| Command (`q`) | `live` (cleared), `command` to the sender, then the leave messages below; the sender's socket closes |
+| Join | `committed` (announcement), then `roster` to existing sockets; the newcomer receives the snapshot on `hello` |
+| Leave or stale cleanup with survivors | `committed` per preserved live line, `committed` (announcement), `roster` |
+| Last participant removed | Nothing; the room is deleted |
 
-Drained operations emit their own messages in sequence order. These sends occur
-before the triggering HTTP route calls `res.json`, but there is no guaranteed
-arrival order between separate HTTP responses and socket messages. A socket
-preserves its own message order; snapshots have no revision tying them to it.
+### Leave, stale cleanup, and `q`
 
-## Client interpretation and timing
+HTTP leave, stale cleanup, and the `q` command all run one removal path. A
+nonempty live line is preserved as a committed line stamped at the
+participant's last activity; then a `* <handle> left` announcement is added at
+removal time. Both are broadcast as `committed` with `participantId: null` and
+`seq: null`, followed by `roster`. The participant's socket is closed. An
+emptied non-lobby room is deleted without broadcasts; newly created rooms that
+never had a participant are not removed by the stale sweep.
 
-| Activity | Current client behavior |
-| --- | --- |
-| Lobby | Fetch rooms, nominally every 1 second |
-| Joined session | Fetch room-state, nominally every 2 seconds, even with a healthy socket |
-| Presence | HTTP heartbeat immediately on session effect, then every 12 seconds |
-| Unexpected socket close | Attempt a new connection after 1.2 seconds and resubscribe |
-| Socket error | Close socket; close handler schedules reconnect |
-| Session change/unmount | Close socket and cancel reconnect timer |
-| Page hide | Best-effort HTTP leave via beacon/keepalive |
+## Presence and lifetime
 
-These are configured intervals, not network timing guarantees; browsers may
-throttle background timers and query invalidation can cause additional fetches.
-
-The client ignores socket events with a truthy different `roomId`, and ignores
-its own `char`/`backspace` events to avoid duplicating optimistic input. For other
-participants it appends chars to cached draft content, with a position/character
-check attempting deduplication. Backspace simply slices cached content, ignoring
-the supplied position and sequence. Events for unknown participants or before
-the first cached snapshot do not create participants. `room-update` and `commit`
-both invalidate room-state instead of directly updating history. The client
-does not process `subscribed` or `pong` beyond ignoring them.
-
-Normal successful HTTP operations also invalidate room-state. A buffered
-character/backspace/commit response skips that invalidation in the normal input
-handlers; the paste handler invalidates even for buffered responses. There is
-no strict synchronization between in-flight snapshots and socket cache edits.
-
-Local typing and Enter render before confirmation. Pending commits are matched
-to history by handle, content, and `committedAt >= localCommitTime - 1000`, not
-by a shared commit identifier. Finished-draft indices suppress stale live rows.
-This is client reconciliation, not a wire acknowledgment mechanism.
-
-Any room-state query error currently clears the session, including transient
-network errors; so does a snapshot without the current participant. Heartbeat
-errors are ignored, whereas `{alive:false}` clears the session. Socket loss alone
-does not clear it. A healthy socket cannot by itself maintain presence.
-
-### Commands and paste
-
-Commands are interpreted **only by the client** on Enter. It compares
-`activeContent.trim()` to lowercase `l`, `?`, or `q`; thus surrounding whitespace
-currently still permits a command, despite the UX document's exact-character
-description. The characters have already been sent as ordinary chat input.
-
-| Client command | Requests/actions instead of `/api/commit` |
-| --- | --- |
-| `l` | Send sequenced backspaces to clear command text, then GET roster and invalidate room-state |
-| `?` | Show local help and send sequenced backspaces to clear command text |
-| `q` | Send sequenced backspaces to clear command text, then POST leave |
-
-Command clearing sends one backspace for each UTF-16 code unit of the draft,
-awaiting each response. These command actions use a client promise queue;
-ordinary typing sends do not. Toolbar actions can invoke roster/help/leave
-without typing a command. The server has no command opcode and would commit
-literal `q` if a different client sent `/api/commit` for that draft.
-
-Paste takes the first 100 code points, then removes invalid characters (including
-newlines), then sends each remaining character as an individual sequenced POST.
-It warns if the original paste exceeded 100. There is no batch/paste endpoint,
-and pasted newlines do not commit lines.
+- Every socket message and every WebSocket pong refreshes the participant's
+  `lastSeen`. The server pings all sockets every 12 seconds (WebSocket control
+  frames; browsers answer automatically).
+- Stale means `lastSeen < now - 40000`. A sweep runs every 15 seconds and on
+  every join. Timeout and physical removal are separate; lists can exclude
+  stale occupants before they have been deleted.
+- Socket close does not remove the participant: a dropped connection does not
+  end the session, and a reconnecting tab replaces its old socket via `hello`.
+  Closing the tab leaves through the `pagehide` beacon instead.
+- Stale cleanup preserves nonempty text at the last-seen time, matching the
+  leave path above.
+- Rooms are deleted when leave or stale cleanup removes their last participant.
 
 ## Example session exchange
 
@@ -546,68 +358,44 @@ and pasted newlines do not commit lines.
 sequenceDiagram
     participant A as Alice browser
     participant S as Server
-    participant B as Bob browser (subscribed)
+    participant B as Bob browser
     A->>S: HTTP POST /api/rooms {}
     S-->>A: 200 {room:{id:1,name:"Room 1"}}
     A->>S: HTTP POST /api/join {roomId:1,handle:"Alice"}
-    S-->>B: WS room-update
     S-->>A: 200 {participant,roster,room}
-    A->>S: HTTP GET /api/room-state?roomId=1
-    S-->>A: 200 {roomId,history,participants,roster}
-    A->>S: WS subscribe {roomId:1}
-    S-->>A: WS subscribed {roomId:1}
-    Note over A: Displays A locally before server response
-    A->>S: HTTP POST /api/char {roomId:1,participantId:2,char:"A",seq:1}
-    S-->>A: WS char (client ignores own char)
-    S-->>B: WS char (client edits cached draft)
-    S-->>A: WS room-update
-    S-->>B: WS room-update
-    S-->>A: 200 {content:"A",lineIdx,position:0,participantId:2}
-    A->>S: HTTP GET /api/room-state?roomId=1
-    B->>S: HTTP GET /api/room-state?roomId=1
-    S-->>A: Updated snapshot
-    S-->>B: Updated snapshot
+    A->>S: WS hello {roomId:1,participantId:2,token}
+    S-->>A: WS snapshot {you:{nextSeq:1},liveLines,committed,roster}
+    Note over A: Renders the snapshot; no local echo
+    A->>S: WS key {seq:1,kind:"char",char:"A"}
+    S-->>A: WS live {participantId:2,row:1,text:"A",seq:1}
+    S-->>B: WS live {participantId:2,row:1,text:"A",seq:1}
+    A->>S: WS key {seq:2,kind:"enter"}
+    S-->>A: WS committed {participantId:2,seq:2,line:{row:1,text:"A"}}
+    S-->>B: WS committed {participantId:2,seq:2,line:{row:1,text:"A"}}
+    S-->>A: WS live {participantId:2,row:null,text:"",seq:2}
+    S-->>B: WS live {participantId:2,row:null,text:"",seq:2}
 ```
 
-The diagram chooses one illustrative interleaving: snapshot fetch, subscription,
-and heartbeat start independently after joining. A notification can precede
-subscription, and an HTTP response can arrive before or after related socket
-frames. There is no atomic subscribe-plus-snapshot handshake.
+The live line appears on the author's client only when the server echoes it,
+exactly as observers see it. A replayed keystroke (`seq` lower than expected)
+is ignored; a gap answers `error seq-gap` with `expected`, and the client
+resyncs its counter.
 
-For reordered input `A` then Enter, if commit seq 2 arrives first it returns
-202 with `expected:1`. When character seq 1 arrives, the server applies `A`,
-drains the commit, emits the corresponding four notifications, and returns the
-character result. A later snapshot shows committed `A` and an empty draft.
+## Client behavior
 
-## Lifetime and current limitations
-
-- Stale means `lastSeen < now - 40000`. Cleanup runs every 15 seconds, on join,
-  and during valid heartbeats. Timeout and physical removal are separate;
-  lists can exclude stale occupants before they have been deleted.
-- Applied input and buffered future input refresh presence; duplicates, reads,
-  socket subscriptions, and application pings do not. Stale cleanup commits
-  nonempty drafts with `committedAt` equal to the participant's last activity,
-  then adds a leave announcement at cleanup time. Explicit leave timestamps
-  preserved draft text at leave time instead.
-- Rooms are deleted when leave/stale cleanup removes their last participant.
-  Newly created rooms that never had a participant are not removed by the stale
-  sweep, because cleanup returns early when there are no stale participants.
-- Socket close removes a subscription, not a participant. Participant leave
-  does not explicitly unsubscribe sockets. There is no shutdown, room-deleted,
-  or participant-expired push message.
-- Internal `charEvents` is trimmed from over 1000 entries to the last 800, but
-  is not exposed for replay. Committed history and sequence-gap buffers have
-  no configured size bound. The room's `nextLineIdx` field exists but allocation
-  currently scans committed and active rows for the greatest index.
-- There is no global ordering/revision marker for merging HTTP snapshots with
-  socket events, no missed-event replay, and no durable exactly-once guarantee.
-  Participant authorization (TODO tasks 1 and 4) is implemented; the remaining
-  Unicode, gap recovery, and lifecycle defects are tracked in
-  [TODO.md](../TODO.md). This document records their observable behavior rather
-  than promising the planned fixes.
+The client joins over HTTP, then opens one socket to `/ws` and sends `hello`
+with the stored token. The snapshot response replaces its whole room state;
+after that, `live`, `committed`, and `roster` messages update it incrementally
+and there is no HTTP polling of room state. Keystrokes are numbered locally and
+sent as `key` messages; the server's echo renders them. A `command:help`
+message opens the help overlay, `command:roster` shows a confirmation, and a
+socket closed by `q` or by a fatal `error` (`unauthorized`,
+`unknown-participant`) ends the session. An unexpected close schedules a
+reconnect after 1.2 seconds, and the fresh snapshot restores state. Paste is
+expanded into individual `char` keystrokes with the 100-code-point cap and
+warning applied locally.
 
 Existing protocol coverage is in [HTTP tests](../test-server-api.js),
-[sequence tests](../test-server-seq.js),
-[WebSocket tests](../test-server-websocket.js), and
-[Enter-latency tests](../test-server-regression-enter-latency.js).
-Update this reference alongside future wire-protocol changes.
+[server logic tests](../test-server-logic.js), and
+[WebSocket tests](../test-server-ws.js). Update this reference alongside future
+wire-protocol changes.

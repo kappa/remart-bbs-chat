@@ -71,7 +71,7 @@ function getOrCreateRoom(preferredId, forceNew){
     }
   }
   const id = nextRoomId++;
-  const room = {id, name:`Room ${id}`, createdAt:new Date(), maxParticipants:10, isLobby:false, participants:new Map(), lines:[], charEvents:[], nextLineIdx:0};
+  const room = {id, name:`Room ${id}`, createdAt:new Date(), maxParticipants:10, isLobby:false, participants:new Map(), lines:[]};
   rooms.set(id, room);
   return room;
 }
@@ -127,10 +127,6 @@ function broadcast(room, msg){
     if(ws && ws.readyState===1){ try{ ws.send(payload); }catch{} }
   }
 }
-
-// Legacy notifications for the HTTP chat routes; removed with them.
-function broadcastRoom(room){ if(room) broadcast(room, {type:'room-update', roomId:room.id}); }
-function broadcastChar(room, participantId, type, data){ broadcast(room, {type, roomId:room.id, participantId, ...data}); }
 
 function rosterOf(room){
   return Array.from(room.participants.values())
@@ -231,77 +227,6 @@ function handleKey(participant, room, msg){
   }
 }
 
-function applyCharOperation(participant, room, char, seqForBroadcast){
-  if(participant.activeLineIdx == null){
-    participant.activeLineIdx = greatestLineIdx(room)+1;
-  }
-  const content = participant.activeContent + char;
-  participant.activeContent = content;
-  participant.lastSeen = new Date();
-  room.charEvents.push({handle:participant.handle, char, lineIdx:participant.activeLineIdx, position:content.length-1, createdAt:new Date()});
-  if(room.charEvents.length>1000) room.charEvents = room.charEvents.slice(-800);
-  broadcastChar(room, participant.id, 'char', {char, lineIdx:participant.activeLineIdx, position:content.length-1, handle:participant.handle, seq:seqForBroadcast});
-  broadcastRoom(room);
-  return {content, lineIdx:participant.activeLineIdx, position:content.length-1, participantId:participant.id};
-}
-
-function applyBackspaceOperation(participant, room, seqForBroadcast){
-  if(participant.activeContent.length===0){
-    participant.lastSeen = new Date();
-    return {content:'', lineIdx:participant.activeLineIdx, participantId:participant.id};
-  }
-  const content = participant.activeContent.slice(0,-1);
-  participant.activeContent = content;
-  participant.lastSeen = new Date();
-  room.charEvents.push({handle:participant.handle, char:'\b', lineIdx:participant.activeLineIdx, position:content.length, createdAt:new Date()});
-  if(room.charEvents.length>1000) room.charEvents = room.charEvents.slice(-800);
-  broadcastChar(room, participant.id, 'backspace', {lineIdx:participant.activeLineIdx, position:content.length, handle:participant.handle, seq:seqForBroadcast});
-  broadcastRoom(room);
-  return {content, lineIdx:participant.activeLineIdx, participantId:participant.id};
-}
-
-function applyCommitOperation(participant, room, seqForBroadcast){
-  const commitLineIdx = participant.activeLineIdx != null ? participant.activeLineIdx : greatestLineIdx(room)+1;
-  const committedAt = new Date();
-  const committedContent = participant.activeContent;
-  room.lines.push({
-    id:`line-${participant.id}-${Date.now()}-${Math.random().toString(36).slice(2,6)}`,
-    handle:participant.handle,
-    content:committedContent,
-    committed:true,
-    lineIdx:commitLineIdx,
-    createdAt:committedAt,
-    committedAt:committedAt.getTime(),
-    colorSnapshot:participant.color
-  });
-  participant.activeContent = '';
-  participant.activeLineIdx = null;
-  participant.lastSeen = committedAt;
-  broadcastRoom(room);
-  if(seqForBroadcast != null){
-    // also broadcast commit as room-update with seq for ordering visibility
-    broadcastChar(room, participant.id, 'commit', {lineIdx:commitLineIdx, committedContent, seq:seqForBroadcast});
-  }
-  return {newLineIdx:null, committedContent, committedAt:committedAt.getTime()};
-}
-
-function drainBufferedOps(participant, room){
-  // Apply any buffered ops that are now in order
-  while(participant.opBuffer.has(participant.nextExpectedSeq)){
-    const op = participant.opBuffer.get(participant.nextExpectedSeq);
-    participant.opBuffer.delete(participant.nextExpectedSeq);
-    const seq = participant.nextExpectedSeq;
-    participant.nextExpectedSeq++;
-    if(op.type==='char'){
-      applyCharOperation(participant, room, op.char, seq);
-    } else if(op.type==='backspace'){
-      applyBackspaceOperation(participant, room, seq);
-    } else if(op.type==='commit'){
-      applyCommitOperation(participant, room, seq);
-    }
-  }
-}
-
 function rosterMessage(room){
   return {type:'roster', roster:rosterOf(room)};
 }
@@ -316,7 +241,6 @@ function removeParticipant(room, participant, preservedAt){
     committedLines.push(storeLine(room, participant, participant.activeContent, commitIdx, preservedAt));
   }
   const leaveLine = storeLine(room, participant, `* ${participant.handle} left`, greatestLineIdx(room)+1, new Date());
-  room.charEvents = room.charEvents.filter(e=>e.handle!==participant.handle);
   if(participant.socket){ try{ participant.socket.close(); }catch{} }
   room.participants.delete(participant.id);
   if(room.participants.size===0 && !room.isLobby){
@@ -330,43 +254,6 @@ function removeParticipant(room, participant, preservedAt){
 }
 
 const COMMANDS = { l:'roster', '?':'help', q:'leave' };
-
-function handleSeqOp(participant, room, seq, opType, payload){
-  // Returns {status: 'applied'|'buffered'|'duplicate'|'legacy', result, expected}
-  if(seq == null){
-    // legacy client without seq — apply immediately
-    let result;
-    if(opType==='char') result = applyCharOperation(participant, room, payload.char, null);
-    else if(opType==='backspace') result = applyBackspaceOperation(participant, room, null);
-    else if(opType==='commit') result = applyCommitOperation(participant, room, null);
-    return {status:'legacy', result};
-  }
-  const expected = participant.nextExpectedSeq || 1;
-  if(seq < expected){
-    // duplicate/retry — return current state without re-applying
-    let cur;
-    if(opType==='char' || opType==='backspace'){
-      cur = {content: participant.activeContent, lineIdx: participant.activeLineIdx, participantId: participant.id};
-    } else {
-      cur = {newLineIdx:null, committedContent:'', committedAt:Date.now()};
-    }
-    return {status:'duplicate', result:cur, expected};
-  }
-  if(seq === expected){
-    // apply immediately, then drain
-    let result;
-    if(opType==='char') result = applyCharOperation(participant, room, payload.char, seq);
-    else if(opType==='backspace') result = applyBackspaceOperation(participant, room, seq);
-    else if(opType==='commit') result = applyCommitOperation(participant, room, seq);
-    participant.nextExpectedSeq++;
-    drainBufferedOps(participant, room);
-    return {status:'applied', result, expected:participant.nextExpectedSeq};
-  }
-  // seq > expected -> buffer
-  participant.opBuffer.set(seq, {type:opType, ...payload});
-  participant.lastSeen = new Date();
-  return {status:'buffered', result:null, expected, received:seq};
-}
 
 const app = express();
 app.use(cors());
@@ -382,12 +269,6 @@ app.post('/api/rooms', (req,res)=>{
   const {preferredId, forceNew}=req.body||{};
   const room=getOrCreateRoom(preferredId, forceNew);
   res.json({room:{id:room.id, name:room.name}});
-});
-
-app.get('/api/room/:id', (req,res)=>{
-  const room=getRoom(req.params.id);
-  if(!room) return res.status(404).json({error:'not found'});
-  res.json({participants:Array.from(room.participants.values()).map(p=>({id:p.id, handle:p.handle, color:p.color, lineSlot:p.lineSlot, activeLineIdx:p.activeLineIdx, activeContent:p.activeContent, joinedAt:p.joinedAt.getTime()})), history:room.lines});
 });
 
 // join
@@ -406,12 +287,12 @@ app.post('/api/join', (req,res)=>{
 
   // Cleanup deletes the room when its last occupant was stale. Recreate it
   // under the same id so this join lands in a live, discoverable room
-  // instead of a detached object that room-state would 404. Carry over the
-  // committed lines (preserved stale drafts, leave notices) so no transcript
-  // history is lost with the detached object.
+  // instead of a detached object that roster and sockets would never find.
+  // Carry over the committed lines (preserved stale drafts, leave notices)
+  // so no transcript history is lost with the detached object.
   if(!rooms.has(room.id)){
     const orphanedLines = room.lines;
-    room = {id:room.id, name:room.name, createdAt:new Date(), maxParticipants:10, isLobby:false, participants:new Map(), lines:orphanedLines, charEvents:[], nextLineIdx:0};
+    room = {id:room.id, name:room.name, createdAt:new Date(), maxParticipants:10, isLobby:false, participants:new Map(), lines:orphanedLines};
     rooms.set(room.id, room);
   }
 
@@ -446,7 +327,6 @@ app.post('/api/join', (req,res)=>{
     joinedAt: now,
     lastSeen: now,
     nextExpectedSeq: 1,
-    opBuffer: new Map(),
     socket: null
   };
   room.participants.set(participant.id, participant);
@@ -478,142 +358,6 @@ app.get('/api/roster', (req,res)=>{
   if(!room) return res.status(404).json({error:'room not found'});
   const participants = Array.from(room.participants.values()).map(p=>({handle:p.handle, color:p.color, lineSlot:p.lineSlot})).sort((a,b)=>a.lineSlot-b.lineSlot);
   res.json({participants});
-});
-
-// heartbeat
-app.post('/api/heartbeat', (req,res)=>{
-  const {roomId, participantId, token}=req.body||{};
-  const room = getRoom(roomId);
-  if(!room) return res.json({alive:false, removed:0});
-  const participant = room.participants.get(Number(participantId));
-  if(!participant) return res.json({alive:false, removed:0});
-  if(!checkParticipantAuth(participant, token)) return res.status(401).json({error:'invalid token'});
-
-  participant.lastSeen = new Date();
-  const removed = cleanupStaleInRoom(room, participant.id);
-  res.json({alive:true, removed});
-});
-
-// send char
-app.post('/api/char', (req,res)=>{
-  const {roomId, participantId, char, seq, token}=req.body||{};
-  const room = getRoom(roomId);
-  if(!room) return res.status(404).json({error:'room not found'});
-  const participant = room.participants.get(Number(participantId));
-  if(!participant) return res.status(404).json({error:'user not in room'});
-  if(!checkParticipantAuth(participant, token)) return res.status(401).json({error:'invalid token'});
-
-  if(!isValidChar(char)){
-    return res.status(400).json({error:'invalid char'});
-  }
-
-  // ensure seq tracking fields exist for legacy participants (e.g., from old code or tests)
-  if(participant.nextExpectedSeq == null) participant.nextExpectedSeq = 1;
-  if(!participant.opBuffer) participant.opBuffer = new Map();
-
-  const outcome = handleSeqOp(participant, room, seq, 'char', {char});
-  if(outcome.status === 'buffered'){
-    return res.status(202).json({buffered:true, expected:outcome.expected, received:outcome.received, participantId:participant.id});
-  }
-  if(outcome.status === 'duplicate'){
-    return res.json({...outcome.result, duplicate:true, expected:outcome.expected});
-  }
-  // applied or legacy
-  res.json(outcome.result);
-});
-
-// backspace
-app.post('/api/backspace', (req,res)=>{
-  const {roomId, participantId, seq, token}=req.body||{};
-  const room = getRoom(roomId);
-  if(!room) return res.status(404).json({error:'room not found'});
-  const participant = room.participants.get(Number(participantId));
-  if(!participant) return res.status(404).json({error:'user not in room'});
-  if(!checkParticipantAuth(participant, token)) return res.status(401).json({error:'invalid token'});
-
-  if(participant.nextExpectedSeq == null) participant.nextExpectedSeq = 1;
-  if(!participant.opBuffer) participant.opBuffer = new Map();
-
-  // If empty, still need seq ordering to preserve x then Backspace case
-  // If activeContent empty and we are at expected seq, we return empty without broadcasting, but still advance seq
-  if(participant.activeContent.length===0 && (seq == null || seq === participant.nextExpectedSeq)){
-    const outcome = handleSeqOp(participant, room, seq, 'backspace', {});
-    if(outcome.status === 'buffered'){
-      return res.status(202).json({buffered:true, expected:outcome.expected, received:outcome.received});
-    }
-    if(outcome.status === 'duplicate'){
-      return res.json({...outcome.result, duplicate:true});
-    }
-    // For empty, applyBackspace returns empty; but handleSeqOp already applied and would return empty
-    return res.json(outcome.result || {content:'', lineIdx:participant.activeLineIdx, participantId:participant.id});
-  }
-
-  const outcome = handleSeqOp(participant, room, seq, 'backspace', {});
-  if(outcome.status === 'buffered'){
-    return res.status(202).json({buffered:true, expected:outcome.expected, received:outcome.received, participantId:participant.id});
-  }
-  if(outcome.status === 'duplicate'){
-    return res.json({...outcome.result, duplicate:true, expected:outcome.expected});
-  }
-  res.json(outcome.result);
-});
-
-// commit
-app.post('/api/commit', (req,res)=>{
-  const {roomId, participantId, seq, token}=req.body||{};
-  const room = getRoom(roomId);
-  if(!room) return res.status(404).json({error:'room not found'});
-  const participant = room.participants.get(Number(participantId));
-  if(!participant) return res.status(404).json({error:'user not in room'});
-  if(!checkParticipantAuth(participant, token)) return res.status(401).json({error:'invalid token'});
-
-  if(participant.nextExpectedSeq == null) participant.nextExpectedSeq = 1;
-  if(!participant.opBuffer) participant.opBuffer = new Map();
-
-  const outcome = handleSeqOp(participant, room, seq, 'commit', {});
-  if(outcome.status === 'buffered'){
-    return res.status(202).json({buffered:true, expected:outcome.expected, received:outcome.received, participantId:participant.id});
-  }
-  if(outcome.status === 'duplicate'){
-    return res.json({...outcome.result, duplicate:true, expected:outcome.expected});
-  }
-  res.json(outcome.result);
-});
-
-// room state
-app.get('/api/room-state', (req,res)=>{
-  const roomId = Number(req.query.roomId);
-  const room = getRoom(roomId);
-  if(!room) return res.status(404).json({error:'room not found'});
-
-  // Bounded recovery snapshot: last 100 committed lines only.
-  // Viewer scrollback is accumulated client-side from snapshots seen since join,
-  // so truncation here does not delete text the viewer already has.
-  const history = room.lines.slice(-100).sort((a,b)=>a.lineIdx-b.lineIdx).map(l=>({
-    id:l.id,
-    handle:l.handle,
-    content:l.content,
-    lineIdx:l.lineIdx,
-    committed:!!l.committed,
-    committedAt:l.committedAt || (l.createdAt?l.createdAt.getTime():Date.now()),
-    color:l.colorSnapshot
-  }));
-
-  const participants = Array.from(room.participants.values()).map(p=>({
-    id:p.id,
-    handle:p.handle,
-    color:p.color,
-    lineSlot:p.lineSlot,
-    activeLineIdx:p.activeLineIdx,
-    activeContent:p.activeContent,
-    joinedAt:p.joinedAt.getTime(),
-    lastSeen:p.lastSeen.getTime(),
-    nextExpectedSeq:p.nextExpectedSeq ?? 1
-  })).sort((a,b)=>a.lineSlot-b.lineSlot);
-
-  const roster = participants.map(p=>({handle:p.handle, color:p.color, lineSlot:p.lineSlot}));
-
-  res.json({roomId:room.id, history, participants, roster});
 });
 
 // static client serving (production)
@@ -705,13 +449,6 @@ export {
   greatestLineIdx,
   cleanupStaleInRoom,
   globalHandleExists,
-  broadcastRoom,
-  broadcastChar,
-  handleSeqOp,
-  applyCharOperation,
-  applyBackspaceOperation,
-  applyCommitOperation,
-  drainBufferedOps,
   handleKey,
   applyChar,
   applyBackspace,
