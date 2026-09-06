@@ -6,8 +6,8 @@ and HTTP serves rooms, join, leave, and roster. There is no optimistic client
 rendering and no HTTP chat mutation endpoint.
 
 Sources: [server routes and socket handlers](../server/index.js),
-[HTTP client and socket helpers](../client/src/api.ts), and
-[client behavior](../client/src/App.tsx). Server behavior is the source of
+[HTTP client](../client/src/api.ts), [socket connection](../client/src/connection.ts),
+and [client behavior](../client/src/App.tsx). Server behavior is the source of
 truth for wire fields.
 
 ## Terminology
@@ -77,9 +77,10 @@ flag. Stored colors survive the author's departure. Colors are allocated from:
 ["#00FFFF","#FFFF00","#FF00FF","#00FF00","#FF8000","#80FF00","#FF0080","#00FF80","#8080FF","#FF8080"]
 ```
 
-The browser stores `{roomId, roomName, participantId, handle, token}` under
-`remart-bbs-chat.session` in sessionStorage. Sessions without a token are
-treated as expired: the client discards them and the user rejoins. Its default
+The browser stores `{roomId, roomName, participantId, handle, token, joinedAt}`
+under `remart-bbs-chat.session` in sessionStorage. Sessions without a token or
+a numeric `joinedAt` are treated as expired: the client discards them and the
+user rejoins. Its default
 handle is stored under `remart-bbs-chat.handle` in localStorage. `?name=`
 overrides the default without overwriting it; `?room=` requests a preferred
 room through the normal room selection endpoint. These URL parameters are
