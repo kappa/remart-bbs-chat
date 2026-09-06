@@ -10,7 +10,7 @@ export type ServerMessage =
   | { type: 'snapshot'; roomId: number; you: { participantId: number; nextSeq: number }; liveLines: LiveLine[]; committed: CommittedLine[]; roster: RosterEntry[] }
   | { type: 'live'; participantId: number; row: number | null; text: string; seq: number | null }
   | { type: 'committed'; participantId: number | null; seq: number | null; line: CommittedLine }
-  | { type: 'roster'; roomId: number; roster: RosterEntry[] }
+  | { type: 'roster'; roster: RosterEntry[] }
   | { type: 'command'; name: CommandName }
   | { type: 'error'; code: ErrorCode; expected?: number };
 

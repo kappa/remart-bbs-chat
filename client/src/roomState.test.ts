@@ -44,7 +44,7 @@ describe('applyServerMessage', () => {
   it('roster removes departed participants and keeps live text of the rest', () => {
     let room = applyServerMessage(emptyRoom(), snapshot(), JOINED_AT);
     room = applyServerMessage(room, { type: 'live', participantId: 10, row: 2, text: 'keep', seq: 1 }, JOINED_AT);
-    room = applyServerMessage(room, { type: 'roster', roomId: 1, roster: [alice, { participantId: 30, handle: 'Carol', color: '#f0f', slot: 1 }] }, JOINED_AT);
+    room = applyServerMessage(room, { type: 'roster', roster: [alice, { participantId: 30, handle: 'Carol', color: '#f0f', slot: 1 }] }, JOINED_AT);
     expect(room.participants.map((p) => p.handle)).toEqual(['Alice', 'Carol']);
     expect(room.participants[0]).toMatchObject({ row: 2, text: 'keep' });
     expect(room.participants[1]).toMatchObject({ row: null, text: '' });
