@@ -64,7 +64,7 @@ participants, committed lines, and subscribed sockets. No database, durable
 log, or event replay exists; restarting the server loses everything.
 
 Each participant has one live line (its text plus an optional shared row). A
-first character allocates `greatestLineIdx(room) + 1`. Committing preserves
+first character allocates `greatestRow(room) + 1`. Committing preserves
 that row and clears the live line; committing without an allocated row
 creates a fresh one. Backspacing a live line to empty retains its row.
 `slot` is a reusable roster slot from 0 to 9, not transcript order.
