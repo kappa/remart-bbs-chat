@@ -24,9 +24,12 @@ export function socketUrl(location: Location = window.location): string {
 
 // One socket per session. Keystrokes are numbered on the way in and held in
 // `pending` until the server echoes them back (its echo carries our seq).
-// After a reconnect the snapshot says which numbers the server already has;
-// the rest are resent. A seq-gap means the server saw a number it never
-// received: the queue is discarded and the count restarts at its value.
+// Each snapshot says where the server's count stands: keystrokes already sent
+// below that count were applied and are dropped; the rest (including any typed
+// before the first snapshot, when this page's count was still a guess) are
+// renumbered from the server's count and sent. A seq-gap means the server saw
+// a number it never received: the queue is discarded and the count restarts
+// at its value.
 export function openRoomConnection(credentials: ConnectionCredentials, handlers: ConnectionHandlers, options: ConnectionOptions = {}): RoomConnection {
   const url = options.url ?? socketUrl();
   const reconnectDelayMs = options.reconnectDelayMs ?? RECONNECT_DELAY_MS;
@@ -36,7 +39,7 @@ export function openRoomConnection(credentials: ConnectionCredentials, handlers:
   let closed = false;
   let ready = false;
   let nextSeq = 1;
-  let pending: KeyMessage[] = [];
+  let pending: { key: KeyMessage; sent: boolean }[] = [];
   let reconnectTimer: number | null = null;
 
   const transmit = (msg: ClientMessage) => {
@@ -50,14 +53,18 @@ export function openRoomConnection(credentials: ConnectionCredentials, handlers:
 
   const receive = (msg: ServerMessage) => {
     if (msg.type === 'snapshot') {
-      pending = pending.filter((key) => key.seq >= msg.you.nextSeq);
-      if (pending.length === 0) nextSeq = msg.you.nextSeq;
-      for (const key of pending) transmit(key);
+      pending = pending.filter((entry) => !(entry.sent && entry.key.seq < msg.you.nextSeq));
+      nextSeq = msg.you.nextSeq;
+      for (const entry of pending) {
+        entry.key.seq = nextSeq++;
+        entry.sent = true;
+        transmit(entry.key);
+      }
       ready = true;
       handlers.onStatus('open');
     } else if ((msg.type === 'live' || msg.type === 'committed') && msg.participantId === credentials.participantId && msg.seq != null) {
       const acked = msg.seq;
-      pending = pending.filter((key) => key.seq > acked);
+      pending = pending.filter((entry) => entry.key.seq > acked);
     } else if (msg.type === 'error' && msg.code === 'seq-gap') {
       pending = [];
       if (typeof msg.expected === 'number') nextSeq = msg.expected;
@@ -94,7 +101,7 @@ export function openRoomConnection(credentials: ConnectionCredentials, handlers:
     send(key) {
       if (pending.length >= maxPending) return false;
       const msg: KeyMessage = { type: 'key', seq: nextSeq++, ...key };
-      pending.push(msg);
+      pending.push({ key: msg, sent: ready });
       if (ready) transmit(msg);
       return true;
     },

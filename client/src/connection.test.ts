@@ -42,6 +42,18 @@ describe('openRoomConnection', () => {
     expect(ws.keys()[2]).toEqual({ type: 'key', seq: 3, kind: 'backspace' });
   });
 
+  it('keystrokes typed before the first snapshot after a reload take the server numbering', () => {
+    const { connection } = open();
+    connection.send({ kind: 'char', char: 'A' });
+    connection.send({ kind: 'char', char: 'B' });
+    vi.runOnlyPendingTimers();
+    const ws = FakeWebSocket.latest();
+    ws.serverSend(snapshot(57));
+    expect(ws.keys()).toEqual([{ type: 'key', seq: 57, kind: 'char', char: 'A' }, { type: 'key', seq: 58, kind: 'char', char: 'B' }]);
+    connection.send({ kind: 'enter' });
+    expect(ws.keys()[2]).toEqual({ type: 'key', seq: 59, kind: 'enter' });
+  });
+
   it('on reconnect resends only keystrokes the server has not echoed', () => {
     const { connection, statuses } = open();
     vi.runOnlyPendingTimers();
