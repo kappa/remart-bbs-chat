@@ -2,3 +2,8 @@ node_modules
 .env
 .DS_Store
 *.log
+# Build output (rebuild with: npm --prefix client run build)
+client/dist/
+# No checked-in lockfiles: root and client are separate packages
+package-lock.json
+client/package-lock.json
