@@ -20,16 +20,16 @@ checkboxes. Keep task numbers stable; execute the open tasks in this order:
 
 | Order | Task | Reason |
 | --- | --- | --- |
-| 1 | 20 — Restore the join sound | A shipped feature is broken; tasks 15 and 17 build on it. Test first. |
-| 2 | 13 — Keep a mouse selection | Bug, small, isolated to the chat area's click handler. |
-| 3 | 19 — Mobile keyboard | Bug for phone users; no dependencies, needs a device check. |
-| 4 | 12 — Last 20 lines on join | The last review item that changes the protocol; land it before features add their own. |
-| 5 | 5 — Unicode deletion | Defines the deletion unit that task 14 builds on. |
-| 6 | 14 — Caret editing | Protocol change; needs task 5's unit. |
-| 7 | 15 — Join-sound switch | Needs a working chirp from task 20. |
-| 8 | 16 — Clickable URLs | Row rendering; independent. |
-| 9 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
-| 10 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 1 | 13 — Keep a mouse selection | Bug, small, isolated to the chat area's click handler. |
+| 2 | 19 — Mobile keyboard | Bug for phone users; no dependencies, needs a device check. |
+| 3 | 5 — Unicode deletion | Bug; server-only now, and defines the deletion unit that task 14 builds on. |
+| 4 | 12 — Last 20 lines on join | High-priority feature; the last review item that changes the protocol, so land it before other features add their own. |
+| 5 | 14 — Caret editing | Protocol change; needs task 5's unit. |
+| 6 | 16 — Clickable URLs | Row rendering; independent. |
+| 7 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 8 | 20 — Restore the join sound | Low priority, unconfirmed. Test first; tasks 15 and 17 wait for it. |
+| 9 | 15 — Join-sound switch | Needs a working chirp from task 20. |
+| 10 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
 
 ## 1. Require participant authorization for mutations
 
@@ -100,7 +100,7 @@ checkboxes. Keep task numbers stable; execute the open tasks in this order:
 
 ## 5. Delete Unicode characters without corrupting surrogate pairs
 
-- [ ] **Medium priority**
+- [ ] **Bug**
 - **Location:** `server/index.js` `applyBackspace`. Since server echo this is
   the only deletion site: the client sends a `backspace` keystroke and renders
   the echoed live line, so no client code changes.
@@ -284,7 +284,7 @@ checkboxes. Keep task numbers stable; execute the open tasks in this order:
 
 ## 12. Show the last 20 room lines to a newly joined participant
 
-- [ ] **Requested feature**
+- [ ] **Requested feature, high priority**
 - **Goal:** Seed a new participant's transcript with up to 20 existing committed
   lines, then continue showing live typing and subsequent committed lines.
 - **Code:** [Room storage, join handler, and snapshot assembly](server/index.js),
@@ -559,7 +559,7 @@ Close the GitHub issue when the task is done.
 
 ## 20. Restore the join sound
 
-- [ ] **Bug**
+- [ ] **Bug, unconfirmed, low priority**
 - **Source:** [GitHub issue #9](https://github.com/kappa/remart-bbs-chat/issues/9).
 - **Location:** `client/src/App.tsx` `playJoinSound`;
   `client/src/useRoomConnection.ts` newcomer detection (`onNewcomer` fires on
