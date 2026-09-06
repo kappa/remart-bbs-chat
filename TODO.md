@@ -3,9 +3,9 @@
 Items from the code review. The pending-commit matching finding (item 5 in the
 review) is intentionally excluded.
 
-Tasks 10 and 11 record the approved direction for a future rewrite: server echo
-and WebSocket chat transport. They supersede preserving optimistic rendering
-and repairing the HTTP character stream as long-term design requirements.
+Tasks 10 and 11 record the approved direction for the rewrite: server echo and
+WebSocket chat transport. They superseded preserving optimistic rendering and
+repairing the HTTP character stream, and are now implemented.
 The existing review issues remain useful failure cases for the rewrite.
 
 For every protocol-affecting task, update [docs/PROTOCOL.md](docs/PROTOCOL.md)
@@ -22,8 +22,8 @@ Keep issue numbers stable; use this order for execution:
 | 1 | 6 — Build and setup | Establish a reliable build/test workflow. |
 | 2 | 1 — Participant authorization | Establish credentials for HTTP mutations and socket sessions. |
 | 3 | 4 — Stale-room joins | Make session creation reliable before implementing recovery. |
-| 4 | 11 + 7 — WebSocket transport and development routing | Establish the server protocol and local verification. Incorporate issues 2 and 3 into delivery/reconnection behavior, and design task 12's initial-history snapshot now. |
-| 5 | 10 — Server echo | Switch the client to authoritative events, remove optimistic state, and finish retiring HTTP chat mutations. |
+| 4 | 11 + 7 — WebSocket transport and development routing (done) | Establish the server protocol and local verification. Incorporate issues 2 and 3 into delivery/reconnection behavior. |
+| 5 | 10 — Server echo (done) | Switch the client to authoritative events, remove optimistic state, and finish retiring HTTP chat mutations. |
 | 6 | 12 — Last 20 lines on join | Implement on the new snapshot/rendering path rather than the client logic being removed. |
 | 7 | 5 — Unicode deletion | Fix deletion in the surviving server-authoritative path. |
 | 8 | 8 — Production helpers | Consolidate surviving logic and remove obsolete helpers/tests. |
@@ -31,9 +31,9 @@ Keep issue numbers stable; use this order for execution:
 Task 9 (regression coverage) accompanies every step, with a final integration
 pass; it is not deferred until the end. Tasks 11 and 10 are one coordinated
 migration: establish the server protocol before switching the client, and retire
-old endpoints after the switch. Solve issue 2's stalled-input failure within
-WebSocket recovery rather than building a separate HTTP retry system. Address
-issue 3's transient-failure behavior in that same connection lifecycle.
+old endpoints after the switch. Issue 2's stalled-input failure is solved within
+WebSocket recovery rather than by a separate HTTP retry system; issue 3's
+transient-failure behavior lives in the same connection lifecycle.
 
 This order assumes the rewrite is next. If the current application will remain
 deployed for an extended period, bring fixes for issues 3 and 5 forward.
@@ -55,7 +55,7 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
 
 ## 2. Recover missing operations in the sequence stream
 
-- [ ] **High priority**
+- [x] **High priority** (done: one ordered socket; unconfirmed keystrokes replayed after reconnect, duplicates ignored by seq, gaps reported as seq-gap)
 - **Location:** `client/src/App.tsx` operation dispatch;
   `server/index.js` `handleSeqOp` and `drainBufferedOps`.
 - **Problem:** A failed request consumes a client sequence number without a
@@ -76,7 +76,7 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
 
 ## 3. Preserve sessions through transient polling failures
 
-- [ ] **Medium priority**
+- [x] **Medium priority** (done: no room-state poll remains; a session ends only on unknown-participant, leave command, or the user's own leave)
 - **Location:** `client/src/App.tsx` room-state session-expiration effect;
   `client/src/api.ts` error handling.
 - **Problem:** Any room-state request error clears the session, including a
@@ -138,7 +138,7 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
 
 ## 7. Support application WebSockets during Vite development
 
-- [ ] **Development workflow**
+- [x] **Development workflow** (done: Vite dev server removed; the built client is always served by Express)
 - **Location:** `client/vite.config.ts`; `client/src/App.tsx` socket connection.
 - **Problem:** The client connects to the current page host, while Vite only
   proxies `/api` and `/health`. Application WebSocket traffic does not reach
@@ -153,7 +153,7 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
 
 ## 8. Make helper tests exercise production logic
 
-- [ ] **Maintainability**
+- [ ] **Maintainability** (partly done: computeDocumentLines and isValidChar are the only paths; remaining: none known, verify and close)
 - **Location:** `client/src/documentLines.ts`, `client/src/App.tsx`, and their tests.
 - **Problem:** Character validation and document-ordering logic are duplicated;
   testing the extracted helpers does not ensure the component uses that logic.
@@ -180,7 +180,7 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
 
 ## 10. Rewrite transcript rendering for server echo (no local echo)
 
-- [ ] **Requested architecture change**
+- [x] **Requested architecture change** (done: transcript renders only from live/committed echoes; commands recognized on the server)
 - **Goal:** Display chat content only after receiving authoritative server
   state or events. Accept round-trip latency for visible typing in exchange
   for removing optimistic rendering and reconciliation complexity.
@@ -231,7 +231,7 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
 
 ## 11. Make WebSocket the primary chat transport
 
-- [ ] **Requested architecture change**
+- [x] **Requested architecture change** (done: /ws carries hello, key, snapshot, live, committed, roster, command, error; HTTP chat routes retired)
 - **Goal:** Carry the actual chat character stream over WebSocket in both
   directions. Reserve separate HTTP requests for session setup and auxiliary
   operations; do not use HTTP character, backspace, or commit requests as a
@@ -311,9 +311,9 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
     ephemeral: history disappears when the room is deleted or the server
     restarts. Persistence across empty rooms or restarts is outside this task.
 - **Work:**
-  - Define the initial history selection in the server's join/snapshot contract,
-    coordinated with task 11. Capture it at a defined point and deliver later
-    events without gaps or duplicates, including commits occurring during join.
+  - Define the initial history selection in the server's join/snapshot contract.
+    Capture it at a defined point and deliver later events without gaps or
+    duplicates, including commits occurring during join.
   - Replace blanket pre-join filtering with the selected initial window plus
     subsequent events. Do not simply expose the entire 100-line recovery snapshot.
   - Seed the viewer's accumulated history once for a new session. Later snapshots
@@ -335,9 +335,9 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
   transcript lines (or all if fewer), in server transcript order and original
   colors, plus current live state and subsequent events. Existing viewers lose
   no scrollback. Resizing does not change which logical lines were selected.
-- **Order:** Design the history contract during task 11; implement the feature
-  after task 10 so it uses the final server-echo rendering path. Include its
-  tests under task 9 before proceeding to final helper consolidation.
+- **Order:** Implement after task 10 so it uses the final server-echo rendering
+  path. Include its tests under task 9 before proceeding to final helper
+  consolidation.
 - **Protocol docs:** Update [PROTOCOL.md](docs/PROTOCOL.md) with initial-history
   payloads, the 20-line selection rule and join boundary, snapshot/event ordering,
   and reconnect behavior. Replace the current no-pre-join-history description

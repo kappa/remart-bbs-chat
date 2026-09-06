@@ -23,7 +23,11 @@ found there is current.
 
 - `docs/superpowers/specs/2026-09-05-websocket-server-echo-design.md` —
   approved design for TODO tasks 11, 10, and 7 (WebSocket chat transport,
-  server echo, no Vite dev server), absorbing issues 2 and 3.
+  server echo, no Vite dev server), absorbing issues 2 and 3; implemented
+  2026-09-05, kept as the design record.
+- `docs/superpowers/plans/2026-09-05-websocket-server-echo.md` — the
+  implementation plan for that spec; executed on branch
+  `websocket-server-echo`.
 
 ## Archive (historical, not authoritative)
 

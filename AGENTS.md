@@ -3,35 +3,45 @@
 ## Project and source of truth
 
 Remart BBS Chat is a DOS-terminal-styled shared typing space: characters and
-backspaces appear live in one ordered transcript. It uses a React 19/TypeScript
-client and a Node.js ES-module Express/WebSocket server. Rooms and participants
-live in process memory; restarting the server loses their state. There is no
-database or authentication service.
+backspaces appear live in one ordered transcript. Chat travels over one
+WebSocket per participant; text renders only from server echo. It uses a
+React 19/TypeScript client and a Node.js ES-module Express/WebSocket server.
+Rooms and participants live in process memory; restarting the server loses
+their state. There is no database or authentication service.
 
 Read `docs/USER_EXPERIENCE.md` for behavior and `docs/DESIGN.md` for rationale.
 Together with `README.md` and the wire reference `docs/PROTOCOL.md`, these are
 the maintained product docs. Follow
 `docs/SPECS_STATUS.md`: everything under `docs/archive/` is historical. Do not
 execute the archived plan or restore its superseded ASCII-only, 80-column, or
-typing-throttle requirements. `docs/superpowers/` holds only active specs and
-plans; there are none at present. When docs and implementation
-disagree, inspect the code and tests and correct the maintained docs as part of
-the relevant change.
+typing-throttle requirements. `docs/superpowers/` holds active specs and plans;
+the WebSocket server-echo plan there is implemented. When docs and
+implementation disagree, inspect the code and tests and correct the maintained
+docs as part of the relevant change.
 
 ## Code map
 
-- `server/index.js`: in-memory state, room lifecycle, REST routes, ordered
-  operations, WebSocket broadcasts, stale-participant cleanup, and static serving.
-- `client/src/App.tsx`: lobby/session UI, React Query polling, socket updates,
-  optimistic typing, pending commits, reconciliation, scrollback, and input.
-- `client/src/api.ts`: REST request/response types and page-exit leave requests.
-- `client/src/documentLines.ts`: pure ordering, color, roster, and character helpers.
+- `server/index.js`: in-memory state, room lifecycle, REST routes for
+  rooms/join/leave/roster, socket handshake and keystroke echo, stale sweep,
+  and static serving.
+- `client/src/App.tsx`: lobby/session UI, rendering from room state, and input
+  dispatch.
+- `client/src/connection.ts`: socket lifecycle and keystroke replay.
+- `client/src/roomState.ts`: server messages to room state (pure reducer).
+- `client/src/useRoomConnection.ts`: React binding between the connection and
+  app events.
+- `client/src/protocol.ts`: wire message types.
+- `client/src/api.ts`: REST client for rooms, join, leave, roster, and
+  page-exit leave requests.
+- `client/src/documentLines.ts`: document row ordering and character helpers.
 - `client/src/theme.css`: terminal appearance and responsive layout.
 - `client/src/main.tsx`: React entry point and QueryClient provider.
-- `test-server-*.js`: Node test-runner suites for logic, HTTP, sequencing,
-  WebSockets, and Enter latency.
-- `client/src/*.test.{ts,tsx}`: Vitest/Testing Library suites, including rendering,
-  roster, ordering, and race regressions. `test-setup.ts` stubs audio and WebSocket.
+- `client/src/testing/`: FakeWebSocket and shared room fixtures for tests.
+- `test-server-*.js`: Node test-runner suites for logic, HTTP, and WebSockets,
+  sharing `test-support.js` helpers.
+- `client/src/*.test.{ts,tsx}`: Vitest/Testing Library suites covering the
+  reducer, connection replay, rendering, roster, fast input, and transcript
+  regressions. `test-setup.ts` installs the WebSocket fake and an audio stub.
 - `Dockerfile` and `fly.toml`: client build plus a single server deployment.
 
 ## Install, run, and validate
@@ -49,14 +59,10 @@ npm start
 
 The server defaults to `http://localhost:3000`; `PORT` overrides the port.
 Build the client before starting the server so static serving is enabled.
-The root `build` script and the README's `--workspace=client` example do not
-match the current package setup; use the explicit `--prefix client` command.
 
-For client hot reload, run `npm run dev` and `npm --prefix client run dev` in
-separate terminals. Vite uses port 5173 and proxies `/api` and `/health` to port
-3000. It does not configure the application's root WebSocket proxy; the client
-connects its socket to the current page host. Verify real socket behavior using
-the built client served by Express on port 3000.
+There is no development server: rebuild the client with
+`npm --prefix client run build` and reload the page served by Express after
+client changes; restart `npm start` after server changes.
 
 ```sh
 npm test
@@ -64,62 +70,54 @@ npm --prefix client test
 npm --prefix client run build
 ```
 
-Run the suites relevant to a change; run both for changes to the typing protocol
-or reconciliation. Targeted examples:
+Run the suites relevant to a change; run both for changes to the typing
+protocol or echo behavior. Targeted examples:
 
 ```sh
-NODE_ENV=test node --test test-server-seq.js
+NODE_ENV=test node --test test-server-ws.js
 npm --prefix client test -- src/App.race.test.tsx
 ```
 
 Server tests set `NODE_ENV=test` before dynamically importing the server, reset
 shared state with `resetForTests()`, and bind integration servers to port 0.
 Test mode disables automatic listening and the periodic cleanup timer. Preserve
-this isolation and close sockets/servers in test teardown. Client tests mock
-`api`, provide a QueryClient, and reset browser storage between cases.
+this isolation and close sockets/servers in test teardown. Client tests use the
+FakeWebSocket double (`client/src/testing/fakeWebSocket.ts`), mock `api`, and
+reset browser storage between cases.
 
 There is no configured lint script. The Vite build does not perform TypeScript
-type checking; do not report a successful build as a passing type check.
+type checking; run `npx tsc --noEmit` inside `client/` for that, and do not
+report a successful build as a passing type check.
 
 ## Behavior to preserve
 
 The following describes the current implementation and its regression baseline.
-For the approved rewrite, `TODO.md` tasks 10–12 explicitly replace optimistic
-rendering with server echo, HTTP chat input with WebSocket input, and pre-join
-history exclusion with a 20-line initial window. Follow that task scope rather
-than retaining the superseded mechanisms, and update these instructions and
-the maintained docs as each change is implemented. Use TODO's recommended order.
 
-- Server-assigned `lineIdx` orders committed and live rows together. Roster
-  `lineSlot` is separate and must not determine transcript order.
-- A participant claims a row on the first character. Enter commits in place
-  and clears ownership; an idle local cursor preview has no shared row.
-  Backspacing an owned row to empty preserves its index. Empty Enter is valid.
-- Typing and Enter render optimistically without waiting for acknowledgements.
-  Keep pending commits visible until confirmed, and retain finished-draft
-  tracking so delayed snapshots cannot resurrect committed drafts.
-- Character, backspace, and commit operations share a per-participant sequence.
-  The server buffers out-of-order operations and ignores duplicates. Preserve
-  the existing legacy path for requests without sequence numbers unless the
-  task explicitly changes compatibility. Update API types, server payloads,
-  and socket handling together when changing this contract.
-- WebSocket events provide live updates; room-state polling provides recovery.
-  Preserve both paths and test delayed replies and reordered operations for
-  typing changes, particularly `A`, Enter, `B`, Backspace, `C`.
-- `/api/room-state` returns the last 100 appended committed records, sorted by
-  line index, as a recovery snapshot;
-  this is a response limit, not a bound on the server's stored `room.lines`.
-  Clients accumulate seen history since joining and preserve it across snapshot
-  truncation. Do not force-scroll a viewer reading older text.
-- Committed lines retain author color snapshots after departure. Preserve
-  nonempty drafts on leave or stale cleanup. Client heartbeats run every 12
-  seconds, with a 40-second server timeout and 15-second cleanup sweep.
-- Handles are currently unique case-insensitively across all rooms; rooms allow
-  up to ten participants. Browser storage is prototype session convenience.
-  The `?name=` override must not overwrite the remembered default handle.
-- Preserve Unicode input, the 100-character paste cap and warning, and the
-  single-character Enter commands `l`, `?`, and `q`. Keep client and server
-  character validation aligned.
+- Server-assigned rows order live and committed lines as one document; the
+  roster `slot` never determines transcript order.
+- The first character claims a row, Enter commits in place, backspacing to
+  empty keeps the row, and an idle participant has no shared row (their own
+  client shows a local caret preview). Enter on an empty line is valid.
+- Text renders only from server echo. Keystrokes are numbered per participant,
+  applied in order on one socket, replayed after reconnect, ignored when
+  replayed, and reported as `seq-gap` when lost. Nothing renders before the
+  echo; test fast sequences like `A`, Enter, `B`, Backspace, `C`.
+- The snapshot on connect carries the last 100 committed lines sorted by row;
+  clients accumulate everything seen since joining, so snapshot truncation
+  never deletes scrollback. Lines committed before the stored `joinedAt` are
+  hidden. Do not force-scroll a viewer reading older text.
+- Committed lines keep author color snapshots after departure. Leave, stale
+  cleanup, and the `q` command share one removal path that preserves nonempty
+  live text stamped at last activity, announces, broadcasts `committed` then
+  `roster`, and closes the socket. The server pings sockets every 12 seconds;
+  silence past 40 seconds is stale, swept every 15 seconds and on join.
+- Handles are unique case-insensitively across all rooms; rooms allow up to
+  ten participants. Browser storage is prototype session convenience. The
+  `?name=` override must not overwrite the remembered default handle.
+- Commands `l`, `?`, and `q` are recognized by the server on Enter against the
+  exact live line (surrounding whitespace makes it chat). Unicode input
+  passes through, paste is capped at 100 characters with a warning, and
+  client and server character validation stay aligned.
 - Preserve the monospace terminal aesthetic, author-colored text, underline
   caret, responsive layout, and ordinary transcript rows without name prefixes.
 

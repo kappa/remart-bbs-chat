@@ -41,41 +41,35 @@ are not a design input.
   transcript for its own idle user. It has no shared identity, no ordering
   effect, and is invisible to everyone else.
 
-## Optimistic typing, server reconciliation
+## Server echo, no local echo
 
-- Keystrokes render instantly on the typing client (optimistic UI) and are
-  broadcast to others. Waiting for a round trip before showing a character
-  would destroy the char-by-char feel.
-- The client allocates its draft line optimistically using the same
-  greatest-index-plus-one rule as the server. When the server's allocation is
-  known it wins; until then the guess stands.
-- Correctness never waits for acknowledgement:
-  - Enter commits the line locally at once and opens a fresh buffer, even if
-    the commit request is still in flight.
-  - A finished line stays visible as a **pending commit** until the server's
-    history confirms it (matched by author, content, and time — not by
-    index, because the optimistic index was only a guess).
-  - Every committed index is also remembered in a **finished-draft set**, so
-    a delayed pre-commit snapshot — or an out-of-order poll arriving after
-    the pending commit was cleaned up — can never resurrect the finished
-    line as a live row. Indices are never reused, so this memory is safe.
-- Operations carry a per-participant sequence number. The server buffers
-  out-of-order operations and applies them in order, and drops duplicates.
-  This is what guarantees `x` then Backspace ends empty and `A Enter B`
-  commits only `A`, regardless of network timing.
+- The client never shows text it has not received from the server. A
+  keystroke is sent and forgotten until the server echoes the whole live
+  line back; that echo is what renders, for the typist and for everyone else.
+- The price is one round trip before a character appears. The gain is that
+  there is exactly one rendering path and no reconciliation: no guessed row
+  numbers, no pending commits, no rollback, no finished-line bookkeeping.
+- Typing does not wait for echoes. Keystrokes are numbered and streamed; the
+  server applies them in order and echoes each. Fast `A`, Enter, `B`,
+  Backspace, `C` produces the same transcript on every screen.
+- Commands (`l`, `?`, `q`) are recognized by the server against the real live
+  line, so a lagging screen cannot turn a command into chat or vice versa.
 
-## Transport: live push, polling fallback
+## Transport: one socket per participant
 
-- Remote keystrokes, backspaces, and commits arrive over WebSocket and are
-  applied directly to the local view, so even a character typed and instantly
-  deleted is seen in order.
-- A 2-second poll is the fallback for clients that miss socket events.
-  Either path converges on the same server state.
+- One authenticated WebSocket carries everything that happens inside a room,
+  both directions. There is no polling and no HTTP heartbeat: the open socket
+  is presence, and a snapshot on every (re)connect is recovery.
+- Unconfirmed keystrokes are kept until the server echoes them and are resent
+  after a reconnect. The server ignores replays by sequence number, so a
+  brief disconnect heals itself instead of losing or duplicating text. A gap
+  the server cannot fill is reported, not silently swallowed.
+- HTTP remains for what happens outside a room: listing and creating rooms,
+  joining, leaving, and the roster button.
 
 ## Scrollback belongs to the viewer
 
-- The server keeps only the last 100 committed lines and hands them out as a
-  **bounded recovery snapshot** — enough for a reconnecting client to catch
+- The snapshot sent on connect carries only the last 100 committed lines — enough for a reconnecting client to catch
   up, not a full archive.
 - Each client accumulates everything it has seen since joining and never
   discards it. The snapshot cutoff therefore never deletes text from under
@@ -94,8 +88,8 @@ are not a design input.
 
 ## Presence and disconnects
 
-- A 12-second client heartbeat against a 40-second server timeout detects
-  stale participants. Cleanup preserves a disconnected participant's
+- The server pings each socket every 12 seconds; a participant silent for
+  40 seconds is cleaned up. Cleanup preserves a disconnected participant's
   non-empty unsent text; only abandoned empty rows may disappear.
 - Duplicate display names are rejected case-insensitively. There is no
   name-reclaim flow: holding a name is holding it.

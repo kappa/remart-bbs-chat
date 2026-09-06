@@ -381,17 +381,37 @@ resyncs its counter.
 
 ## Client behavior
 
-The client joins over HTTP, then opens one socket to `/ws` and sends `hello`
-with the stored token. The snapshot response replaces its whole room state;
-after that, `live`, `committed`, and `roster` messages update it incrementally
-and there is no HTTP polling of room state. Keystrokes are numbered locally and
-sent as `key` messages; the server's echo renders them. A `command:help`
-message opens the help overlay, `command:roster` shows a confirmation, and a
-socket closed by `q` or by a fatal `error` (`unauthorized`,
-`unknown-participant`) ends the session. An unexpected close schedules a
-reconnect after 1.2 seconds, and the fresh snapshot restores state. Paste is
-expanded into individual `char` keystrokes with the 100-code-point cap and
-warning applied locally.
+Lifecycle:
+
+| Activity | Client behavior |
+| --- | --- |
+| Lobby | Polls `GET /api/rooms` every 1 second |
+| Joined | Opens `/ws`, sends `hello`, renders the room from the `snapshot` |
+| Unexpected close | Reconnects after 1.2 seconds and repeats `hello` |
+| Session change or unmount | Closes the socket |
+| Page hide | Best-effort HTTP leave via beacon/keepalive |
+
+Pending queue: keystrokes are numbered from 1 (or from the snapshot's
+`nextSeq` when nothing is pending), queued up to 200, sent once the snapshot
+has arrived, and dropped when an echo carrying the own participant id and a
+sequence number at or above theirs arrives. On reconnect the snapshot's
+`nextSeq` prunes the queue and the rest is resent in order. A full queue
+drops keystrokes with the warning "Not connected, input paused". A `seq-gap`
+error clears the queue, adopts `expected`, and shows "Connection recovered,
+some input was lost".
+
+Session end: only `error unknown-participant` or `unauthorized`, the
+`command leave` reply, or the user's own leave action clears the session.
+
+Commands: Enter is a plain keystroke; the server decides. `command roster`
+shows "Roster refreshed", `help` opens the overlay, `leave` returns to the
+lobby. The toolbar buttons call HTTP roster/leave directly instead of typing
+the commands.
+
+Rendering: `computeDocumentLines` over accumulated committed lines and live
+lines; nothing renders before the echo; the caret sits on the own live row
+or, when idle, on a local preview row below the transcript. Lines with
+`committedAt` before the stored `joinedAt` are hidden.
 
 Existing protocol coverage is in [HTTP tests](../test-server-api.js),
 [server logic tests](../test-server-logic.js), and

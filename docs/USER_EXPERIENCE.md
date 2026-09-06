@@ -37,8 +37,10 @@ name prefixes on ordinary lines because the color tells you who is who.
 
 ## Typing
 
-- Every character appears the moment you type it — for you and for everyone
-  else watching.
+- Every character appears as soon as the server has it, for you and for
+  everyone else at the same moment. On a normal connection that is
+  immediate; on a slow one your own text lags by the round trip, but what
+  you see is always what everyone sees.
 - Backspace visibly deletes characters for everyone too. At the very start of
   a line, Backspace does nothing.
 - Your typing position is marked by a **blinking 2 px underline caret**,
@@ -83,6 +85,10 @@ with one of those letters.
 - When someone new joins, you hear a short two-tone chirp.
 - If your connection drops in the middle of a line, your unsent text is kept,
   not thrown away.
+- A status line reads "Connecting..." or "Reconnecting..." while the room is
+  not live. You can keep typing during a short reconnect; your keystrokes are
+  delivered when it returns. If the outage is long, input pauses with a notice
+  until the connection is back; if something was lost, you are told.
 
 ## Scrollback and history
 

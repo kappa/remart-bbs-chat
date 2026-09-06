@@ -172,7 +172,7 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [session]);
 
-  // Page-hide leaves the room; presence is the WebSocket (no separate heartbeat needed)
+  // Page-hide leaves the room; the open socket is presence
   useEffect(() => {
     if (!session) return;
     const currentSession = session;

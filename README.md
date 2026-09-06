@@ -25,7 +25,9 @@ shared IPv4.
 ## Structure
 
 - `client/src/App.tsx` — UI: rooms, typing, live updates, scrollback
-- `client/src/api.ts` — typed REST client for `/api/*`
+- `client/src/connection.ts` — socket lifecycle and keystroke replay
+- `client/src/roomState.ts` — server messages to room state
+- `client/src/api.ts` — REST client for rooms, join, leave, roster
 - `client/src/theme.css` — monospace terminal theme
 - `server/index.js` — Express + WebSocket server, in-memory rooms
 
