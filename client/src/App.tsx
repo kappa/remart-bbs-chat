@@ -122,6 +122,7 @@ export function App() {
   const [warning, setWarning] = useState("");
   const [showHelp, setShowHelp] = useState(false);
   const chatRef = useRef<HTMLElement>(null);
+  const containerRef = useRef<HTMLElement>(null);
   const keyboardRef = useRef<HTMLTextAreaElement>(null);
   const wasNearBottomRef = useRef(true);
   const autoJoinAttemptRef = useRef("");
@@ -227,6 +228,31 @@ export function App() {
       chat.scrollTop = chat.scrollHeight;
     }
   }, [documentLines]);
+
+  // Size the session layout to the visual viewport so the caret and newest
+  // lines stay above the on-screen keyboard (task 19). The variables default
+  // to the CSS fallbacks, so desktops and browsers without visualViewport
+  // are untouched.
+  useEffect(() => {
+    if (!session) return;
+    const vv = window.visualViewport;
+    const container = containerRef.current;
+    if (!vv || !container) return;
+    const applyViewport = () => {
+      container.style.setProperty("--app-height", `${vv.height}px`);
+      container.style.setProperty("--app-offset", `${vv.offsetTop}px`);
+      if (wasNearBottomRef.current) {
+        const chat = chatRef.current;
+        if (chat) chat.scrollTop = chat.scrollHeight;
+      }
+    };
+    vv.addEventListener("resize", applyViewport);
+    vv.addEventListener("scroll", applyViewport);
+    return () => {
+      vv.removeEventListener("resize", applyViewport);
+      vv.removeEventListener("scroll", applyViewport);
+    };
+  }, [session]);
 
   const onChatScroll = (event: UIEvent<HTMLElement>) => {
     const chat = event.currentTarget;
@@ -506,7 +532,7 @@ export function App() {
    * ten distinct colors. Rooms are ephemeral.
    */
   return (
-    <main id="container" aria-label="Remart BBS Chat">
+    <main id="container" aria-label="Remart BBS Chat" ref={containerRef}>
       <section
         id="chat-area"
         aria-label="Shared chat area"

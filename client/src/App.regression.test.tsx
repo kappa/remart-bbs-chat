@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor, fireEvent } from '@testing-library/react';
+import { screen, waitFor, fireEvent, act } from '@testing-library/react';
 import { api } from './api';
 import { renderJoined, serverSend, snapshot, line, alice, bob, idle, typing } from './testing/roomFixtures';
 
@@ -66,5 +66,75 @@ describe('Transcript regressions', () => {
     await screen.findByText('second room');
     expect(screen.queryByText('first room')).not.toBeInTheDocument();
     second.unmount();
+  });
+});
+
+describe('Visual viewport (task 19)', () => {
+  // Minimal stand-in for window.visualViewport: records listeners so tests
+  // can fire resize/scroll and assert they are detached on unmount.
+  function stubVisualViewport() {
+    const listeners = new Map<string, Set<() => void>>();
+    const vv = {
+      height: 800,
+      offsetTop: 0,
+      addEventListener: (type: string, fn: () => void) => {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type)!.add(fn);
+      },
+      removeEventListener: (type: string, fn: () => void) => {
+        listeners.get(type)?.delete(fn);
+      },
+    };
+    (window as any).visualViewport = vv;
+    const fire = (type: 'resize' | 'scroll') =>
+      act(() => { for (const fn of listeners.get(type) ?? []) fn(); });
+    const listenerCount = (type: string) => (listeners.get(type)?.size ?? 0);
+    return { fire, listenerCount };
+  }
+
+  const container = () => document.querySelector<HTMLElement>('#container')!;
+
+  function fakeChatScroll(chat: HTMLElement, scrollHeight: number) {
+    Object.defineProperty(chat, 'scrollHeight', { configurable: true, value: scrollHeight });
+    Object.defineProperty(chat, 'clientHeight', { configurable: true, value: 100 });
+  }
+
+  it('a viewport resize writes --app-height/--app-offset and keeps a bottom reader at the bottom', async () => {
+    const { fire, listenerCount } = stubVisualViewport();
+    const { unmount } = await renderJoined(snapshot({ committed: [line('a', 0, 'one')] }));
+    const chat = await screen.findByLabelText('Shared chat area');
+    fakeChatScroll(chat, 1000);
+    chat.scrollTop = 900; // within 80px of the bottom
+    fireEvent.scroll(chat);
+
+    (window as any).visualViewport.height = 400;
+    (window as any).visualViewport.offsetTop = 120;
+    fire('resize');
+
+    expect(container().style.getPropertyValue('--app-height')).toBe('400px');
+    expect(container().style.getPropertyValue('--app-offset')).toBe('120px');
+    expect(chat.scrollTop).toBe(1000);
+
+    unmount();
+    expect(listenerCount('resize')).toBe(0);
+    expect(listenerCount('scroll')).toBe(0);
+    delete (window as any).visualViewport;
+  });
+
+  it('a viewport resize does not move a reader who scrolled up', async () => {
+    const { fire } = stubVisualViewport();
+    await renderJoined(snapshot({ committed: [line('a', 0, 'one')] }));
+    const chat = await screen.findByLabelText('Shared chat area');
+    fakeChatScroll(chat, 1000);
+    chat.scrollTop = 0;
+    fireEvent.scroll(chat);
+
+    (window as any).visualViewport.height = 400;
+    (window as any).visualViewport.offsetTop = 120;
+    fire('resize');
+
+    expect(chat.scrollTop).toBe(0);
+    expect(container().style.getPropertyValue('--app-height')).toBe('400px');
+    delete (window as any).visualViewport;
   });
 });

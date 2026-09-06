@@ -781,7 +781,7 @@ Close the GitHub issue when the task is done.
 
 ## 19. Keep the typing position above the on-screen keyboard on mobile
 
-- [ ] **Bug**
+- [ ] **Bug** (code implemented: session layout sized to the visual viewport via --app-height/--app-offset, `interactive-widget=resizes-content` in the viewport meta, capture textarea moved to the top-left, resize re-follows a bottom reader; the real-device checks below still close this task)
 - **Source:** [GitHub issue #8](https://github.com/kappa/remart-bbs-chat/issues/8).
 - **Location:**
   - `client/index.html`: the viewport meta

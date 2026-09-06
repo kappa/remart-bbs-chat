@@ -107,3 +107,8 @@ with one of those letters.
 Everything above works the same. The only difference: a small hint telling
 you where to tap to type appears on narrow screens; on desktop it stays out of
 the way.
+
+When the on-screen keyboard opens, the session layout follows the visual
+viewport: the caret row and the newest lines stay above the keyboard instead
+of hiding behind it, and closing the keyboard restores the layout. A reader
+who has scrolled up is never pulled back down by this.

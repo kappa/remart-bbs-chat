@@ -12,10 +12,10 @@
 }
 * { box-sizing: border-box; }
 html, body, #root { width:100%; height:100%; min-height:0; margin:0; overflow:hidden; background:#000; color:#ccc; font-family:var(--mono); }
-#container { display:flex; width:100%; height:100vh; height:100dvh; min-height:0; background:#000; }
+#container { display:flex; width:100%; height:100vh; height:var(--app-height, 100dvh); transform:translateY(var(--app-offset, 0px)); min-height:0; background:#000; }
 #chat-area { flex:1; min-width:0; min-height:0; overflow-y:auto; overflow-x:hidden; padding:8px; white-space:pre; font-family:var(--mono); scrollbar-color:#555 #000; scrollbar-width:thin; overscroll-behavior:contain; outline:none; }
 #chat-area:focus-within { box-shadow: inset 0 0 0 1px #555; }
-.keyboard-capture { position:fixed; left:2px; bottom:2px; z-index:1; width:2px; height:2px; min-height:0; overflow:hidden; border:0; padding:0; opacity:0.01; background:transparent; color:transparent; caret-color:transparent; resize:none; }
+.keyboard-capture { position:fixed; left:2px; top:2px; z-index:1; width:2px; height:2px; min-height:0; overflow:hidden; border:0; padding:0; opacity:0.01; background:transparent; color:transparent; caret-color:transparent; resize:none; }
 #roster { position:sticky; top:0; align-self:flex-start; display:flex; flex-direction:column; width:160px; height:100%; min-height:0; flex:0 0 160px; overflow:hidden; border-left:1px solid #333; padding:8px; background:#000; }
 .roster-heading { flex:0 0 auto; color:#888; font-size:0.72rem; line-height:1.2rem; letter-spacing:0.08em; }
 .roster-empty { color:#666; font-size:0.82rem; line-height:1.4rem; }
@@ -50,7 +50,7 @@ html, body, #root { width:100%; height:100%; min-height:0; margin:0; overflow:hi
 .keyboard-button { width:100%; border-color:var(--accent); color:var(--accent); }
 .command-button:focus-visible, .command-button:hover, .keyboard-button:focus-visible, .keyboard-button:hover, .help-close:focus-visible, .help-close:hover { border-color:var(--accent); color:var(--text); outline:none; }
 .help-overlay { position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center; padding:1rem; background:rgb(0 0 0 / 80%); }
-.help-dialog { width:min(420px,100%); max-height:calc(100dvh - 2rem); overflow-y:auto; border:1px solid #555; padding:16px; background:#111; color:var(--text); font-family:var(--mono); line-height:1.45; }
+.help-dialog { width:min(420px,100%); max-height:calc(var(--app-height, 100dvh) - 2rem); overflow-y:auto; border:1px solid #555; padding:16px; background:#111; color:var(--text); font-family:var(--mono); line-height:1.45; }
 .help-heading { margin-bottom:0.75rem; color:var(--accent); }
 .help-list { display:grid; gap:0.25rem; margin:0; }
 .help-list div { display:grid; grid-template-columns:7rem minmax(0,1fr); gap:0.5rem; }
