@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, act } from '@testing-library/react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { App } from './App';
 import userEvent from '@testing-library/user-event';
 import { api } from './api';
 import { FakeWebSocket } from './testing/fakeWebSocket';
-import { renderJoined, serverSend, snapshot, line, alice, bob, idle, typing } from './testing/roomFixtures';
+import { renderJoined, serverSend, snapshot, line, alice, bob, idle, typing, storeSession, queryClient } from './testing/roomFixtures';
 
 vi.mock('./api', () => ({
   api: { listRooms: vi.fn(), getOrCreateRoom: vi.fn(), joinRoom: vi.fn(), leaveRoom: vi.fn(), getRoster: vi.fn() },
@@ -51,7 +53,7 @@ describe('Fast input under delayed echo', () => {
   it('keystrokes typed while reconnecting are sent after the new snapshot', async () => {
     const user = userEvent.setup();
     const { ws } = await renderJoined();
-    ws.serverClose();
+    act(() => ws.serverClose());
     expect(await screen.findByText('Reconnecting...')).toBeInTheDocument();
     await user.click(await screen.findByLabelText('Shared chat area'));
     await user.keyboard('Z');
@@ -63,6 +65,32 @@ describe('Fast input under delayed echo', () => {
     serverSend(next, snapshot());
     expect(next.keys()).toEqual([{ type: 'key', seq: 1, kind: 'char', char: 'Z' }]);
     await waitFor(() => expect(screen.queryByText('Reconnecting...')).not.toBeInTheDocument());
+  });
+
+  it('keystrokes typed before the first snapshot after a reload take the server numbering', async () => {
+    const user = userEvent.setup();
+    storeSession();
+    render(<QueryClientProvider client={queryClient()}><App /></QueryClientProvider>);
+    await user.click(await screen.findByLabelText('Shared chat area'));
+    await user.keyboard('AB');
+    const ws = await waitFor(() => {
+      const socket = FakeWebSocket.latest();
+      if (!socket.sent.some((m) => m.type === 'hello')) throw new Error('no hello yet');
+      return socket;
+    });
+    expect(ws.keys()).toEqual([]);
+    serverSend(ws, snapshot({ you: { participantId: 10, nextSeq: 57 } }));
+    expect(ws.keys()).toEqual([{ type: 'key', seq: 57, kind: 'char', char: 'A' }, { type: 'key', seq: 58, kind: 'char', char: 'B' }]);
+  });
+
+  it('a leave command ends the session, closes the socket, and does not reconnect', async () => {
+    const { ws } = await renderJoined();
+    serverSend(ws, { type: 'command', name: 'leave' });
+    expect(await screen.findByText('ROOMS')).toBeInTheDocument();
+    expect(sessionStorage.getItem('remart-bbs-chat.session')).toBeNull();
+    expect(ws.readyState).toBe(FakeWebSocket.CLOSED);
+    await act(() => new Promise((resolve) => setTimeout(resolve, 1500)));
+    expect(FakeWebSocket.instances).toEqual([ws]);
   });
 
   it('seq-gap shows the lost-input warning', async () => {
