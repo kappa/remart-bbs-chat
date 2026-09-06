@@ -43,10 +43,14 @@ incorrectly exclude `null`.
   this is not a strictly validated schema. Unknown properties are ignored.
 - `joinedAt`, `lastSeen`, and `committedAt` are milliseconds since Unix epoch.
   The raw-history endpoint additionally exposes `createdAt` as an ISO date string.
-- There is no token, password, cookie authentication, or ownership check.
-  Knowing public room/participant IDs permits participant mutations. Socket
-  subscriptions do not require joining. Express uses unrestricted `cors()`;
-  the socket handler performs no application origin check.
+- Joining issues an unpredictable per-participant token (32 lowercase hex
+  characters). Every participant mutation — character, backspace, commit,
+  heartbeat, and leave — must carry it as the JSON `token` field alongside
+  `roomId` and `participantId`. Missing or incorrect tokens are rejected with
+  `401 {"error":"invalid token"}` and change nothing. Knowing public
+  room/participant IDs alone no longer permits mutations. Socket
+  subscriptions do not require joining and carry no token yet. Express uses
+  unrestricted `cors()`; the socket handler performs no application origin check.
 
 ## Identity and stored state
 
@@ -69,8 +73,9 @@ Stored colors survive the author's departure. Colors are allocated from:
 ["#00FFFF","#FFFF00","#FF00FF","#00FF00","#FF8000","#80FF00","#FF0080","#00FF80","#8080FF","#FF8080"]
 ```
 
-The browser stores `{roomId, roomName, participantId, handle}` under
-`remart-bbs-chat.session` in sessionStorage. Its default handle is stored under
+The browser stores `{roomId, roomName, participantId, handle, token}` under
+`remart-bbs-chat.session` in sessionStorage. Sessions stored before tokens
+existed are treated as expired: the client discards them and the user rejoins. Its default handle is stored under
 `remart-bbs-chat.handle` in localStorage. `?name=` overrides the default without
 overwriting it; `?room=` requests a preferred room through the normal room
 selection endpoint. These URL parameters are client conveniences, not server
@@ -134,8 +139,8 @@ Example response (timestamps illustrative):
 ```json
 {
   "participant": {
-    "id":1,"roomId":1,"handle":"Alice","color":"#00FFFF",
-    "lineSlot":0,"activeLineIdx":null,"joinedAt":1788600000000
+    "id":1,"roomId":1,"handle":"Alice","token":"9f2c…(32 hex chars)",
+    "color":"#00FFFF","lineSlot":0,"activeLineIdx":null,"joinedAt":1788600000000
   },
   "roster":[{"handle":"Alice","color":"#00FFFF","lineSlot":0}],
   "room":{"id":1,"name":"Room 1"}
@@ -145,10 +150,12 @@ Example response (timestamps illustrative):
 The server converts a truthy handle to a string, trims it, and limits it to 32
 UTF-16 code units. Handles are unique case-insensitively across all rooms.
 The target room is cleaned of stale participants before duplicate/capacity
-checks. The server assigns a free color and slot, initializes sequence 1,
-creates a join announcement, and sends `room-update` to existing subscribers.
-The join response contains neither history nor `nextExpectedSeq` nor draft text.
-Its roster follows participant insertion order, unlike the sorted roster endpoint.
+checks. The server assigns a free color, slot, and secret participant token,
+initializes sequence 1, creates a join announcement, and sends `room-update`
+to existing subscribers. The join response is the only message that carries
+the token: it contains neither history nor `nextExpectedSeq` nor draft text.
+No snapshot, roster, or broadcast ever exposes the token. Its roster follows
+participant insertion order, unlike the sorted roster endpoint.
 
 | Status | Error string |
 | --- | --- |
@@ -232,10 +239,13 @@ It omits `roomId`, `roster`, `lastSeen`, and `nextExpectedSeq`. Missing room:
 
 ```ts
 // Request
-{ roomId: number, participantId: number }
+{ roomId: number, participantId: number, token: string }
 // 200 response
 { alive: boolean, removed: number }
 ```
+
+The token is required: a missing or incorrect token returns
+`401 {"error":"invalid token"}` without refreshing presence.
 
 Missing room or participant returns `{alive:false, removed:0}` rather than 404.
 Otherwise refreshes that participant's `lastSeen` before cleaning other stale
@@ -246,10 +256,13 @@ participants. `removed` counts participants removed by this cleanup. May emit
 
 ```ts
 // Request
-{ roomId: number, participantId: number }
+{ roomId: number, participantId: number, token: string }
 // 200 response
 { freed: boolean }
 ```
+
+The token is required: a missing or incorrect token returns
+`401 {"error":"invalid token"}` and the participant stays in the room.
 
 Missing room or participant returns `{freed:false}`. A successful leave preserves
 nonempty draft text as a committed line, adds a leave announcement, removes the
@@ -270,18 +283,20 @@ These three endpoints carry the actual chat input. Request shapes:
 
 ```ts
 // /api/char
-{ roomId: number, participantId: number, char: string, seq?: number }
+{ roomId: number, participantId: number, token: string, char: string, seq?: number }
 // /api/backspace and /api/commit
-{ roomId: number, participantId: number, seq?: number }
+{ roomId: number, participantId: number, token: string, seq?: number }
 ```
 
 Neither backspace nor commit sends draft content or a line index. The server
-operates on its stored draft. All three first validate room and participant:
+operates on its stored draft. All three first validate room, participant,
+and token:
 
 | Status | Error string |
 | --- | --- |
 | 404 | `room not found` |
 | 404 | `user not in room` |
+| 401 | `invalid token` (missing or incorrect token; nothing is applied) |
 | 400 | `invalid char` (character endpoint only) |
 
 Character validation requires a string with `Array.from(char).length === 1`,

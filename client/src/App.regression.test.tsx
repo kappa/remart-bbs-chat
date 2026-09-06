@@ -33,7 +33,7 @@ beforeEach(()=>{
 describe('Regression: A Enter B Backspace C without pausing, other participant untouched', ()=>{
   it('A stays committed, new active is C only, B and deletion distinct, other line untouched, no wait for Enter ack', async ()=>{
     const user = userEvent.setup();
-    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
 
     // Initial: Alice has typed A, Bob has X
@@ -169,7 +169,7 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
 
   it('documentLines orders committed A before new active C even before server ack (provisional ordering)', async ()=>{
     const user = userEvent.setup();
-    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
 
     (api.getRoomState as any).mockResolvedValue({
@@ -212,7 +212,7 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
 
   it('idle participant renders no shared row; local cursor preview only; B lines appear directly below', async ()=>{
     const user = userEvent.setup();
-    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
 
     (api.getRoomState as any).mockResolvedValue({
@@ -287,7 +287,7 @@ describe('Regression: A Enter B Backspace C without pausing, other participant u
 
   it('backspacing an allocated line to empty keeps its position', async ()=>{
     const user = userEvent.setup();
-    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
 
     (api.getRoomState as any).mockResolvedValue({
@@ -357,7 +357,7 @@ describe('Regression: Enter keeps the optimistic draft allocation under latency'
   it('delayed pre-commit snapshot cannot resurrect the finished draft', async ()=>{
     const { act } = await import('react');
     const user = userEvent.setup();
-    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
     const client = qc();
 

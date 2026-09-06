@@ -1,5 +1,6 @@
 import express from 'express';
 import cors from 'cors';
+import crypto from 'crypto';
 import { WebSocketServer } from 'ws';
 import { createServer } from 'http';
 import path from 'path';
@@ -29,6 +30,14 @@ let nextParticipantId = 1;
 const rooms = new Map(); // id -> room
 
 function getRoom(id){ return rooms.get(Number(id)); }
+
+function newParticipantToken(){
+  return crypto.randomBytes(16).toString('hex');
+}
+
+function checkParticipantAuth(participant, token){
+  return typeof token === 'string' && token.length > 0 && participant.token === token;
+}
 
 function listRooms(){
   const now = Date.now();
@@ -324,6 +333,7 @@ app.post('/api/join', (req,res)=>{
     id: nextParticipantId++,
     roomId: room.id,
     handle: cleanHandle,
+    token: newParticipantToken(),
     color,
     lineSlot: slot,
     activeLineIdx,
@@ -347,16 +357,17 @@ app.post('/api/join', (req,res)=>{
 
   const roster = Array.from(room.participants.values()).map(p=>({handle:p.handle, color:p.color, lineSlot:p.lineSlot}));
   broadcastRoom(room);
-  res.json({participant:{id:participant.id, roomId:participant.roomId, handle:participant.handle, color:participant.color, lineSlot:participant.lineSlot, activeLineIdx:participant.activeLineIdx, joinedAt:participant.joinedAt.getTime()}, roster, room:{id:room.id, name:room.name}});
+  res.json({participant:{id:participant.id, roomId:participant.roomId, handle:participant.handle, token:participant.token, color:participant.color, lineSlot:participant.lineSlot, activeLineIdx:participant.activeLineIdx, joinedAt:participant.joinedAt.getTime()}, roster, room:{id:room.id, name:room.name}});
 });
 
 // leave
 app.post('/api/leave', (req,res)=>{
-  const {roomId, participantId}=req.body||{};
+  const {roomId, participantId, token}=req.body||{};
   const room = getRoom(roomId);
   if(!room) return res.json({freed:false});
   const participant = room.participants.get(Number(participantId));
   if(!participant) return res.json({freed:false});
+  if(!checkParticipantAuth(participant, token)) return res.status(401).json({error:'invalid token'});
 
   const gIdx = greatestLineIdx(room);
   const now = new Date();
@@ -406,11 +417,12 @@ app.get('/api/roster', (req,res)=>{
 
 // heartbeat
 app.post('/api/heartbeat', (req,res)=>{
-  const {roomId, participantId}=req.body||{};
+  const {roomId, participantId, token}=req.body||{};
   const room = getRoom(roomId);
   if(!room) return res.json({alive:false, removed:0});
   const participant = room.participants.get(Number(participantId));
   if(!participant) return res.json({alive:false, removed:0});
+  if(!checkParticipantAuth(participant, token)) return res.status(401).json({error:'invalid token'});
 
   participant.lastSeen = new Date();
   const removed = cleanupStaleInRoom(room, participant.id);
@@ -419,11 +431,12 @@ app.post('/api/heartbeat', (req,res)=>{
 
 // send char
 app.post('/api/char', (req,res)=>{
-  const {roomId, participantId, char, seq}=req.body||{};
+  const {roomId, participantId, char, seq, token}=req.body||{};
   const room = getRoom(roomId);
   if(!room) return res.status(404).json({error:'room not found'});
   const participant = room.participants.get(Number(participantId));
   if(!participant) return res.status(404).json({error:'user not in room'});
+  if(!checkParticipantAuth(participant, token)) return res.status(401).json({error:'invalid token'});
 
   if(!isValidChar(char)){
     return res.status(400).json({error:'invalid char'});
@@ -446,11 +459,12 @@ app.post('/api/char', (req,res)=>{
 
 // backspace
 app.post('/api/backspace', (req,res)=>{
-  const {roomId, participantId, seq}=req.body||{};
+  const {roomId, participantId, seq, token}=req.body||{};
   const room = getRoom(roomId);
   if(!room) return res.status(404).json({error:'room not found'});
   const participant = room.participants.get(Number(participantId));
   if(!participant) return res.status(404).json({error:'user not in room'});
+  if(!checkParticipantAuth(participant, token)) return res.status(401).json({error:'invalid token'});
 
   if(participant.nextExpectedSeq == null) participant.nextExpectedSeq = 1;
   if(!participant.opBuffer) participant.opBuffer = new Map();
@@ -481,11 +495,12 @@ app.post('/api/backspace', (req,res)=>{
 
 // commit
 app.post('/api/commit', (req,res)=>{
-  const {roomId, participantId, seq}=req.body||{};
+  const {roomId, participantId, seq, token}=req.body||{};
   const room = getRoom(roomId);
   if(!room) return res.status(404).json({error:'room not found'});
   const participant = room.participants.get(Number(participantId));
   if(!participant) return res.status(404).json({error:'user not in room'});
+  if(!checkParticipantAuth(participant, token)) return res.status(401).json({error:'invalid token'});
 
   if(participant.nextExpectedSeq == null) participant.nextExpectedSeq = 1;
   if(!participant.opBuffer) participant.opBuffer = new Map();

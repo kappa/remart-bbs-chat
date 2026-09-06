@@ -33,7 +33,7 @@ beforeEach(()=>{
 describe('Enter buffer separation - typing during pending commit', ()=>{
   it('after Enter, typing B shows B only, not HiB, and Hi remains visible as committed', async ()=>{
     const user = userEvent.setup();
-    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
 
     // Initial state: Hi typed, activeContent Hi
@@ -107,7 +107,7 @@ describe('Enter buffer separation - typing during pending commit', ()=>{
 
   it('seq increments for each op and sends with char', async ()=>{
     const user = userEvent.setup();
-    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'Room 1', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
     (api.getRoomState as any).mockResolvedValue({
       roomId:1,

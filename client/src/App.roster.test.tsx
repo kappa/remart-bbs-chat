@@ -33,7 +33,7 @@ beforeEach(()=>{
 
 describe('Roster rendering', ()=>{
   it('shows roster sorted by lineSlot with color dots', async ()=>{
-    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
     (api.getRoomState as any).mockResolvedValue({
       roomId:1,
@@ -63,7 +63,7 @@ describe('Roster rendering', ()=>{
   });
 
   it('char counter shows current content length', async ()=>{
-    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
     (api.getRoomState as any).mockResolvedValue({
       roomId:1,
@@ -78,7 +78,7 @@ describe('Roster rendering', ()=>{
   });
 
   it('caret only for own participant', async ()=>{
-    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
     (api.getRoomState as any).mockResolvedValue({
       roomId:1,

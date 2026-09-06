@@ -40,7 +40,7 @@ deployed for an extended period, bring fixes for issues 3 and 5 forward.
 
 ## 1. Require participant authorization for mutations
 
-- [ ] **High priority**
+- [x] **High priority** (done: per-participant token issued at join, required for char/backspace/commit/heartbeat/leave)
 - **Location:** `server/index.js` mutation routes; `client/src/api.ts`.
 - **Problem:** Requests trust public room and participant IDs. Another caller
   can insert characters, erase text, commit lines, leave, or refresh presence

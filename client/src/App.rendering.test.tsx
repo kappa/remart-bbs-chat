@@ -32,7 +32,7 @@ beforeEach(()=>{
 
 describe('Rendering behaviors', ()=>{
   it('committed line uses color snapshot even after roster missing', async ()=>{
-    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
     (api.getRoomState as any).mockResolvedValue({
       roomId:1,
@@ -51,7 +51,7 @@ describe('Rendering behaviors', ()=>{
   });
 
   it('empty committed line renders as space (no collapse)', async ()=>{
-    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
     (api.getRoomState as any).mockResolvedValue({
       roomId:1,
@@ -73,7 +73,7 @@ describe('Rendering behaviors', ()=>{
   });
 
   it('system line has system-line class and dim color', async ()=>{
-    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
     (api.getRoomState as any).mockResolvedValue({
       roomId:1,
@@ -92,7 +92,7 @@ describe('Rendering behaviors', ()=>{
 
   it('Enter commits without redrawing current line visually', async ()=>{
     const user = userEvent.setup();
-    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
     let committed = false;
     (api.getRoomState as any).mockImplementation(async ()=>{
@@ -129,7 +129,7 @@ describe('Rendering behaviors', ()=>{
   });
 
   it('backspace at column zero does nothing (no crash)', async ()=>{
-    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
     (api.getRoomState as any).mockResolvedValue({
       roomId:1,
@@ -146,7 +146,7 @@ describe('Rendering behaviors', ()=>{
   });
 
   it('help overlay shows on ? command and closes', async ()=>{
-    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice'};
+    const session = {roomId:1, roomName:'lobby', participantId:10, handle:'Alice', token:'test-token'};
     sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
     (api.getRoomState as any).mockResolvedValue({
       roomId:1,

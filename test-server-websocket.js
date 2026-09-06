@@ -101,6 +101,7 @@ describe('WebSocket subscription and broadcast', () => {
     const roomId = json.room.id;
     const { json: joinJson } = await fetchJson('/api/join', { method: 'POST', body: JSON.stringify({ roomId, handle: 'typer' }) });
     const pid = joinJson.participant.id;
+    const token = joinJson.participant.token;
 
     const ws = new WebSocket(wsUrl);
     await new Promise(res => ws.on('open', res));
@@ -110,7 +111,7 @@ describe('WebSocket subscription and broadcast', () => {
     const charPromise = waitForWsMessage(ws, m => m.type === 'char' && m.handle === 'typer', 3000);
     const roomUpdatePromise = waitForWsMessage(ws, m => m.type === 'room-update', 3000);
 
-    await fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: pid, char: 'z' }) });
+    await fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: pid, token, char: 'z' }) });
 
     const charMsg = await charPromise;
     assert.equal(charMsg.char, 'z');

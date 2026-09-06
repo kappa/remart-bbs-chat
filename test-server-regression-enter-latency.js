@@ -93,15 +93,15 @@ describe('Regression: A Enter B Backspace C under latency, other participant unt
 
     // Fire concurrently to simulate real browser not waiting for Enter ack before typing B/C
     const aliceOps = [
-      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, char: 'A', seq: 1 }) }),
-      fetchJson('/api/commit', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, seq: 2 }) }),
-      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, char: 'B', seq: 3 }) }),
-      fetchJson('/api/backspace', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, seq: 4 }) }),
-      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, char: 'C', seq: 5 }) }),
+      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, char: 'A', seq: 1 }) }),
+      fetchJson('/api/commit', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, seq: 2 }) }),
+      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, char: 'B', seq: 3 }) }),
+      fetchJson('/api/backspace', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, seq: 4 }) }),
+      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, char: 'C', seq: 5 }) }),
     ];
 
     // Bob types independently while Alice chain in flight
-    const bobOp = fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: bob.id, char: 'X', seq: 1 }) });
+    const bobOp = fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: bob.id, token: bob.token, char: 'X', seq: 1 }) });
 
     // Await all, but do not enforce order — they were fired without waiting for Enter ack
     const results = await Promise.all([...aliceOps, bobOp]);
@@ -184,14 +184,14 @@ describe('Regression: A Enter B Backspace C under latency, other participant unt
     // Server should buffer and drain in seq order, ending same as in-order case
 
     const opsOutOfOrder = [
-      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, char: 'B', seq: 3 }) }),
-      fetchJson('/api/backspace', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, seq: 4 }) }),
-      fetchJson('/api/commit', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, seq: 2 }) }),
-      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, char: 'C', seq: 5 }) }),
-      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, char: 'A', seq: 1 }) }),
+      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, char: 'B', seq: 3 }) }),
+      fetchJson('/api/backspace', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, seq: 4 }) }),
+      fetchJson('/api/commit', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, seq: 2 }) }),
+      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, char: 'C', seq: 5 }) }),
+      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, char: 'A', seq: 1 }) }),
     ];
 
-    const bobOp = fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: bob.id, char: 'X', seq: 1 }) });
+    const bobOp = fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: bob.id, token: bob.token, char: 'X', seq: 1 }) });
 
     const results = await Promise.all([...opsOutOfOrder, bobOp]);
 
@@ -217,12 +217,12 @@ describe('Regression: A Enter B Backspace C under latency, other participant unt
 
     // A seq1, Enter seq2, Enter seq3 (empty), B seq4, Backspace seq5, C seq6 — all fired concurrently
     const ops = [
-      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, char: 'A', seq: 1 }) }),
-      fetchJson('/api/commit', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, seq: 2 }) }),
-      fetchJson('/api/commit', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, seq: 3 }) }), // empty line
-      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, char: 'B', seq: 4 }) }),
-      fetchJson('/api/backspace', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, seq: 5 }) }),
-      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, char: 'C', seq: 6 }) }),
+      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, char: 'A', seq: 1 }) }),
+      fetchJson('/api/commit', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, seq: 2 }) }),
+      fetchJson('/api/commit', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, seq: 3 }) }), // empty line
+      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, char: 'B', seq: 4 }) }),
+      fetchJson('/api/backspace', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, seq: 5 }) }),
+      fetchJson('/api/char', { method: 'POST', body: JSON.stringify({ roomId, participantId: alice.id, token: alice.token, char: 'C', seq: 6 }) }),
     ];
 
     await Promise.all(ops);

@@ -16,6 +16,7 @@ type Session = {
   roomName: string;
   participantId: number;
   handle: string;
+  token: string;
 };
 
 const SESSION_KEY = "remart-bbs-chat.session";
@@ -98,7 +99,12 @@ function storageRemove(storage: "local" | "session", key: string) {
 function readSession(): Session | null {
   try {
     const value = storageGet("session", SESSION_KEY);
-    return value ? (JSON.parse(value) as Session) : null;
+    if (!value) return null;
+    const parsed = JSON.parse(value) as Session;
+    // Sessions issued before participant tokens cannot authorize mutations;
+    // treat them as expired so the user rejoins and gets a token.
+    if (!parsed || typeof parsed.token !== "string" || !parsed.token) return null;
+    return parsed;
   } catch {
     return null;
   }
@@ -245,6 +251,7 @@ export function App() {
         const result = await api.heartbeat({
           roomId: currentSession.roomId,
           participantId: currentSession.participantId,
+          token: currentSession.token,
         });
         if (!active) return;
         if (!result.alive) {
@@ -273,6 +280,7 @@ export function App() {
       void keepaliveApi.leaveRoom({
         roomId: currentSession.roomId,
         participantId: currentSession.participantId,
+        token: currentSession.token,
       });
     };
     window.addEventListener("pagehide", leaveOnPageHide);
@@ -659,14 +667,15 @@ export function App() {
 
   const finishJoin = (
     room: { id: number; name: string },
-    participant: { id: number; handle: string },
+    participant: { id: number; handle: string; token: string },
     cleanHandle: string,
   ) => {
-    const nextSession = {
+    const nextSession: Session = {
       roomId: room.id,
       roomName: room.name,
       participantId: participant.id,
       handle: participant.handle,
+      token: participant.token,
     };
     rememberHandle(cleanHandle);
     storageSet("session", SESSION_KEY, JSON.stringify(nextSession));
@@ -754,6 +763,7 @@ export function App() {
       await api.sendBackspace({
         roomId: activeSession.roomId,
         participantId: activeSession.participantId,
+        token: activeSession.token,
         seq,
       });
     }
@@ -784,6 +794,7 @@ export function App() {
       await api.leaveRoom({
         roomId: activeSession.roomId,
         participantId: activeSession.participantId,
+        token: activeSession.token,
       });
       storageRemove("session", SESSION_KEY);
       setSession(null);
@@ -828,6 +839,7 @@ export function App() {
       api.sendChar({
         roomId: activeSession.roomId,
         participantId: activeSession.participantId,
+        token: activeSession.token,
         char,
         seq,
       }).then(() => {
@@ -857,6 +869,7 @@ export function App() {
     api.sendChar({
       roomId: activeSession.roomId,
       participantId: activeSession.participantId,
+      token: activeSession.token,
       char,
       seq,
     }).then((res:any) => {
@@ -886,6 +899,7 @@ export function App() {
     api.sendBackspace({
       roomId: session.roomId,
       participantId: session.participantId,
+      token: session.token,
       seq,
     }).then((res:any) => {
       if(res?.buffered) return;
@@ -961,6 +975,7 @@ export function App() {
     api.commitLine({
       roomId: session.roomId,
       participantId: session.participantId,
+      token: session.token,
       seq,
     }).then((res:any) => {
       if(res?.buffered){
