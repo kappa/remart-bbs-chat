@@ -27,7 +27,7 @@ npm --prefix client install
 
 - Work on branch `websocket-server-echo`, created from `master` in Task 1. Do not commit to `master`.
 - Test first for every code change: write the failing test, run it and see it fail for the right reason, make the minimal change, run it green, then commit. Never commit with a failing suite.
-- One commit per task. The `Claude-Session:` trailer in the commit commands belongs to the session that wrote this plan; another harness may omit it.
+- One commit per task.
 - Vocabulary in code, comments, docs, and tests: **live line** (`liveText`, `liveRow`), **committed line**, **row**, **keystroke** (`key`), **sequence number** (`seq`), **snapshot**, **announcement**. Do not introduce "draft", "op", "activeContent", "lineIdx", or "history" in new code.
 - Wire shapes are exactly those in the spec's Messages section. Socket path is `/ws`. Snapshot committed lines are the last 100 appended, sorted by row. Pending queue bound is 200. Reconnect delay is 1200 ms. Server ping interval is 12 s; stale timeout stays 40 s; sweep stays 15 s.
 - Task 12 (last 20 lines on join) is out of scope. Do not add a 20-line window anywhere.
@@ -172,9 +172,7 @@ There is no dev server: rebuild the client and reload after client changes.
 
 ```bash
 git add client/vite.config.ts client/package.json package.json docs/PROTOCOL.md AGENTS.md README.md
-git commit -m "Remove Vite dev server and document transcript terminology (TODO task 7)
-
-Claude-Session: https://claude.ai/code/session_01Pb6DtmrRCjjGMSHkaepEHq"
+git commit -m "Remove Vite dev server and document transcript terminology (TODO task 7)"
 ```
 
 ---
@@ -543,9 +541,7 @@ Expected: all pass (the old `test-server-seq.js`, enter-latency, and api suites 
 
 ```bash
 git add server/index.js test-support.js test-server-ws.js
-git commit -m "Bind sockets to participants with hello and snapshot (TODO task 11)
-
-Claude-Session: https://claude.ai/code/session_01Pb6DtmrRCjjGMSHkaepEHq"
+git commit -m "Bind sockets to participants with hello and snapshot (TODO task 11)"
 ```
 
 ---
@@ -797,9 +793,7 @@ Expected: all pass.
 
 ```bash
 git add server/index.js test-server-ws.js
-git commit -m "Apply keystrokes over the socket and echo live lines (TODO task 11)
-
-Claude-Session: https://claude.ai/code/session_01Pb6DtmrRCjjGMSHkaepEHq"
+git commit -m "Apply keystrokes over the socket and echo live lines (TODO task 11)"
 ```
 
 ---
@@ -1048,9 +1042,7 @@ Expected: all pass. If `test-server-logic.js` "preserves nonempty and deletes em
 
 ```bash
 git add server/index.js test-server-ws.js
-git commit -m "Recognize commands on the server and broadcast join/leave over sockets (TODO task 10)
-
-Claude-Session: https://claude.ai/code/session_01Pb6DtmrRCjjGMSHkaepEHq"
+git commit -m "Recognize commands on the server and broadcast join/leave over sockets (TODO task 10)"
 ```
 
 ---
@@ -1316,9 +1308,7 @@ Remove the intro sentence about optimistic display and the "Current limitations"
 
 ```bash
 git add -A server/index.js test-server-api.js test-server-seq.js test-server-regression-enter-latency.js docs/PROTOCOL.md
-git commit -m "Retire HTTP chat, heartbeat, and room-state routes; document the socket protocol (TODO tasks 2, 3, 11)
-
-Claude-Session: https://claude.ai/code/session_01Pb6DtmrRCjjGMSHkaepEHq"
+git commit -m "Retire HTTP chat, heartbeat, and room-state routes; document the socket protocol (TODO tasks 2, 3, 11)"
 ```
 
 ---
@@ -1388,9 +1378,7 @@ In the join response example replace `lineSlot` with `slot` and `activeLineIdx` 
 
 ```bash
 git add server/index.js test-server-logic.js test-server-api.js docs/PROTOCOL.md
-git commit -m "Rename server state to live line, row, and slot terminology
-
-Claude-Session: https://claude.ai/code/session_01Pb6DtmrRCjjGMSHkaepEHq"
+git commit -m "Rename server state to live line, row, and slot terminology"
 ```
 
 ---
@@ -1629,9 +1617,7 @@ Expected: all pass. The existing App tests only need the socket to open and acce
 
 ```bash
 git add client/src/protocol.ts client/src/roomState.ts client/src/roomState.test.ts client/src/testing/fakeWebSocket.ts client/src/test-setup.ts
-git commit -m "Add client protocol types, room-state reducer, and a controllable WebSocket fake
-
-Claude-Session: https://claude.ai/code/session_01Pb6DtmrRCjjGMSHkaepEHq"
+git commit -m "Add client protocol types, room-state reducer, and a controllable WebSocket fake"
 ```
 
 ---
@@ -1902,9 +1888,7 @@ Run: `npm --prefix client test -- src/connection.test.ts`. Expected: 9 pass.
 ```bash
 npm --prefix client test
 git add client/src/connection.ts client/src/connection.test.ts
-git commit -m "Add client socket connection with pending-keystroke replay (TODO tasks 2, 11)
-
-Claude-Session: https://claude.ai/code/session_01Pb6DtmrRCjjGMSHkaepEHq"
+git commit -m "Add client socket connection with pending-keystroke replay (TODO tasks 2, 11)"
 ```
 
 ---
@@ -2010,9 +1994,7 @@ Run: `npm --prefix client test -- src/App.documentLines.test.ts`. Expected: 7 pa
 ```bash
 npm --prefix client test
 git add client/src/documentLines.ts client/src/App.documentLines.test.ts
-git commit -m "Compute document rows from committed and live lines (TODO task 8)
-
-Claude-Session: https://claude.ai/code/session_01Pb6DtmrRCjjGMSHkaepEHq"
+git commit -m "Compute document rows from committed and live lines (TODO task 8)"
 ```
 
 ---
@@ -2496,9 +2478,7 @@ Expected: all pass, build succeeds. `tsc` must report no errors in files this pl
 
 ```bash
 git add client/src
-git commit -m "Render the transcript from server echo over the socket (TODO tasks 10, 11)
-
-Claude-Session: https://claude.ai/code/session_01Pb6DtmrRCjjGMSHkaepEHq"
+git commit -m "Render the transcript from server echo over the socket (TODO tasks 10, 11)"
 ```
 
 ---
@@ -2692,9 +2672,7 @@ Expected: all pass. If the scroll test fails, `onChatScroll` must compute nearne
 
 ```bash
 git add client/src/App.race.test.tsx client/src/App.regression.test.tsx
-git commit -m "Cover fast input, reconnect replay, and scrollback under server echo (TODO task 9)
-
-Claude-Session: https://claude.ai/code/session_01Pb6DtmrRCjjGMSHkaepEHq"
+git commit -m "Cover fast input, reconnect replay, and scrollback under server echo (TODO task 9)"
 ```
 
 ---
@@ -2815,9 +2793,7 @@ Open `http://localhost:3000/?name=Alice` and `http://localhost:3000/?name=Bob` i
 
 ```bash
 git add docs README.md AGENTS.md TODO.md
-git commit -m "Document the socket transport and server echo; close TODO tasks 2, 3, 7, 10, 11
-
-Claude-Session: https://claude.ai/code/session_01Pb6DtmrRCjjGMSHkaepEHq"
+git commit -m "Document the socket transport and server echo; close TODO tasks 2, 3, 7, 10, 11"
 ```
 
 Then use superpowers:finishing-a-development-branch to merge `websocket-server-echo` into `master`.
