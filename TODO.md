@@ -22,12 +22,18 @@ lists only the open tasks, in the order to execute them:
 | Order | Task | Reason |
 | --- | --- | --- |
 | 1 | 23 — Preserve the room session across reload | Confirmed by code and browser coverage; settle reload/closed-tab lifecycle before implementation. |
-| 2 | 16 — Clickable URLs | Row rendering; independent. |
-| 3 | 22 — Join notice in the page title | Small client notification feature; independent of audible notifications. |
-| 4 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 5 | 20 — Restore the join sound | Low priority, unconfirmed. Test first; tasks 15 and 17 wait for it. |
-| 6 | 15 — Join-sound switch | Needs a working chirp from task 20. |
-| 7 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
+| 2 | 26 — Chrome/Linux transcript font | Confirmed platform regression against the mandatory monospace design. |
+| 3 | 29 — Remove character counter | Small sidebar cleanup; independent. |
+| 4 | 28 — Replace command buttons with Help | Small sidebar cleanup; preserve typed commands and explicit Leave. |
+| 5 | 27 — Report a problem link | Small sidebar addition; independent. |
+| 6 | 24 — Favicon | Small static asset; independent. |
+| 7 | 16 — Clickable URLs | Row rendering; independent. |
+| 8 | 22 — Join notice in the page title | Small client notification feature; independent of audible notifications. |
+| 9 | 25 — Mention-handle autocomplete | Client input UI; land before mention styling so both share token rules. |
+| 10 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 11 | 20 — Restore the join sound | Confirmed flaky. Test first; tasks 15 and 17 wait for it. |
+| 12 | 15 — Join-sound switch | Needs a reliable chirp from task 20. |
+| 13 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
 
 ## Working a task
 
@@ -803,7 +809,7 @@ Close the GitHub issue when the task is done.
 
 ## 20. Restore the join sound
 
-- [ ] **Bug, unconfirmed, low priority**
+- [ ] **Bug, confirmed flaky, low priority**
 - **Source:** [GitHub issue #9](https://github.com/kappa/remart-bbs-chat/issues/9).
 - **Location:** `client/src/App.tsx` `playJoinSound`;
   `client/src/useRoomConnection.ts` newcomer detection (`onNewcomer` fires on
@@ -811,16 +817,19 @@ Close the GitHub issue when the task is done.
   `client/src/App.roster.test.tsx`; `client/src/test-setup.ts` AudioContext
   stub.
 - **Problem:** In a manual two-tab test on 2026-09-06, in Chrome and in
-  Firefox, no chirp was heard when the second participant joined. A
+  Firefox, no chirp was heard when the second participant joined. A later
+  issue comment confirms that sound sometimes works, so this is intermittent
+  rather than a consistently silent path. A
   headless-Chrome probe of the same build showed that `playJoinSound` runs on
   each newcomer and constructs an AudioContext, so the event path is intact
   and the failure is in producing audible sound. The existing roster test only
   asserts that an AudioContext is constructed, which is why it stays green.
-- **Suggested fix:** Write the failing test first, as the issue asks. Find the
-  cause in a real browser with the devtools console open on the listening
-  tab: log `ctx.state` and the oscillator schedule at chirp time. Candidates,
-  unconfirmed: a context created suspended by the autoplay policy and never
-  resumed (each chirp makes a fresh context and never calls `resume()`);
+- **Suggested fix:** Write a deterministic failing test first, as the issue
+  asks. Find the cause in a real browser with the devtools console open on the
+  listening tab, testing several consecutive joins and recording `ctx.state`,
+  `resume()` results, and the oscillator schedule at each chirp. Candidates:
+  a context created suspended by the autoplay policy and never resumed (each
+  chirp makes a fresh context and never calls `resume()`);
   oscillators scheduled on a context that is closed 600 ms later; or a
   regression in the browsers themselves, which the tag
   `before-websocket-server-echo` can rule in or out by checking whether the
@@ -888,9 +897,10 @@ infrastructure, not a GitHub issue.
 
 ## New product issues imported 2026-09-07
 
-Issues 10 and 11 were checked against the implementation before being added.
-Neither duplicates an existing task. Keep their GitHub issue numbers and these
-task numbers stable.
+Issues 10 through 17 were checked against the implementation before being
+added. Issue 11 and issue 9's newer comments are incorporated into tasks 23
+and 20. None of issues 10 through 17 duplicates an existing task. Keep their
+GitHub issue numbers and these task numbers stable.
 
 ## 22. Show join notices in the browser-tab title
 
@@ -943,6 +953,10 @@ task numbers stable.
   the identity and transcript events are inspected. A focused check against
   the deployed app confirmed both effects: the participant ID changed and the
   observer received one leave and one join announcement.
+- **Latest browser report:** Manual Firefox reloads reconnect without visible
+  leave/join announcements. In Google Chrome, using the Reload button can
+  destroy the session and return the user to the lobby, making this a severe
+  Chrome regression rather than only cosmetic transcript noise.
 - **Location:** `client/src/App.tsx` page-exit effect;
   `client/src/api.ts` `keepaliveApi`; `client/src/connection.ts` reconnect and
   replay; `server/index.js` leave/removal and socket replacement;
@@ -972,8 +986,162 @@ task numbers stable.
   chosen policy window, explicit leave remaining immediate, expiry when no
   reconnect arrives, and replacement of the old socket. Add client coverage
   that reload does not deliberately invalidate the stored session or enqueue
-  duplicate keystrokes.
+  duplicate keystrokes. Manually verify the Reload button in current Chrome
+  and Firefox: both must remain in the room with the same participant identity
+  and no leave/join announcements.
 - **Protocol docs:** Update `docs/PROTOCOL.md` page-exit, socket-close,
   reconnect, leave, and presence rules to match the selected policy. Update
   `docs/USER_EXPERIENCE.md`, `docs/DESIGN.md`, and the session-lifecycle rule in
   `AGENTS.md`. Remove or revise `keepaliveApi` if pagehide leave is retired.
+
+## 24. Add a favicon for tab identification
+
+- [ ] **Requested feature**
+- **Source:** [GitHub issue #12](https://github.com/kappa/remart-bbs-chat/issues/12).
+- **Confirmed current behavior:** `client/index.html` deliberately uses
+  `<link rel="icon" href="data:,">`, which suppresses favicon requests and
+  leaves the tab without an identifying icon.
+- **Location:** `client/index.html`; a new static asset under `client/public/`;
+  client build verification.
+- **Suggested implementation:** Add a small repo-native SVG favicon matching
+  the black terminal background and cyan/gray DOS palette, and point the icon
+  link at its root-relative built path. Keep it legible at 16×16 and avoid a
+  generated bitmap or dependency. Include a dark background in the asset so
+  it remains recognizable in light and dark browser chrome.
+- **Acceptance:** The deployed tab displays the Remart icon instead of the
+  browser's generic document icon; direct navigation and reload request the
+  icon successfully; the client build copies it to the expected path.
+- **Tests:** Add a focused static/build assertion for the icon link and asset,
+  then run the client build. Manually inspect the deployed icon at ordinary
+  tab size in Chrome and Firefox.
+- **Docs:** No product-document or protocol change is required.
+
+## 25. Autocomplete participant handles after `@`
+
+- [ ] **Requested feature**
+- **Source:** [GitHub issue #13](https://github.com/kappa/remart-bbs-chat/issues/13).
+- **Location:** `client/src/App.tsx` echoed own-line rendering and shared key
+  handling; roster state from `client/src/roomState.ts`; a small pure mention
+  token/filter helper; `client/src/theme.css`.
+- **Requested behavior:** Typing `@` opens an inline list of participant
+  handles. Further text filters case-insensitively by handle prefix. Up/Down
+  moves the selection; Tab or Enter inserts the selected handle. When no
+  handles match, the popup disappears and may reappear after Backspace makes
+  the prefix match again. Escape dismisses autocomplete for the current `@`
+  token without interfering with ordinary `@` text.
+- **Server-echo constraint:** Derive the active token from the server-echoed
+  own live text and caret; do not predict transcript text locally. Selecting a
+  handle sends only the remaining code points through the existing ordered
+  `char` stream, so the server observes the originally typed `@` and prefix
+  followed by the completion. Do not introduce a completion wire message.
+- **Interaction rules:** Match the non-whitespace token immediately before the
+  caret when it begins with `@`; exclude the user's own handle. Preserve roster
+  order for the initial list. Up/Down wrap through matches. Tab selects without
+  changing browser focus; Enter selects without committing the line while the
+  popup has a selection. If the popup is absent or dismissed, Enter retains its
+  ordinary commit behavior. A new `@` token clears Escape dismissal.
+- **Acceptance:** With Alice, Bob, and Carol present, typing `@c`, then Enter
+  sends the remaining characters of `@Carol` without committing; typing can
+  continue normally. Nonmatching `@text` remains ordinary chat. Backspace can
+  restore matches, Escape closes the current completion, and roster changes
+  update the choices.
+- **Tests:** Pure tests for token detection, Unicode/case-insensitive prefix
+  matching, own-handle exclusion, and no-match behavior. Component tests cover
+  echoed input opening/filtering the popup, Up/Down, Tab, Enter versus commit,
+  Escape, Backspace reappearance, roster changes, delayed echo, and the exact
+  keystrokes sent for a completion. Add a browser-check sequence with two or
+  more candidate handles.
+- **Docs:** Document autocomplete and its keys in `docs/USER_EXPERIENCE.md` and
+  the help overlay. No protocol change is required.
+
+## 26. Keep the transcript monospace in Chrome on Linux
+
+- [ ] **Bug, browser compatibility**
+- **Source:** [GitHub issue #14](https://github.com/kappa/remart-bbs-chat/issues/14).
+- **Confirmed requirement:** The issue describes the desired face as
+  “sans-serif,” but `docs/DESIGN.md` requires monospace and the terminal layout
+  depends on it. The actionable defect is Chrome/Linux rendering transcript
+  rows as serif instead of the intended non-serif monospace face.
+- **Location:** `client/src/theme.css` `--mono`, global font declarations, and
+  `.chat-line`, which currently uses a second, shorter font stack; rendered
+  transcript styles in Chrome/Linux.
+- **Suggested fix:** Reproduce in Chrome on Linux and inspect the computed and
+  rendered font. Consolidate every terminal surface on `var(--mono)` and use a
+  Linux-available explicit monospace fallback before the generic family. If the
+  CSS is correct but the deployed stylesheet is missing, diagnose the asset
+  load/cache path instead of masking it with more font names. Do not add a web
+  font unless local stacks demonstrably cannot provide stable rendering.
+- **Acceptance:** Committed lines, live lines, the caret, roster, lobby, and
+  help remain visibly monospace in Chrome and Firefox on Linux. Character-cell
+  widths are consistent; the existing terminal aesthetic and wrapping remain.
+- **Tests:** Add a style regression that all transcript rows inherit the single
+  canonical font variable. Use a real Chrome/Linux computed-style check and
+  record the resolved font family; compare Firefox manually. A DOM test that
+  merely repeats the CSS string is insufficient by itself.
+- **Docs:** No behavior change is intended. Update `docs/DESIGN.md` only if the
+  chosen canonical stack is worth recording.
+
+## 27. Add a “Report a problem” sidebar link
+
+- [ ] **Requested feature**
+- **Source:** [GitHub issue #15](https://github.com/kappa/remart-bbs-chat/issues/15).
+- **Location:** `client/src/App.tsx` roster footer; `client/src/theme.css`;
+  `client/src/App.roster.test.tsx`.
+- **Requested behavior:** Add a clearly labeled `Report a problem` link in the
+  right sidebar pointing to
+  `https://github.com/kappa/remart-bbs-chat/issues/new`.
+- **Suggested implementation:** Render a normal anchor in the roster footer,
+  opening the issue form in a new tab with `rel="noopener noreferrer"`. Style
+  it consistently with the compact terminal controls without disguising that
+  it is a link. Clicking it must not move chat focus or send input.
+- **Acceptance:** The link is visible and keyboard accessible on desktop and
+  mobile, has the exact destination and safe new-tab attributes, and does not
+  disturb the transcript or session.
+- **Tests:** Roster rendering test for accessible name, `href`, `target`, and
+  `rel`; browser smoke check that the control is present without navigating
+  away from the test room.
+- **Docs:** Mention the reporting link in `docs/USER_EXPERIENCE.md`; no protocol
+  change.
+
+## 28. Replace the duplicate sidebar command buttons with Help
+
+- [ ] **Requested UI cleanup**
+- **Source:** [GitHub issue #16](https://github.com/kappa/remart-bbs-chat/issues/16).
+- **Location:** `client/src/App.tsx` roster footer and help overlay;
+  `client/src/theme.css` command-button layout; roster/rendering tests and
+  `check-browser.mjs`.
+- **Requested behavior:** Remove the `[l] [?] [q]` button row and put one
+  `Help` control in its place that opens the same popup as typing `?` then
+  Enter. Keep the separate `Leave` button and the typed `l`, `?`, and `q`
+  commands.
+- **Suggested implementation:** Reuse `setShowHelp(true)` from the existing
+  `[?]` button. Remove the now-unused three-column command-button wrapper and
+  styles. Do not remove server command handling or the toolbar-independent
+  roster API unless it becomes genuinely unused after checking all call sites.
+- **Acceptance:** The sidebar contains `Type`, `Help`, and `Leave`, with no
+  `[l]`, `[?]`, or `[q]` controls. Help opens and dismisses exactly as before;
+  typed commands retain their behavior.
+- **Tests:** Update roster tests to assert the new control set and absence of
+  the old buttons. Exercise Help click, Escape/Close dismissal, explicit Leave,
+  and typed `l`, `?`, `q`. Keep keyboard focus behavior covered.
+- **Docs:** Update the sidebar description in `docs/USER_EXPERIENCE.md`; no
+  protocol change.
+
+## 29. Remove the sidebar character counter
+
+- [ ] **Requested UI cleanup**
+- **Source:** [GitHub issue #17](https://github.com/kappa/remart-bbs-chat/issues/17).
+- **Location:** `client/src/App.tsx` `ownText` and `.char-counter` rendering;
+  `client/src/theme.css`; `client/src/App.roster.test.tsx`.
+- **Confirmed current behavior:** The roster footer always shows the echoed
+  own-line length as `<number> chars`, even though chat lines have no length
+  limit and the counter does not guide any decision.
+- **Suggested implementation:** Remove the counter element, its CSS, its test,
+  and the `ownText` derived value if it has no remaining consumer. Preserve the
+  paste-limit warning, which reports a separate 100-code-point paste rule.
+- **Acceptance:** No character count appears in the sidebar while typing;
+  live text, caret editing, paste warnings, layout, and all other footer
+  controls behave unchanged.
+- **Tests:** Replace the existing counter assertion with absence coverage and
+  keep a focused assertion that an oversized paste still shows its warning.
+- **Docs:** Remove any counter mention if one exists; no protocol change.
