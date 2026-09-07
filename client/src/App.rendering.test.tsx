@@ -50,23 +50,21 @@ describe('Rendering from server state', () => {
     expect((await screen.findByText('* Bob joined')).className).toMatch(/system-line/);
   });
 
-  it('lines committed before the join are not shown', async () => {
-    // 'before' sits below the join's history window and was committed
-    // before the session, so only 'after' renders.
+  it('server-selected old rows render even with timestamps before the join', async () => {
+    // A preserved live row can be appended after joining with an older timestamp.
     await renderJoined(snapshot({ committed: [line('old', 0, 'before', alice, 0), line('new', 1, 'after', alice, 2)] }), { ...SESSION, historyFromRow: 1 });
     expect(await screen.findByText('after')).toBeInTheDocument();
-    expect(screen.queryByText('before')).not.toBeInTheDocument();
+    expect(screen.getByText('before')).toBeInTheDocument();
   });
 
   it('a newcomer sees the last 20 committed lines in row order with their colors', async () => {
-    // 25 lines committed before the join (committedAt 0 < joinedAt 1); the
-    // join boundary is the 6th line's row, so exactly rows 5..24 render.
+    // The server selected rows 5..24 from 25 prior lines.
     const committed = Array.from({ length: 25 }, (_, row) => {
       if (row === 5) return line('ann', 5, '* Bob joined', bob, 0);
       if (row === 6) return line('blank', 6, '', alice, 0);
       return line(`l${row}`, row, `t${row}`, alice, 0);
     });
-    const { ws } = await renderJoined(snapshot({ committed }), { ...SESSION, historyFromRow: 5 });
+    const { ws } = await renderJoined(snapshot({ committed: committed.slice(-20) }), { ...SESSION, historyFromRow: 5 });
     await screen.findByText('* Bob joined');
 
     const rendered = Array.from(document.querySelectorAll('.committed-line'));

@@ -128,8 +128,61 @@ describe('Join history window (task 12)', () => {
       client.ws.close();
     }
     const { json } = await post(baseUrl, '/api/join', { roomId, handle: 'Newcomer' });
+    const snap = await snapshotFor({ roomId, participantId: json.participant.id, token: json.participant.token });
+    const expectedStart = Math.max(0, count - 19);
+    assert.deepEqual(snap.committed.map((line) => line.row),
+      Array.from({ length: count + 2 - expectedStart }, (_, i) => expectedStart + i));
     return json.participant.historyFromRow;
   }
+
+  it('the first snapshot contains exactly 20 prior lines even when every timestamp ties', async () => {
+    const roomId = await newRoom(baseUrl);
+    const writer = await join(baseUrl, roomId, 'Writer');
+    const client = await connect(wsUrl, writer);
+    try {
+      for (let seq = 1; seq <= 25; seq++) client.send(key(seq, 'enter'));
+      await client.next((m) => m.type === 'live' && m.seq === 25);
+      const newcomer = await join(baseUrl, roomId, 'Newcomer');
+      const room = rooms.get(roomId);
+      const joinedAt = room.participants.get(newcomer.participantId).joinedAt.getTime();
+      // Model commits and join happening in one millisecond without relying on scheduling.
+      for (const line of room.lines) line.committedAt = joinedAt;
+      const snap = await snapshotFor(newcomer);
+      assert.deepEqual(snap.committed.map((line) => line.row), Array.from({ length: 21 }, (_, i) => i + 6));
+      assert.ok(snap.committed.every((line) => line.committedAt === joinedAt));
+    } finally {
+      client.ws.close();
+    }
+  });
+
+  it('reconnect keeps an earlier live row committed after join with an older timestamp', async () => {
+    const roomId = await newRoom(baseUrl);
+    const slow = await join(baseUrl, roomId, 'Slow');
+    const writer = await join(baseUrl, roomId, 'Writer');
+    const a = await connect(wsUrl, slow);
+    const b = await connect(wsUrl, writer);
+    try {
+      a.send({ type: 'key', seq: 1, kind: 'char', char: 'x' });
+      const live = await a.next((m) => m.type === 'live' && m.participantId === slow.participantId);
+      for (let seq = 1; seq <= 25; seq++) b.send(key(seq, 'enter'));
+      await b.next((m) => m.type === 'live' && m.participantId === writer.participantId && m.seq === 25);
+      const newcomer = await join(baseUrl, roomId, 'Newcomer');
+      const first = await snapshotFor(newcomer);
+      assert.equal(first.committed.length, 21);
+      assert.ok(first.liveLines.some((line) => line.row === live.row && line.text === 'x'));
+      // Stale cleanup preserves a line at last activity, before the newcomer joined.
+      const room = rooms.get(roomId);
+      const participant = room.participants.get(slow.participantId);
+      const beforeJoin = new Date(room.participants.get(newcomer.participantId).joinedAt.getTime() - 1);
+      serverModule.removeParticipant(room, participant, beforeJoin);
+      const recovered = await snapshotFor(newcomer);
+      assert.ok(recovered.committed.some((line) => line.row === live.row && line.text === 'x' && line.committedAt === beforeJoin.getTime()));
+      assert.equal(recovered.committed.length, 23); // window, join, preserved line, leave
+    } finally {
+      a.ws.close();
+      b.ws.close();
+    }
+  });
 
   it('a join response carries historyFromRow', async () => {
     const historyFromRow = await historyFromRowAfter(0);

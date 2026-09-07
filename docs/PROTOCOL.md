@@ -165,7 +165,10 @@ response is the only message that carries the token: it contains neither
 history nor `nextSeq` nor live text. `historyFromRow` is the row where the
 participant's history window starts: the smallest row among the last 20
 committed lines, or the join announcement's row when the room has none. The
-client shows committed lines from that row on; see [Client behavior](#client-behavior).
+server also records the current committed-line count internally, before the
+announcement is stored, to distinguish subsequent commits without comparing
+timestamps. These boundaries select the participant's snapshot history; see
+[Client behavior](#client-behavior).
 Its roster follows participant insertion
 order, unlike the sorted roster endpoint.
 
@@ -251,13 +254,17 @@ client. `char` must satisfy the character rule described under
   expected?: number }
 ```
 
-`snapshot.committed` holds the last 100 appended committed lines, sorted by
-row — not necessarily the highest 100 rows, since participants can commit
-earlier allocated rows later. The snapshot content is the same for every
-participant; how far back a participant's view reaches is a client rule fed
-by the join response's `historyFromRow` (see
-[Client behavior](#client-behavior)). `you.nextSeq` is the sequence number the server
-expects next from this participant. `liveLines` lists every participant, sorted
+`snapshot.committed` starts with the last 100 appended committed lines,
+filters them for this participant, then sorts by row. A line is eligible if
+its row is at or above the participant's `historyFromRow`, or it was appended
+at or after the committed-line count recorded at join. The count is internal
+server state, not a wire field. This gives exactly the last 20 pre-join
+committed rows plus subsequent commits within the recovery window. Millisecond
+ties and stale cleanup's older timestamps cannot change eligibility. The
+100-line cap is by append order, not highest row: an earlier live row may
+commit later. Reconnect uses the original join boundaries, never a new window.
+The client retains previously seen lines beyond the snapshot cap.
+`you.nextSeq` is the sequence number the server expects next from this participant. `liveLines` lists every participant, sorted
 by slot; idle ones have `row: null` and `text: ""`.
 
 ### Server to everyone in the room
@@ -422,11 +429,11 @@ the commands.
 
 Rendering: `computeDocumentLines` over accumulated committed lines and live
 lines; nothing renders before the echo; the caret sits on the own live row
-or, when idle, on a local preview row below the transcript. A committed line
-is shown when its row is at or above the stored `historyFromRow` (the
-20-line window chosen at join) or when its `committedAt` is at or after the
-stored `joinedAt` — a line the newcomer watched being typed stays visible
-when it commits.
+or, when idle, on a local preview row below the transcript. The server selects
+snapshot history using the participant's join boundaries. The client accumulates
+every delivered committed line, from snapshots and live events, without filtering
+by timestamp or row. A line the newcomer watched being typed therefore stays
+visible when it commits, including when stale cleanup stamps it before the join.
 
 Existing protocol coverage is in [HTTP tests](../test-server-api.js),
 [server logic tests](../test-server-logic.js), and

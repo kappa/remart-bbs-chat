@@ -76,9 +76,11 @@ are not a design input.
   someone reading upward.
 - A newcomer sees the last 20 committed lines from before the join, then
   everything since. At join the server records the window's starting row
-  (`historyFromRow`); the client shows lines from that row on, plus any line
-  committed after the join even if its row is older. Scrollback is
-  browser-local, not server history.
+  (`historyFromRow`) and the current committed-line count. The server uses
+  row and append order to select snapshot history; timestamps cannot reliably
+  separate commits from a join in the same millisecond. The client accumulates
+  everything delivered, including old live rows committed after joining.
+  Scrollback is browser-local, not server history.
 - New arrivals never force-scroll a viewer who has scrolled up to read.
 
 ## Identity and color

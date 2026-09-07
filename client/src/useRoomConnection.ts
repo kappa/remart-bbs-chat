@@ -46,7 +46,7 @@ export function useRoomConnection(session: RoomSession | null, events: RoomEvent
           seeded = true;
           if (newcomer) eventsRef.current.onNewcomer();
         }
-        setRoom((prev) => applyServerMessage(prev, msg, { joinedAt, historyFromRow }));
+        setRoom((prev) => applyServerMessage(prev, msg));
       },
     });
     sendRef.current = connection.send;

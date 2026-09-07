@@ -113,9 +113,10 @@ The following describes the current implementation and its regression baseline.
 - The snapshot on connect carries the last 100 committed lines sorted by row;
   clients accumulate everything seen since joining, so snapshot truncation
   never deletes scrollback. A committed line is shown when its row is at or
-  above the stored `historyFromRow` (the 20-line window recorded at join) or
-  when it was committed at or after the stored `joinedAt`. Do not force-scroll
-  a viewer reading older text.
+  above the server-stored `historyFromRow` (the 20-line window recorded at join)
+  or it was appended at or after the committed-line count recorded at join.
+  The server filters snapshots; clients accumulate all delivered lines without
+  timestamp filtering. Do not force-scroll a viewer reading older text.
 - Committed lines keep author color snapshots after departure. Leave, stale
   cleanup, and the `q` command share one removal path that preserves nonempty
   live text (stamped at leave time on a deliberate leave, at last activity on

@@ -364,109 +364,38 @@ only this file, `AGENTS.md`, and the repository.
   errors, disconnect/replay policy, and emission order. Replace retired HTTP
   chat routes and revise the diagram and delivery guarantees to match the code.
 
-## 12. Show the last 20 room lines to a newly joined participant
+## 12. Show the last 20 committed lines when joining
 
-- [x] **Requested feature, high priority** (done: join computes `historyFromRow` from the last 20 committed lines by row; the client shows lines at or above that row plus anything committed after `joinedAt`)
-- **Goal:** Seed a new participant's transcript with up to 20 existing committed
-  lines, then continue showing live typing and subsequent committed lines.
-- **Location:**
-  - `server/index.js`: the `/api/join` route (it runs `cleanupStaleInRoom`,
-    computes `joinRowIdx`, builds the participant, stores the join
-    announcement through `storeLine`, and returns `participant` with
-    `joinedAt`); `snapshotMessage` (last 100 lines of `room.lines` sorted by
-    `row`).
-  - `client/src/roomState.ts`: `applyServerMessage` drops lines with
-    `committedAt < joinedAt` in its `snapshot` and `committed` cases.
-  - `client/src/useRoomConnection.ts`: `RoomSession` carries `joinedAt` and
-    passes it to the reducer.
-  - `client/src/App.tsx`: the `Session` type, `readSession` (rejects a stored
-    session without a numeric `joinedAt`), and `finishJoin` (builds the
-    session from the join response).
-  - `client/src/api.ts`: `JoinedParticipant` type of the join response.
-  - Tests: `test-server-api.js` (join), `test-server-ws.js` (snapshot),
-    `client/src/roomState.test.ts`, `client/src/App.rendering.test.tsx`
-    ("lines committed before the join are not shown"),
-    `client/src/App.regression.test.tsx` (truncated snapshot, session switch),
-    and the fixtures in `client/src/testing/roomFixtures.tsx` (`SESSION`).
-- **Existing behavior:** The server stores committed lines in memory in
-  `room.lines`; the `snapshot` sent on every socket connect carries the last
-  100 sorted by row. The client accumulates every committed line seen since
-  the session began and hides lines committed before the session's
-  `joinedAt`. No database or new persistence service is needed. The 100-line
-  snapshot limit does not bound stored history.
-- **Decision (settled here): a row boundary chosen at join.** At join, before
-  the participant's own announcement is stored, the server selects the last
-  20 committed lines by row and records the smallest row among them as the
-  participant's `historyFromRow` (when the room has no committed lines, use
-  `joinRowIdx`). The client shows a committed line when
-  `line.row >= historyFromRow || line.committedAt >= joinedAt`. The first
-  clause is the 20-line window, exact by construction (rows are unique per
-  line and ordered as the transcript). The second clause keeps a line whose
-  row was claimed before the join but committed after it, so a line the
-  newcomer watched being typed does not vanish when it commits. `joinedAt`
-  stays; `historyFromRow` is added next to it everywhere `joinedAt` travels:
-  join response, stored session, hook, reducer.
-- **Work, in this order:**
-  1. Server test in `test-server-api.js`: join responses carry
-     `participant.historyFromRow` equal to the row of the 20th-newest line, or
-     the join announcement's row when fewer than 20 exist (cover 0, 5, 20, 25
-     existing lines; drive lines through a socket with Enter as the existing
-     snapshot test does). Then implement in `/api/join`: compute before
-     `storeLine(... joined ...)`, store on the participant object, include in
-     the response. Order the candidate lines by `row`, not by array order;
-     `room.lines` is in commit order, which differs during concurrent typing.
-  2. Client types: add `historyFromRow: number` to `JoinedParticipant`
-     (`api.ts`), `Session` (`App.tsx`), `RoomSession`
-     (`useRoomConnection.ts`), and the `SESSION` fixture. `readSession`
-     rejects a stored session without a numeric `historyFromRow`, the same
-     way it rejects one without `joinedAt` (users from before this change
-     rejoin once).
-  3. Reducer tests in `roomState.test.ts`, then change `applyServerMessage`
-     to take `{ joinedAt, historyFromRow }` and apply the rule above in both
-     the `snapshot` and `committed` cases. Cases: exactly 20 shown from 25;
-     all 5 shown from 5; a line with a row below the boundary but committed
-     after `joinedAt` is shown; a line with a row below the boundary and
-     committed before `joinedAt` is hidden; a later, truncated snapshot adds
-     nothing older and removes nothing.
-  4. Rendering test: a snapshot with 25 committed lines and
-     `historyFromRow` set to the 6th line's row renders the last 20 in row
-     order with their stored colors, including a `* Bob joined` announcement
-     and a blank line inside the window.
-  5. Docs (same commit): `docs/PROTOCOL.md` join response example and field
-     list, the stored-session shape under "Identity and stored state", the
-     "Client behavior" sentence about hidden lines, and the snapshot section
-     (the 100-line snapshot is unchanged; the window is a client rule fed by
-     the join response). `docs/DESIGN.md` line "Nothing from before you
-     joined is shown" becomes the 20-line rule with its reason (enough to
-     follow the conversation, not the whole history). `docs/USER_EXPERIENCE.md`
-     bullet "You see everything written since you joined. Nothing from before
-     you..." becomes: the last 20 lines from before you joined, then
-     everything since. `AGENTS.md` "Behavior to preserve": replace the
-     `joinedAt` sentence with the two-clause rule.
-- **Guardrails:**
-  - Do not trim `room.lines`, change the 100-line snapshot, or add a second
-    history request; the window is a filter over what the snapshot already
-    carries.
-  - Do not remove `joinedAt`; the second clause needs it.
-  - Do not select by `committedAt`: millisecond ties make the count inexact.
-  - Do not count live lines or the newcomer's own announcement in the 20; the
-    boundary is computed before that announcement exists.
-  - Keep `applyServerMessage` pure and keep its identity-preserving returns
-    (a no-op message returns the same object).
-  - Keep the reconnect behavior: a later snapshot never removes accumulated
-    lines and never adds lines older than the window.
-- **Acceptance:** New participants see exactly the last 20 existing committed
-  transcript lines (or all if fewer), in server transcript order and original
-  colors, plus current live state and subsequent events. Existing viewers lose
-  no scrollback. Resizing does not change which logical lines were selected.
-- **Success criteria:**
-  - The new server, reducer, and rendering tests fail before their step and
-    pass after it; the whole server and client suites pass.
-  - `npm run check:browser` passes; then extend it or check by hand: Alice
-    commits 25 lines, Bob joins and sees lines 6 to 25 followed by
-    `* Bob joined`; Alice's tab still shows all 25.
-  - Type check and build pass; the four doc files are updated in the same
-    commit.
+- [x] **Requested feature** (done; review fix makes snapshot selection server-owned and independent of timestamps)
+- **Location:** `server/index.js` join and snapshot creation;
+  `client/src/roomState.ts` snapshot/event accumulation.
+- **Behavior:** Newcomers see the last 20 existing committed transcript rows
+  (all if fewer), in row order with original colors, plus their announcement,
+  current live state, and subsequent commits. Announcements and blank lines
+  count; live lines and the newcomer's own announcement do not count in the 20.
+- **Implemented rule:** Before storing the join announcement, the server
+  records `historyFromRow` as the smallest row among the last 20 committed
+  rows (or the join row when none exist), and `joinedLineCount` as the current
+  length of the append-only committed-line array. Snapshots take the last 100
+  appended lines, retain those with `row >= historyFromRow` or append index
+  `>= joinedLineCount`, and sort by row. Reconnect keeps the original boundaries.
+- **Review correction:** The original prescribed client predicate used
+  `committedAt >= joinedAt`; tied milliseconds admitted excess pre-join lines,
+  and stale preservation could drop a newly committed line with an older
+  timestamp. Append order resolves both. The client now accumulates every
+  delivered line, without a second history filter. `joinedAt` and
+  `historyFromRow` remain join/session metadata; `joinedLineCount` is internal
+  server state, so no new wire fields are needed.
+- **Guardrails:** Keep the 100-line snapshot cap, accumulated client scrollback,
+  stored author colors, live state, row ordering, and a scrolled-up reader's
+  position. Do not trim `room.lines` or add a history request.
+- **Coverage:** HTTP/socket tests cover history sizes, tied timestamps, and
+  recovery of earlier live rows preserved at pre-join timestamps. Reducer and
+  rendering tests verify server-selected history and accumulation without
+  timestamp filtering. The browser check joins after 25 numbered lines and
+  checks the newcomer's 20-line window and the existing viewer's full history.
+- **Docs:** `docs/PROTOCOL.md`, `docs/USER_EXPERIENCE.md`, `docs/DESIGN.md`, and
+  `AGENTS.md` describe the same implemented rule.
 
 ## Product issues from GitHub
 

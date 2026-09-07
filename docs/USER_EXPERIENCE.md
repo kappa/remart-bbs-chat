@@ -99,6 +99,7 @@ with one of those letters.
 
 - When you join you see the **last 20 lines** written before you arrived, in
   their original colors, and then everything written **since you joined**.
+  A line finished after you arrive stays visible even if typing started earlier.
 - Text you have already seen is never taken away, no matter how long the
   session runs.
 - If you scroll up to read earlier lines, new messages will not yank you back

@@ -142,14 +142,18 @@ function liveLineOf(p){
   return {participantId:p.id, handle:p.handle, color:p.color, slot:p.slot, row:p.liveRow, text:p.liveText};
 }
 
-// Last 100 appended committed lines, sorted by row: the recovery snapshot.
+// Filter the last 100 appended lines for this participant, then sort by row.
+// Append order, unlike timestamps, distinguishes commits on either side of join.
 function snapshotMessage(room, participant){
+  const start = Math.max(0, room.lines.length - 100);
   return {
     type:'snapshot',
     roomId:room.id,
     you:{participantId:participant.id, nextSeq:participant.nextSeq},
     liveLines:Array.from(room.participants.values()).sort((a,b)=>a.slot-b.slot).map(liveLineOf),
-    committed:room.lines.slice(-100).sort((a,b)=>a.row-b.row).map(publicLine),
+    committed:room.lines.slice(start)
+      .filter((line, index)=>line.row >= participant.historyFromRow || start + index >= participant.joinedLineCount)
+      .sort((a,b)=>a.row-b.row).map(publicLine),
     roster:rosterOf(room),
   };
 }
@@ -334,6 +338,7 @@ app.post('/api/join', (req,res)=>{
     liveText: '',
     joinedAt: now,
     historyFromRow,
+    joinedLineCount: room.lines.length,
     lastSeen: now,
     nextSeq: 1,
     socket: null
