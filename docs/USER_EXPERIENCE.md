@@ -37,6 +37,9 @@ name prefixes on ordinary lines because the color tells you who is who.
 - Transcript text can be selected with the mouse and copied (Ctrl+C /
   Cmd+C). A plain click still puts the keyboard focus back on the chat
   input, and typing after a selection works without clicking again.
+- Addresses starting with `http://` or `https://` in finished lines are
+  links that open in a new tab. Half-typed addresses stay plain text
+  until their line is committed.
 
 ## Typing
 

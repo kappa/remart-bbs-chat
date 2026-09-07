@@ -37,6 +37,39 @@ describe('Rendering from server state', () => {
     expect(await screen.findByText('old message')).toHaveStyle({ color: '#0ff' });
   });
 
+  it('a URL in a committed line is a new-tab link; the rest is text', async () => {
+    await renderJoined(snapshot({ committed: [line('h1', 0, 'see https://example.com/x ok')] }));
+    const anchor = await screen.findByRole('link', { name: 'https://example.com/x' });
+    expect(anchor).toHaveAttribute('href', 'https://example.com/x');
+    expect(anchor).toHaveAttribute('target', '_blank');
+    expect(anchor).toHaveAttribute('rel', 'noopener noreferrer');
+    const row = anchor.closest('.committed-line');
+    expect(row?.textContent).toBe('see https://example.com/x ok');
+  });
+
+  it('markup-looking chat text stays text; only anchors are created', async () => {
+    await renderJoined(snapshot({ committed: [line('h1', 0, 'see <img src=x onerror=alert(1)> ok')] }));
+    expect(await screen.findByText(/see.*ok/)).toBeInTheDocument();
+    expect(document.querySelector('.committed-line img')).toBeNull();
+    expect(document.querySelectorAll('.committed-line a').length).toBe(0);
+  });
+
+  it('a half-typed URL in a live line is not a link yet', async () => {
+    await renderJoined(snapshot({ liveLines: [typing(alice, 0, 'see https://example.com/x')] }));
+    expect(await screen.findByText(/see https:\/\/example.com\/x/)).toBeInTheDocument();
+    expect(document.querySelectorAll('.live-line a').length).toBe(0);
+  });
+
+  it('clicking a transcript link does not steal chat focus', async () => {
+    const user = userEvent.setup();
+    await renderJoined(snapshot({ committed: [line('h1', 0, 'see https://example.com/x')] }));
+    const anchor = await screen.findByRole('link', { name: 'https://example.com/x' });
+    await user.click(screen.getByRole('button', { name: 'Type' }));
+    expect(document.activeElement).toBe(document.querySelector('.keyboard-capture'));
+    await user.click(anchor);
+    expect(document.activeElement).not.toBe(document.querySelector('.keyboard-capture'));
+  });
+
   it('an empty committed line renders as a space', async () => {
     await renderJoined(snapshot({ committed: [line('h1', 0, '')] }));
     await waitFor(() => {

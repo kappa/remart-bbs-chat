@@ -10,6 +10,7 @@ import {
 } from "react";
 import { api, keepaliveApi } from "./api";
 import { computeDocumentLines, isValidChar } from "./documentLines";
+import { splitLinks } from "./links";
 import { sortedCommitted } from "./roomState";
 import { useRoomConnection } from "./useRoomConnection";
 
@@ -570,7 +571,10 @@ export function App() {
         id="chat-area"
         aria-label="Shared chat area"
         ref={chatRef}
-        onClick={() => {
+        onClick={(event) => {
+          // Link clicks navigate; focusing the keyboard would only steal
+          // focus from the new tab without helping typing.
+          if ((event.target as HTMLElement).closest("a")) return;
           const doc = window.getSelection();
           if (!doc || doc.rangeCount === 0 || doc.getRangeAt(0).collapsed) {
             focusKeyboard();
@@ -609,7 +613,22 @@ export function App() {
                   color: line.color,
                 }}
               >
-                {line.text || " "}
+                {line.text
+                  ? splitLinks(line.text).map((segment, index) =>
+                      segment.kind === "link" ? (
+                        <a
+                          key={index}
+                          href={segment.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          {segment.text}
+                        </a>
+                      ) : (
+                        segment.text
+                      ),
+                    )
+                  : " "}
               </div>
             );
           }
