@@ -15,19 +15,18 @@ Describe implemented behavior there; keep future proposals in these tasks.
 
 ## Recommended implementation order
 
-Tasks 1, 4, 6, 7, 10, 11, 12, 13, and 14 are done and tasks 8 and 9 are
+Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, and 21 are done and tasks 8 and 9 are
 closed; see their checkboxes. Keep task numbers stable; the table below lists
 only the open tasks, in the order to execute them:
 
 | Order | Task | Reason |
 | --- | --- | --- |
-| 1 | 21 — Test-harness socket leak | Bug; a failing server test wedges the run at exit, so red runs of the TDD workflow hang. Small, isolated to `test-support.js`. |
-| 2 | 19 — Mobile keyboard | Code done; the on-device verification that closes the task remains. |
-| 3 | 16 — Clickable URLs | Row rendering; independent. |
-| 4 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 5 | 20 — Restore the join sound | Low priority, unconfirmed. Test first; tasks 15 and 17 wait for it. |
-| 6 | 15 — Join-sound switch | Needs a working chirp from task 20. |
-| 7 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
+| 1 | 19 — Mobile keyboard | Code done; the on-device verification that closes the task remains. |
+| 2 | 16 — Clickable URLs | Row rendering; independent. |
+| 3 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 4 | 20 — Restore the join sound | Low priority, unconfirmed. Test first; tasks 15 and 17 wait for it. |
+| 5 | 15 — Join-sound switch | Needs a working chirp from task 20. |
+| 6 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
 
 ## Working a task
 
@@ -846,40 +845,40 @@ Task 21 was found during the red step of task 5 on 2026-09-07, while running
 the server WebSocket suite with newly written failing tests. It is local test
 infrastructure, not a GitHub issue.
 
-## 21. A failing socket test wedges the test run at exit
+## 21. Leaked WebSockets block server-test teardown
 
-- [ ] **Bug, test infrastructure**
-- **Location:** `test-support.js` (`openSocket` and `connect` create client
-  WebSockets but nothing tracks them); `test-server-ws.js` (`roomWithTwo`
-  hands each test a `done()` that closes its two sockets, and that call is
-  the only cleanup); `test-server-api.js` (tests close their sockets inline,
-  e.g. `client.ws.close()` after the assertions).
-- **Problem:** When an assertion fails after a socket was opened, the test's
-  cleanup is skipped: `done()` never runs and inline `close()` calls are
-  never reached. The leftover open client WebSockets keep the test child
-  process's event loop alive after every suite has finished, so `node --test`
-  prints all results and then hangs forever — runner and child both stay
-  alive at 0% CPU until killed. Reproduced on 2026-09-07: the task 5 red run
-  reported its 18 failures and then never exited; only `--test-force-exit`
-  or SIGTERM ended it. The 2 s timeout inside `next()` means the waits
-  themselves never hang — only the exit does.
-- **Why it matters:** The TDD workflow this file mandates needs red runs to
-  complete. Today the first failing socket test wedges the run even though
-  every test's result has already been decided and printed.
-- **Suggested fix:** Track every socket `openSocket` creates in a
-  module-level set in `test-support.js` and export `closeAllSockets()`. Call
-  it in each suite's `beforeEach` next to `resetForTests()` — so a failure in
-  test N is cleaned up before test N+1 runs — and in a final `after`. This
-  closes the leak at the source instead of wrapping every test in
-  try/finally. Adding `--test-force-exit` to the `npm test` script is an
-  acceptable extra belt, not a substitute: force-exit also masks genuinely
-  stuck tests.
-- **Verification:** Temporarily append a test that opens a socket and then
-  fails an assertion; the run must print its results and exit non-zero
-  instead of hanging. Remove the temporary test afterwards. All existing
-  suites stay green, including `npm test` and the client suite.
-- **Acceptance:** A suite containing a deliberately failing socket test
-  terminates on its own with a failing exit code; a fully green run behaves
-  exactly as before.
-- **Order:** Before the next protocol or rendering task, so its red runs are
-  usable.
+- [x] **Bug, test infrastructure** (done: awaited socket cleanup after each test and before HTTP shutdown; permanent subprocess regressions)
+- **Location:** `test-support.js` (`startServer` teardown); the lifecycle
+  hooks in `test-server-ws.js` and `test-server-api.js`.
+- **Problem:** An assertion failure can skip inline `ws.close()` or
+  `roomWithTwo().done()`. The final `after` hook then waits indefinitely for
+  `httpServer.close()` while an upgraded WebSocket connection remains open.
+  This is unfinished teardown, not merely an otherwise-finished process
+  failing to exit. A passing test that omits cleanup has the same problem.
+- **Verified:** A deliberately failed assertion in the real WebSocket suite
+  blocked teardown; terminating leftover server sockets let it exit normally
+  with code 1. On Node 22.22.2, `--test-force-exit` did not resolve this hang.
+  Calling `wss.close()` alone also leaves existing connections open.
+- **Isolation:** `resetForTests()` clears rooms, not sockets. Connections can
+  survive into later tests, including connections that never sent `hello`.
+  Cleaning only participants is insufficient, especially after the room map
+  has already been reset.
+- **Implemented:** Use the existing `serverModule.wss.clients` registry of accepted
+  connections, rather than adding another client registry. Add an awaited
+  test helper that terminates leftover sockets and waits for their close
+  events. Run it after each test in both socket-using suites and inside
+  `startServer()`'s final close function before closing the HTTP server.
+  Preserve explicit closes used to test normal socket behavior. Keep this
+  cleanup in test infrastructure; do not change production room/session
+  lifecycle or add force-exit flags.
+- **Regression coverage:** Keep a subprocess test that deliberately fails
+  after opening a socket and verifies a normal exit with code 1 within a
+  deadline. Also cover an unauthenticated socket, a passing test that omits
+  cleanup, and isolation before the next test. The parent must forcibly end
+  a hung probe so the regression itself cannot wedge the test run.
+- **Acceptance:** Failing and passing suites terminate normally with their
+  correct exit codes; later tests inherit no accepted sockets. All existing
+  server/client suites, typecheck, build, and browser checks remain green.
+- **Validation:** All four subprocess regressions timed out before the fix
+  and exited with the expected codes afterwards. Passed: 88 server tests,
+  81 client tests, typecheck, build, and 26/26 browser checks.

@@ -3,6 +3,15 @@ import WebSocket from 'ws';
 process.env.NODE_ENV = 'test';
 export const serverModule = await import('./server/index.js');
 
+// Close accepted connections even when a test failed before its own cleanup,
+// or never sent hello. Wait for close events so the next test starts isolated.
+export async function closeAllSockets() {
+  await Promise.all(Array.from(serverModule.wss.clients, (ws) => new Promise((resolve) => {
+    ws.once('close', resolve);
+    ws.terminate();
+  })));
+}
+
 // Binds the shared Express/WebSocket server to a free port. Returns the base
 // HTTP URL, the socket URL, and a close function for `after`.
 export function startServer() {
@@ -12,7 +21,10 @@ export function startServer() {
       resolve({
         baseUrl: `http://localhost:${port}`,
         wsUrl: `ws://localhost:${port}/ws`,
-        close: () => new Promise((res) => httpServer.close(res)),
+        close: async () => {
+          await closeAllSockets();
+          await new Promise((res) => httpServer.close(res));
+        },
       });
     });
   });

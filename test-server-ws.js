@@ -1,7 +1,7 @@
-import { describe, it, before, after, beforeEach } from 'node:test';
+import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import WebSocket from 'ws';
-import { serverModule, startServer, post, newRoom, join, openSocket, connect, settle } from './test-support.js';
+import { serverModule, startServer, closeAllSockets, post, newRoom, join, openSocket, connect, settle } from './test-support.js';
 
 const { resetForTests, rooms } = serverModule;
 let baseUrl, wsUrl, closeServer;
@@ -9,6 +9,7 @@ let baseUrl, wsUrl, closeServer;
 before(async () => { ({ baseUrl, wsUrl, close: closeServer } = await startServer()); });
 after(async () => { await closeServer(); });
 beforeEach(() => resetForTests());
+afterEach(closeAllSockets);
 
 describe('Socket handshake', () => {
   it('hello with a valid token receives a snapshot', async () => {

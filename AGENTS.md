@@ -89,9 +89,15 @@ point at it instead of a manual browser session.
 Server tests set `NODE_ENV=test` before dynamically importing the server, reset
 shared state with `resetForTests()`, and bind integration servers to port 0.
 Test mode disables automatic listening and the periodic cleanup timer. Preserve
-this isolation and close sockets/servers in test teardown. Client tests use the
-FakeWebSocket double (`client/src/testing/fakeWebSocket.ts`), mock `api`, and
-reset browser storage between cases.
+this isolation: both socket-using suites await `closeAllSockets()` after each
+test, and `startServer()` also drains accepted sockets before closing the HTTP
+server. Keep explicit closes when testing normal socket behavior.
+`test-server-harness.js` runs bounded child processes to verify failure cleanup
+and isolation; its deliberately failing probes must exit with code 1.
+
+Client tests use the FakeWebSocket double
+(`client/src/testing/fakeWebSocket.ts`), mock `api`, and reset browser storage
+between cases.
 
 There is no configured lint script. The Vite build does not perform TypeScript
 type checking; run `npm --prefix client run typecheck` for that, and do not

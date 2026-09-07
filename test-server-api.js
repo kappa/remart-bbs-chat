@@ -1,6 +1,6 @@
-import { describe, it, before, after, beforeEach } from 'node:test';
+import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { serverModule, startServer, post, newRoom, join, connect } from './test-support.js';
+import { serverModule, startServer, closeAllSockets, post, newRoom, join, connect } from './test-support.js';
 
 const { resetForTests, rooms, ANSI_COLORS } = serverModule;
 let baseUrl, wsUrl, closeServer;
@@ -8,6 +8,7 @@ let baseUrl, wsUrl, closeServer;
 before(async () => { ({ baseUrl, wsUrl, close: closeServer } = await startServer()); });
 after(async () => { await closeServer(); });
 beforeEach(() => resetForTests());
+afterEach(closeAllSockets);
 
 async function get(path) { const res = await fetch(baseUrl + path); return { status: res.status, json: await res.json() }; }
 async function snapshotFor(creds) { const c = await connect(wsUrl, creds); c.ws.close(); return c.snapshot; }
