@@ -21,16 +21,17 @@ open tasks in this order:
 
 | Order | Task | Reason |
 | --- | --- | --- |
-| 1 | 13 — Keep a mouse selection | Bug, small, isolated to the chat area's click handler. |
-| 2 | 19 — Mobile keyboard | Bug for phone users; no dependencies, needs a device check. |
-| 3 | 5 — Unicode deletion | Bug; server-only now, and defines the deletion unit that task 14 builds on. |
-| 4 | 12 — Last 20 lines on join | High-priority feature; the last review item that changes the protocol, so land it before other features add their own. |
-| 5 | 14 — Caret editing | Protocol change; needs task 5's unit. |
-| 6 | 16 — Clickable URLs | Row rendering; independent. |
-| 7 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 8 | 20 — Restore the join sound | Low priority, unconfirmed. Test first; tasks 15 and 17 wait for it. |
-| 9 | 15 — Join-sound switch | Needs a working chirp from task 20. |
-| 10 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
+| 1 | 21 — Test-harness socket leak | Bug; a failing server test wedges the run at exit, so red runs of the TDD workflow hang. Small, isolated to `test-support.js`. |
+| 2 | 13 — Keep a mouse selection | Bug, small, isolated to the chat area's click handler. Done. |
+| 3 | 19 — Mobile keyboard | Bug for phone users; no dependencies, needs a device check. Code done; device check pending. |
+| 4 | 5 — Unicode deletion | Bug; server-only now, and defines the deletion unit that task 14 builds on. Done. |
+| 5 | 12 — Last 20 lines on join | High-priority feature; the last review item that changes the protocol, so land it before other features add their own. Done. |
+| 6 | 14 — Caret editing | Protocol change; needs task 5's unit. Done. |
+| 7 | 16 — Clickable URLs | Row rendering; independent. |
+| 8 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 9 | 20 — Restore the join sound | Low priority, unconfirmed. Test first; tasks 15 and 17 wait for it. |
+| 10 | 15 — Join-sound switch | Needs a working chirp from task 20. |
+| 11 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
 
 ## Working a task
 
@@ -842,3 +843,47 @@ Close the GitHub issue when the task is done.
 - **Protocol docs:** none. Note the one-gesture requirement in
   [USER_EXPERIENCE.md](docs/USER_EXPERIENCE.md) next to the chirp sentence.
 - **Order:** Before task 15 and before task 17's bell.
+
+## Testing issues found during task work
+
+Task 21 was found during the red step of task 5 on 2026-09-07, while running
+the server WebSocket suite with newly written failing tests. It is local test
+infrastructure, not a GitHub issue.
+
+## 21. A failing socket test wedges the test run at exit
+
+- [ ] **Bug, test infrastructure**
+- **Location:** `test-support.js` (`openSocket` and `connect` create client
+  WebSockets but nothing tracks them); `test-server-ws.js` (`roomWithTwo`
+  hands each test a `done()` that closes its two sockets, and that call is
+  the only cleanup); `test-server-api.js` (tests close their sockets inline,
+  e.g. `client.ws.close()` after the assertions).
+- **Problem:** When an assertion fails after a socket was opened, the test's
+  cleanup is skipped: `done()` never runs and inline `close()` calls are
+  never reached. The leftover open client WebSockets keep the test child
+  process's event loop alive after every suite has finished, so `node --test`
+  prints all results and then hangs forever — runner and child both stay
+  alive at 0% CPU until killed. Reproduced on 2026-09-07: the task 5 red run
+  reported its 18 failures and then never exited; only `--test-force-exit`
+  or SIGTERM ended it. The 2 s timeout inside `next()` means the waits
+  themselves never hang — only the exit does.
+- **Why it matters:** The TDD workflow this file mandates needs red runs to
+  complete. Today the first failing socket test wedges the run even though
+  every test's result has already been decided and printed.
+- **Suggested fix:** Track every socket `openSocket` creates in a
+  module-level set in `test-support.js` and export `closeAllSockets()`. Call
+  it in each suite's `beforeEach` next to `resetForTests()` — so a failure in
+  test N is cleaned up before test N+1 runs — and in a final `after`. This
+  closes the leak at the source instead of wrapping every test in
+  try/finally. Adding `--test-force-exit` to the `npm test` script is an
+  acceptable extra belt, not a substitute: force-exit also masks genuinely
+  stuck tests.
+- **Verification:** Temporarily append a test that opens a socket and then
+  fails an assertion; the run must print its results and exit non-zero
+  instead of hanging. Remove the temporary test afterwards. All existing
+  suites stay green, including `npm test` and the client suite.
+- **Acceptance:** A suite containing a deliberately failing socket test
+  terminates on its own with a failing exit code; a fully green run behaves
+  exactly as before.
+- **Order:** Before the next protocol or rendering task, so its red runs are
+  usable.
