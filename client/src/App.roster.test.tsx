@@ -69,6 +69,19 @@ describe('Roster', () => {
     expect(await screen.findByText('CHAT COMMANDS')).toBeInTheDocument();
   });
 
+  it('the sidebar links to the issue form without disturbing the session', async () => {
+    const user = userEvent.setup();
+    await renderJoined();
+    const link = screen.getByRole('link', { name: 'Report a problem' });
+    expect(link).toHaveAttribute('href', 'https://github.com/kappa/remart-bbs-chat/issues/new');
+    expect(link).toHaveAttribute('target', '_blank');
+    expect(link).toHaveAttribute('rel', 'noopener noreferrer');
+    await user.click(screen.getByRole('button', { name: 'Type' }));
+    expect(document.activeElement).toBe(document.querySelector('.keyboard-capture'));
+    await user.click(link);
+    expect(document.activeElement).not.toBe(document.querySelector('.keyboard-capture'));
+  });
+
   it('a newcomer plays the join chirp; the first snapshot does not', async () => {
     const spy = vi.spyOn(globalThis as any, 'AudioContext');
     const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));

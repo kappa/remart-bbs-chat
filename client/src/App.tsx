@@ -719,6 +719,14 @@ export function App() {
           <button type="button" className="leave-button" onClick={() => leave()}>
             Leave
           </button>
+          <a
+            className="report-link"
+            href="https://github.com/kappa/remart-bbs-chat/issues/new"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            Report a problem
+          </a>
         </div>
       </aside>
 

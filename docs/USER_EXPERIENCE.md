@@ -92,7 +92,8 @@ as `?`, and a Leave button leaves the room like `q`.
 ## Roster and presence
 
 - A pinned roster lists everyone in the room, each in their color. It fits
-  roughly ten participants.
+  roughly ten participants. A Report a problem link at its foot opens the
+  issue form in a new tab.
 - When someone new joins, you hear a short two-tone chirp.
 - If your connection drops in the middle of a line, your unsent text is kept,
   not thrown away.
