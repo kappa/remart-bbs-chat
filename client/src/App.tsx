@@ -26,6 +26,7 @@ type Session = {
 
 const SESSION_KEY = "remart-bbs-chat.session";
 const HANDLE_KEY = "remart-bbs-chat.handle";
+const SOUND_KEY = "remart-bbs-chat.sound";
 const BASE_TITLE = "Remart BBS Chat";
 const TITLE_NOTICE_MS = 5000;
 const TITLE_TICK_MS = 400;
@@ -132,6 +133,7 @@ export function App() {
   const [feedback, setFeedback] = useState("");
   const [warning, setWarning] = useState("");
   const [showHelp, setShowHelp] = useState(false);
+  const [soundOn, setSoundOn] = useState(() => storageGet("local", SOUND_KEY) !== "off");
   const titleTimers = useRef<{ timeout: number | undefined; interval: number | undefined }>({
     timeout: undefined,
     interval: undefined,
@@ -195,7 +197,7 @@ export function App() {
     },
     onSessionEnded: () => endSession("Room session ended. Join again."),
     onNewcomer: (entry) => {
-      playJoinSound();
+      if (soundOn) playJoinSound();
       startTitleNotice(entry.handle);
     },
     onNotice: setWarning,
@@ -781,6 +783,18 @@ export function App() {
           <button type="button" className="leave-button" onClick={() => leave()}>
             Leave
           </button>
+          <label className="sound-toggle">
+            <input
+              type="checkbox"
+              checked={soundOn}
+              onChange={(event) => {
+                const next = event.target.checked;
+                setSoundOn(next);
+                storageSet("local", SOUND_KEY, next ? "on" : "off");
+              }}
+            />
+            Join sound
+          </label>
           <a
             className="report-link"
             href="https://github.com/kappa/remart-bbs-chat/issues/new"

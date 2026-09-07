@@ -99,7 +99,8 @@ as `?`, and a Leave button leaves the room like `q`.
   issue form in a new tab.
 - When someone new joins, you hear a short two-tone chirp, and the
   browser-tab title rotates their name as `<handle> joined` for five
-  seconds before returning to normal.
+  seconds before returning to normal. A Join sound checkbox in the
+  sidebar turns the chirp off; the choice is remembered in that browser.
 - If your connection drops in the middle of a line, your unsent text is kept,
   not thrown away.
 - A status line reads "Connecting..." or "Reconnecting..." while the room is
