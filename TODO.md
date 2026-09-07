@@ -22,11 +22,13 @@ only the open tasks, in the order to execute them:
 | Order | Task | Reason |
 | --- | --- | --- |
 | 1 | 19 — Mobile keyboard | Code done; the on-device verification that closes the task remains. |
-| 2 | 16 — Clickable URLs | Row rendering; independent. |
-| 3 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 4 | 20 — Restore the join sound | Low priority, unconfirmed. Test first; tasks 15 and 17 wait for it. |
-| 5 | 15 — Join-sound switch | Needs a working chirp from task 20. |
-| 6 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
+| 2 | 23 — Preserve the room session across reload | Confirmed by code and browser coverage; settle reload/closed-tab lifecycle before implementation. |
+| 3 | 16 — Clickable URLs | Row rendering; independent. |
+| 4 | 22 — Join notice in the page title | Small client notification feature; independent of audible notifications. |
+| 5 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 6 | 20 — Restore the join sound | Low priority, unconfirmed. Test first; tasks 15 and 17 wait for it. |
+| 7 | 15 — Join-sound switch | Needs a working chirp from task 20. |
+| 8 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
 
 ## Working a task
 
@@ -882,3 +884,95 @@ infrastructure, not a GitHub issue.
 - **Validation:** All four subprocess regressions timed out before the fix
   and exited with the expected codes afterwards. Passed: 88 server tests,
   81 client tests, typecheck, build, and 26/26 browser checks.
+
+## New product issues imported 2026-09-07
+
+Issues 10 and 11 were checked against the implementation before being added.
+Neither duplicates an existing task. Keep their GitHub issue numbers and these
+task numbers stable.
+
+## 22. Show join notices in the browser-tab title
+
+- [ ] **Requested feature**
+- **Source:** [GitHub issue #10](https://github.com/kappa/remart-bbs-chat/issues/10).
+- **Confirmed current behavior:** The document title is always
+  `Remart BBS Chat`; joining participants affect only the transcript, roster,
+  and attempted join chirp. No title-notification code exists.
+- **Location:** `client/index.html` base title; `client/src/App.tsx` newcomer
+  reactions; `client/src/useRoomConnection.ts` roster-diff detection;
+  `client/src/App.roster.test.tsx`.
+- **Requested behavior:** For five seconds after another participant joins,
+  rotate the text `<handle> joined` through the browser-tab title, then restore
+  the exact base title `Remart BBS Chat`.
+- **Suggested implementation:** Change `onNewcomer` to carry the new roster
+  entry (or at least its handle), since the current callback reports only a
+  boolean event. In `App.tsx`, start a small client-side marquee timer that
+  cyclically moves the first character of `<handle> joined` to the end. Store
+  the timeout and interval handles together so a later join replaces the
+  current notice cleanly. Restore the base title when five seconds elapse,
+  when the session ends, and on component cleanup. Keep this separate from
+  sound state: muted or autoplay-blocked audio must not suppress the title.
+- **Event rules:** Do not notify for the participant's own join or for the
+  initial snapshot roster. A genuinely new participant discovered in a later
+  `roster` message starts the notice. A reconnect snapshot containing only
+  already-known participant IDs must not restart it. If several people join
+  during five seconds, the latest join replaces the earlier title notice.
+- **Acceptance:** Alice is already connected; Bob joins; Alice's title rotates
+  `Bob joined` for five seconds and returns to `Remart BBS Chat`. Bob does not
+  receive a title notice for himself. Reconnects do not replay old notices,
+  and leaving or unmounting cannot strand a modified title.
+- **Tests:** Use fake timers in a client test. Assert the new handle reaches
+  the callback, the title changes across at least two marquee ticks, restores
+  after five seconds, and is restored by unmount. Cover own join, initial
+  snapshot, reconnect snapshot, a second join replacing the first, and sound
+  being unavailable or disabled.
+- **Docs:** Add the five-second browser-title notification to
+  `docs/USER_EXPERIENCE.md`. No wire-protocol change is needed if the existing
+  roster event remains the source.
+
+## 23. Preserve the participant session across page reload
+
+- [ ] **Bug, session lifecycle**
+- **Source:** [GitHub issue #11](https://github.com/kappa/remart-bbs-chat/issues/11).
+- **Confirmed current behavior:** `App.tsx` sends authenticated
+  `POST /api/leave` from `pagehide`. The repository's two-tab browser check
+  records the consequence on reload: the server removes the participant,
+  observers receive leave and join announcements, and the reloaded page joins
+  under a new participant ID. The rejoin is fast and can look seamless unless
+  the identity and transcript events are inspected. A focused check against
+  the deployed app confirmed both effects: the participant ID changed and the
+  observer received one leave and one join announcement.
+- **Location:** `client/src/App.tsx` page-exit effect;
+  `client/src/api.ts` `keepaliveApi`; `client/src/connection.ts` reconnect and
+  replay; `server/index.js` leave/removal and socket replacement;
+  `check-browser.mjs`; session lifecycle sections in maintained docs.
+- **Decision required before implementation:** Browsers do not reliably tell
+  `pagehide` caused by reload from one caused by closing the tab. Choose and
+  document one policy:
+  1. Stop sending leave on `pagehide`; reload reconnects with the existing
+     token, while a closed tab remains in the roster until the existing
+     40-second stale timeout.
+  2. Make page-exit leave provisional for a short server-side grace period;
+     reconnecting with the same token cancels removal, while a truly closed tab
+     leaves after the grace period. This keeps prompt closed-tab departure but
+     adds timer and lifecycle complexity.
+  The issue settles reload continuity, but not this closed-tab tradeoff. Do not
+  implement until the grace policy and duration are approved and recorded.
+- **Required behavior after that decision:** Reload retains the same
+  participant ID, token, color, slot, live row, caret, sequence position, and
+  join-history boundary. It emits no leave/join announcements and no newcomer
+  notification. The new socket replaces the old socket through the existing
+  authenticated `hello`, receives a recovery snapshot, and replays only
+  unacknowledged input. Explicit Leave and the `q` command remain immediate.
+- **Tests:** First reverse the two-tab browser check's current reload
+  expectations: record Bob's participant ID, live text/caret, and Alice's
+  transcript; reload Bob; assert the ID and live state survive and Alice
+  receives no leave/join lines. Add server tests for reconnect during the
+  chosen policy window, explicit leave remaining immediate, expiry when no
+  reconnect arrives, and replacement of the old socket. Add client coverage
+  that reload does not deliberately invalidate the stored session or enqueue
+  duplicate keystrokes.
+- **Protocol docs:** Update `docs/PROTOCOL.md` page-exit, socket-close,
+  reconnect, leave, and presence rules to match the selected policy. Update
+  `docs/USER_EXPERIENCE.md`, `docs/DESIGN.md`, and the session-lifecycle rule in
+  `AGENTS.md`. Remove or revise `keepaliveApi` if pagehide leave is retired.
