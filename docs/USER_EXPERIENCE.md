@@ -49,7 +49,8 @@ name prefixes on ordinary lines because the color tells you who is who.
   or a Cyrillic letter is a single character to delete, while a combining mark
   is its own character and takes its own Backspace.
 - Your typing position is marked by a **blinking 2 px underline caret**,
-  DOS-style. It is an underline, not a block. The arrow keys move it, Home
+  DOS-style. Only the underline blinks; the character above it stays visible.
+  It is an underline, not a block. The arrow keys move it, Home
   and End jump to the ends of your line, Ctrl+Left and Ctrl+Right (Alt+Arrow
   on macOS) move by word, and Delete removes the character in front of it.
   Typing inserts where the caret is, so a typo early in a long line no longer

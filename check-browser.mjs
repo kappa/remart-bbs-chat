@@ -126,7 +126,22 @@ async function main() {
   check('Enter: both tabs show committed "h" and the live row is gone',
     await alice.waitFor(`${text('.committed-line')}.includes('h') && !${text('.live-line')}.includes('h')`) && await bob.waitFor(`${text('.committed-line')}.includes('h')`));
 
-  await alice.focus(); await alice.type('abd'); await alice.key('ArrowLeft', ARROW_LEFT); await alice.type('c'); await alice.key('Enter', ENTER);
+  await alice.focus(); await alice.type('abd'); await alice.key('ArrowLeft', ARROW_LEFT);
+  check('mid-line caret blinks only its underline; the character stays visible',
+    await alice.waitFor(`document.querySelector('.caret-char')?.textContent === 'd'`) &&
+    await alice.eval(`(() => {
+      const caret = document.querySelector('.caret-char');
+      const animation = caret.getAnimations()[0];
+      if (!animation) return false;
+      animation.pause();
+      animation.currentTime = 0;
+      const on = { opacity: getComputedStyle(caret).opacity, border: getComputedStyle(caret).borderBottomColor };
+      animation.currentTime = 750;
+      const off = { opacity: getComputedStyle(caret).opacity, border: getComputedStyle(caret).borderBottomColor };
+      animation.play();
+      return on.opacity === '1' && off.opacity === '1' && on.border !== off.border;
+    })()`));
+  await alice.type('c'); await alice.key('Enter', ENTER);
   check('abd, Left, c, Enter: both tabs show committed "abcd"',
     await alice.waitFor(`${text('.committed-line')}.includes('abcd')`) && await bob.waitFor(`${text('.committed-line')}.includes('abcd')`),
     `alice=${JSON.stringify(await alice.eval(text('.committed-line')))} bob=${JSON.stringify(await bob.eval(text('.committed-line')))}`);
