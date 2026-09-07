@@ -20,6 +20,7 @@ type Session = {
   handle: string;
   token: string;
   joinedAt: number;
+  historyFromRow: number;
 };
 
 const SESSION_KEY = "remart-bbs-chat.session";
@@ -96,6 +97,9 @@ function readSession(): Session | null {
     // Sessions without a join timestamp predate the socket protocol; the user
     // rejoins and gets a fresh one.
     if (typeof parsed.joinedAt !== "number") return null;
+    // Sessions without a history boundary predate the 20-line join window;
+    // the user rejoins and gets a fresh one.
+    if (typeof parsed.historyFromRow !== "number") return null;
     return parsed;
   } catch {
     return null;
@@ -269,7 +273,7 @@ export function App() {
 
   const finishJoin = (
     room: { id: number; name: string },
-    participant: { id: number; handle: string; token: string; joinedAt: number },
+    participant: { id: number; handle: string; token: string; joinedAt: number; historyFromRow: number },
     cleanHandle: string,
   ) => {
     const nextSession: Session = {
@@ -279,6 +283,7 @@ export function App() {
       handle: participant.handle,
       token: participant.token,
       joinedAt: participant.joinedAt,
+      historyFromRow: participant.historyFromRow,
     };
     rememberHandle(cleanHandle);
     storageSet("session", SESSION_KEY, JSON.stringify(nextSession));

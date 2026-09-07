@@ -1,8 +1,9 @@
 import type { CommittedLine, LiveLine, ServerMessage } from './protocol';
 
 // Everything the session view renders. `participants` carries roster fields
-// plus each person's live line; `committed` accumulates every committed line
-// seen since joining and is never trimmed, so scrollback outlives snapshots.
+// plus each person's live line; `committed` accumulates every line inside
+// the join window plus everything seen since joining, and is never trimmed,
+// so scrollback outlives snapshots.
 export type RoomState = { participants: LiveLine[]; committed: Map<string, CommittedLine> };
 
 export function emptyRoom(): RoomState {
@@ -11,14 +12,23 @@ export function emptyRoom(): RoomState {
 
 const bySlot = (lines: LiveLine[]) => [...lines].sort((a, b) => a.slot - b.slot);
 
-// Applies one server message. Lines committed before `joinedAt` are dropped:
-// nothing from before you joined is shown. Returns the same object when
-// nothing changed so React skips the re-render.
-export function applyServerMessage(room: RoomState, msg: ServerMessage, joinedAt: number): RoomState {
+// What the join response gave the client: the timestamp of the join and the
+// row where the newcomer's 20-line history window starts.
+export type JoinBoundary = { joinedAt: number; historyFromRow: number };
+
+// A committed line is shown when it sits inside the 20-line window chosen at
+// join (row >= historyFromRow), or when it was committed after the join — a
+// line the newcomer watched being typed must not vanish when it commits.
+const inWindow = (line: CommittedLine, boundary: JoinBoundary) =>
+  line.row >= boundary.historyFromRow || line.committedAt >= boundary.joinedAt;
+
+// Applies one server message. Returns the same object when nothing changed
+// so React skips the re-render.
+export function applyServerMessage(room: RoomState, msg: ServerMessage, boundary: JoinBoundary): RoomState {
   switch (msg.type) {
     case 'snapshot': {
       const committed = new Map(room.committed);
-      for (const line of msg.committed) if (line.committedAt >= joinedAt) committed.set(line.id, line);
+      for (const line of msg.committed) if (inWindow(line, boundary)) committed.set(line.id, line);
       return { participants: bySlot(msg.liveLines), committed };
     }
     case 'live': {
@@ -31,7 +41,7 @@ export function applyServerMessage(room: RoomState, msg: ServerMessage, joinedAt
       return { ...room, participants };
     }
     case 'committed': {
-      if (msg.line.committedAt < joinedAt) return room;
+      if (!inWindow(msg.line, boundary)) return room;
       const committed = new Map(room.committed);
       committed.set(msg.line.id, msg.line);
       return { ...room, committed };

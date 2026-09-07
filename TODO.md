@@ -15,7 +15,7 @@ Describe implemented behavior there; keep future proposals in these tasks.
 
 ## Recommended implementation order
 
-Tasks 1, 4, 6, 7, 10, 11, and 13 are done and tasks 8 and 9 are closed; see
+Tasks 1, 4, 6, 7, 10, 11, 12, and 13 are done and tasks 8 and 9 are closed; see
 their checkboxes. Keep task numbers stable; execute the remaining open tasks
 in this order:
 
@@ -366,7 +366,7 @@ only this file, `AGENTS.md`, and the repository.
 
 ## 12. Show the last 20 room lines to a newly joined participant
 
-- [ ] **Requested feature, high priority**
+- [x] **Requested feature, high priority** (done: join computes `historyFromRow` from the last 20 committed lines by row; the client shows lines at or above that row plus anything committed after `joinedAt`)
 - **Goal:** Seed a new participant's transcript with up to 20 existing committed
   lines, then continue showing live typing and subsequent committed lines.
 - **Location:**

@@ -1,5 +1,5 @@
 type Room = {id:number, name:string, occupancy?:number, max?:number, isLobby?:boolean};
-type JoinedParticipant = {id:number, roomId:number, handle:string, token:string, color:string, slot:number, liveRow:number|null, joinedAt:number};
+type JoinedParticipant = {id:number, roomId:number, handle:string, token:string, color:string, slot:number, liveRow:number|null, joinedAt:number, historyFromRow:number};
 type RosterEntry = {handle:string, color:string, slot:number};
 
 async function fetchJson(url:string, init?:RequestInit){

@@ -6,7 +6,7 @@ import { App } from './App';
 import { FakeWebSocket } from './testing/fakeWebSocket';
 import userEvent from '@testing-library/user-event';
 import { api } from './api';
-import { renderJoined, serverSend, snapshot, line, alice, bob, idle, typing, storeSession, queryClient } from './testing/roomFixtures';
+import { renderJoined, serverSend, snapshot, line, alice, bob, idle, typing, storeSession, queryClient, SESSION } from './testing/roomFixtures';
 
 vi.mock('./api', () => ({
   api: { listRooms: vi.fn(), getOrCreateRoom: vi.fn(), joinRoom: vi.fn(), leaveRoom: vi.fn(), getRoster: vi.fn() },
@@ -51,9 +51,31 @@ describe('Rendering from server state', () => {
   });
 
   it('lines committed before the join are not shown', async () => {
-    await renderJoined(snapshot({ committed: [line('old', 0, 'before', alice, 0), line('new', 1, 'after', alice, 2)] }));
+    // 'before' sits below the join's history window and was committed
+    // before the session, so only 'after' renders.
+    await renderJoined(snapshot({ committed: [line('old', 0, 'before', alice, 0), line('new', 1, 'after', alice, 2)] }), { ...SESSION, historyFromRow: 1 });
     expect(await screen.findByText('after')).toBeInTheDocument();
     expect(screen.queryByText('before')).not.toBeInTheDocument();
+  });
+
+  it('a newcomer sees the last 20 committed lines in row order with their colors', async () => {
+    // 25 lines committed before the join (committedAt 0 < joinedAt 1); the
+    // join boundary is the 6th line's row, so exactly rows 5..24 render.
+    const committed = Array.from({ length: 25 }, (_, row) => {
+      if (row === 5) return line('ann', 5, '* Bob joined', bob, 0);
+      if (row === 6) return line('blank', 6, '', alice, 0);
+      return line(`l${row}`, row, `t${row}`, alice, 0);
+    });
+    const { ws } = await renderJoined(snapshot({ committed }), { ...SESSION, historyFromRow: 5 });
+    await screen.findByText('* Bob joined');
+
+    const rendered = Array.from(document.querySelectorAll('.committed-line'));
+    expect(rendered.length).toBe(20);
+    expect(rendered.map((el) => el.getAttribute('data-document-order')))
+      .toEqual(Array.from({ length: 20 }, (_, i) => String(i + 5)));
+    expect(rendered[0]).toHaveStyle({ color: '#0ff' });
+    expect(rendered[1].textContent).toBe(' ');
+    expect(ws).toBeDefined();
   });
 
   it('typing sends a keystroke and shows nothing until the server echoes it', async () => {

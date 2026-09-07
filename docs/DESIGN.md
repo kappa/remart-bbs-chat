@@ -74,8 +74,11 @@ are not a design input.
 - Each client accumulates everything it has seen since joining and never
   discards it. The snapshot cutoff therefore never deletes text from under
   someone reading upward.
-- Nothing from before you joined is shown: history is filtered by join time.
-  Scrollback is browser-local, not server history.
+- A newcomer sees the last 20 committed lines from before the join, then
+  everything since. At join the server records the window's starting row
+  (`historyFromRow`); the client shows lines from that row on, plus any line
+  committed after the join even if its row is older. Scrollback is
+  browser-local, not server history.
 - New arrivals never force-scroll a viewer who has scrolled up to read.
 
 ## Identity and color

@@ -77,9 +77,11 @@ flag. Stored colors survive the author's departure. Colors are allocated from:
 ["#00FFFF","#FFFF00","#FF00FF","#00FF00","#FF8000","#80FF00","#FF0080","#00FF80","#8080FF","#FF8080"]
 ```
 
-The browser stores `{roomId, roomName, participantId, handle, token, joinedAt}`
+The browser stores
+`{roomId, roomName, participantId, handle, token, joinedAt, historyFromRow}`
 under `remart-bbs-chat.session` in sessionStorage. Sessions without a token or
-a numeric `joinedAt` are treated as expired: the client discards them and the
+numeric `joinedAt`/`historyFromRow` are treated as expired: the client
+discards them and the
 user rejoins. Its default
 handle is stored under `remart-bbs-chat.handle` in localStorage. `?name=`
 overrides the default without overwriting it; `?room=` requests a preferred
@@ -145,7 +147,8 @@ Example response (timestamps illustrative):
 {
   "participant": {
     "id":1,"roomId":1,"handle":"Alice","token":"9f2c…(32 hex chars)",
-    "color":"#00FFFF","slot":0,"liveRow":null,"joinedAt":1788600000000
+    "color":"#00FFFF","slot":0,"liveRow":null,"joinedAt":1788600000000,
+    "historyFromRow":0
   },
   "roster":[{"handle":"Alice","color":"#00FFFF","slot":0}],
   "room":{"id":1,"name":"Room 1"}
@@ -159,7 +162,11 @@ checks. The server assigns a free color, slot, and secret participant token,
 initializes the sequence at 1, creates a join announcement, and sends
 `committed` (the announcement) and then `roster` to existing sockets. The join
 response is the only message that carries the token: it contains neither
-history nor `nextSeq` nor live text. Its roster follows participant insertion
+history nor `nextSeq` nor live text. `historyFromRow` is the row where the
+participant's history window starts: the smallest row among the last 20
+committed lines, or the join announcement's row when the room has none. The
+client shows committed lines from that row on; see [Client behavior](#client-behavior).
+Its roster follows participant insertion
 order, unlike the sorted roster endpoint.
 
 | Status | Error string |
@@ -246,7 +253,10 @@ client. `char` must satisfy the character rule described under
 
 `snapshot.committed` holds the last 100 appended committed lines, sorted by
 row — not necessarily the highest 100 rows, since participants can commit
-earlier allocated rows later. `you.nextSeq` is the sequence number the server
+earlier allocated rows later. The snapshot content is the same for every
+participant; how far back a participant's view reaches is a client rule fed
+by the join response's `historyFromRow` (see
+[Client behavior](#client-behavior)). `you.nextSeq` is the sequence number the server
 expects next from this participant. `liveLines` lists every participant, sorted
 by slot; idle ones have `row: null` and `text: ""`.
 
@@ -412,8 +422,11 @@ the commands.
 
 Rendering: `computeDocumentLines` over accumulated committed lines and live
 lines; nothing renders before the echo; the caret sits on the own live row
-or, when idle, on a local preview row below the transcript. Lines with
-`committedAt` before the stored `joinedAt` are hidden.
+or, when idle, on a local preview row below the transcript. A committed line
+is shown when its row is at or above the stored `historyFromRow` (the
+20-line window chosen at join) or when its `committedAt` is at or after the
+stored `joinedAt` — a line the newcomer watched being typed stays visible
+when it commits.
 
 Existing protocol coverage is in [HTTP tests](../test-server-api.js),
 [server logic tests](../test-server-logic.js), and

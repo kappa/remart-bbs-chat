@@ -5,8 +5,9 @@
 //   npm run check:browser
 //
 // Alice and Bob join one room. Typing, Backspace, Enter, the ?, l, and q
-// commands, a page reload, and a server restart are exercised and every
-// observation is printed as PASS or FAIL. Exit code 1 if anything failed.
+// commands, a page reload, and a server restart are exercised, then a second
+// room checks the 20-line join history window, and every observation is
+// printed as PASS or FAIL. Exit code 1 if anything failed.
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -76,8 +77,8 @@ async function main() {
   const cdp = new Cdp(version.webSocketDebuggerUrl);
   await cdp.ready;
 
-  const tab = async (name) => {
-    const { targetId } = await cdp.send('Target.createTarget', { url: `http://localhost:${PORT}/?name=${name}&room=1` });
+  const tab = async (name, room = 1) => {
+    const { targetId } = await cdp.send('Target.createTarget', { url: `http://localhost:${PORT}/?name=${name}&room=${room}` });
     const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
     await cdp.send('Runtime.enable', {}, sessionId);
     await cdp.send('Page.enable', {}, sessionId);
@@ -108,8 +109,8 @@ async function main() {
   const alice = await tab('Alice');
   const bob = await tab('Bob');
   for (const t of [alice, bob]) check(`${t.name} joins room 1 and connects`, await t.waitFor(inRoom));
-  check('Alice sees "* Bob joined"; Bob sees only his own join (Alice\'s predates his joinedAt)',
-    await alice.waitFor(`${text('.committed-line')}.includes('* Bob joined')`) && await bob.waitFor(`${text('.committed-line')}.join('|') === '* Bob joined'`),
+  check('Alice sees "* Bob joined"; Bob sees the pre-join history (20-line window) plus his own join',
+    await alice.waitFor(`${text('.committed-line')}.includes('* Bob joined')`) && await bob.waitFor(`${text('.committed-line')}.join('|') === '* Alice joined|* Bob joined'`),
     `alice=${JSON.stringify(await alice.eval(text('.committed-line')))} bob=${JSON.stringify(await bob.eval(text('.committed-line')))}`);
 
   check('Alice keyboard focused', await alice.focus());
@@ -139,8 +140,8 @@ async function main() {
   await bob.reload();
   check('Bob reload: Alice sees "* Bob left" then "* Bob joined" (pagehide beacon, then auto-rejoin)',
     await alice.waitFor(`${text('.committed-line')}.slice(-2).join('|') === '* Bob left|* Bob joined'`, 8000), JSON.stringify(await alice.eval(text('.committed-line'))));
-  check('Bob reload: back in the room as a new participant with a fresh transcript',
-    await bob.waitFor(`${inRoom} && ${text('.committed-line')}.join('|') === '* Bob joined'`, 8000) && (await bob.eval(participantId)) !== bobIdBefore);
+  check('Bob reload: back in the room as a new participant with the stored history and a fresh announcement',
+    await bob.waitFor(`${inRoom} && ${text('.committed-line')}.join('|') === '* Alice joined|* Bob joined|h|* Bob left|* Bob joined'`, 8000) && (await bob.eval(participantId)) !== bobIdBefore, JSON.stringify(await bob.eval(text('.committed-line'))));
   await bob.focus(); await bob.type('yo'); await bob.key('Enter', ENTER);
   check('Bob types after reload: "yo" committed in both tabs', await bob.waitFor(`${text('.committed-line')}.includes('yo')`) && await alice.waitFor(`${text('.committed-line')}.includes('yo')`));
 
@@ -152,6 +153,23 @@ async function main() {
   check('server stopped: Bob shows "Reconnecting..."', await bob.waitFor(has('Reconnecting...'), 8000));
   server = await startServer();
   check('server restarted: Bob shows "Room session ended. Join again."', await bob.waitFor(has('Room session ended. Join again.'), 8000));
+
+  // Task 12: a newcomer sees the last 20 committed lines; the existing
+  // viewer keeps all of them. A fresh room is needed because the restart
+  // wiped room 1.
+  const room2 = await (await fetch(`http://localhost:${PORT}/api/rooms`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"forceNew":true}' })).json();
+  const dave = await tab('Dave', room2.room.id);
+  check('Dave joins room 2 and connects', await dave.waitFor(inRoom));
+  await dave.focus();
+  for (let i = 1; i <= 25; i++) { await dave.type(String(i)); await dave.key('Enter', ENTER); }
+  check('Dave committed 25 numbered lines', await dave.waitFor(`${text('.committed-line')}.includes('25')`));
+  const carol = await tab('Carol', room2.room.id);
+  check('Carol joins room 2', await carol.waitFor(inRoom));
+  const expected = [...Array.from({ length: 20 }, (_, i) => String(i + 6)), '* Carol joined'].join('|');
+  check('Carol sees exactly the last 20 lines (6..25) plus her announcement',
+    await carol.waitFor(`${text('.committed-line')}.join('|') === ${JSON.stringify(expected)}`, 8000), JSON.stringify(await carol.eval(text('.committed-line'))));
+  check('Dave still sees all 25 lines plus the announcements',
+    await dave.waitFor(`${text('.committed-line')}.length === 27`), JSON.stringify(await dave.eval(text('.committed-line'))));
 
   chrome.kill('SIGTERM');
   await new Promise((r) => chrome.on('exit', r));

@@ -317,6 +317,11 @@ app.post('/api/join', (req,res)=>{
   const now = new Date();
   const joinRowIdx = greatestRow(room)+1;
 
+  // Seed newcomers with the last 20 committed lines: the boundary is the
+  // smallest row among them. room.lines is in commit order, so sort by row;
+  // rows are unique per line and ordered as the transcript.
+  const recent = room.lines.slice().sort((a,b)=>a.row-b.row).slice(-20);
+  const historyFromRow = recent.length ? recent[0].row : joinRowIdx;
 
   const participant = {
     id: nextParticipantId++,
@@ -328,6 +333,7 @@ app.post('/api/join', (req,res)=>{
     liveRow: null,
     liveText: '',
     joinedAt: now,
+    historyFromRow,
     lastSeen: now,
     nextSeq: 1,
     socket: null
@@ -338,7 +344,7 @@ app.post('/api/join', (req,res)=>{
   const roster = Array.from(room.participants.values()).map(p=>({handle:p.handle, color:p.color, slot:p.slot}));
   broadcast(room, committedMessage(joinLine, null, null));
   broadcast(room, rosterMessage(room));
-  res.json({participant:{id:participant.id, roomId:participant.roomId, handle:participant.handle, token:participant.token, color:participant.color, slot:participant.slot, liveRow:participant.liveRow, joinedAt:participant.joinedAt.getTime()}, roster, room:{id:room.id, name:room.name}});
+  res.json({participant:{id:participant.id, roomId:participant.roomId, handle:participant.handle, token:participant.token, color:participant.color, slot:participant.slot, liveRow:participant.liveRow, joinedAt:participant.joinedAt.getTime(), historyFromRow:participant.historyFromRow}, roster, room:{id:room.id, name:room.name}});
 });
 
 // leave

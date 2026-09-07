@@ -113,6 +113,49 @@ describe('Roster', () => {
   });
 });
 
+describe('Join history window (task 12)', () => {
+  const key = (seq, kind) => ({ type: 'key', seq, kind });
+
+  // Drives `count` committed lines through a socket with Enter, as the
+  // snapshot tests do, then returns the participant field of a fresh join.
+  async function historyFromRowAfter(count) {
+    const roomId = await newRoom(baseUrl);
+    const writer = await join(baseUrl, roomId, 'Writer');
+    if (count > 0) {
+      const client = await connect(wsUrl, writer);
+      for (let seq = 1; seq <= count; seq++) client.send(key(seq, 'enter'));
+      await client.next((m) => m.type === 'live' && m.seq === count);
+      client.ws.close();
+    }
+    const { json } = await post(baseUrl, '/api/join', { roomId, handle: 'Newcomer' });
+    return json.participant.historyFromRow;
+  }
+
+  it('a join response carries historyFromRow', async () => {
+    const historyFromRow = await historyFromRowAfter(0);
+    assert.equal(typeof historyFromRow, 'number');
+  });
+
+  it('with no committed lines the boundary is the join announcement row', async () => {
+    assert.equal(await historyFromRowAfter(0), 0);
+  });
+
+  it('with 5 committed lines the boundary is the oldest line row', async () => {
+    // The writer's announcement (row 0) plus 5 entered lines (rows 1..5).
+    assert.equal(await historyFromRowAfter(5), 0);
+  });
+
+  it('with 20 committed lines the boundary is the oldest of the last 20', async () => {
+    // Announcement row 0 plus rows 1..20: the last 20 start at row 1.
+    assert.equal(await historyFromRowAfter(20), 1);
+  });
+
+  it('with 25 committed lines the boundary is the row of the 20th-newest line', async () => {
+    // Announcement row 0 plus rows 1..25: the last 20 start at row 6.
+    assert.equal(await historyFromRowAfter(25), 6);
+  });
+});
+
 describe('Participant authorization (task 1)', () => {
   it('join issues an unpredictable token kept out of public state', async () => {
     const roomId = await newRoom(baseUrl);

@@ -3,7 +3,7 @@ import { openRoomConnection, type ConnectionStatus } from './connection';
 import type { CommandName, KeyInput, ServerMessage } from './protocol';
 import { applyServerMessage, emptyRoom, type RoomState } from './roomState';
 
-export type RoomSession = { roomId: number; participantId: number; token: string; joinedAt: number };
+export type RoomSession = { roomId: number; participantId: number; token: string; joinedAt: number; historyFromRow: number };
 export type RoomEvents = {
   onCommand: (name: CommandName) => void;
   onSessionEnded: () => void;
@@ -22,10 +22,10 @@ export function useRoomConnection(session: RoomSession | null, events: RoomEvent
   eventsRef.current = events;
   const sendRef = useRef<(key: KeyInput) => boolean>(() => false);
 
-  const roomId = session?.roomId, participantId = session?.participantId, token = session?.token, joinedAt = session?.joinedAt;
+  const roomId = session?.roomId, participantId = session?.participantId, token = session?.token, joinedAt = session?.joinedAt, historyFromRow = session?.historyFromRow;
 
   useEffect(() => {
-    if (roomId == null || participantId == null || token == null || joinedAt == null) return;
+    if (roomId == null || participantId == null || token == null || joinedAt == null || historyFromRow == null) return;
     setRoom(emptyRoom());
     const knownIds = new Set<number>();
     let seeded = false;
@@ -46,12 +46,12 @@ export function useRoomConnection(session: RoomSession | null, events: RoomEvent
           seeded = true;
           if (newcomer) eventsRef.current.onNewcomer();
         }
-        setRoom((prev) => applyServerMessage(prev, msg, joinedAt));
+        setRoom((prev) => applyServerMessage(prev, msg, { joinedAt, historyFromRow }));
       },
     });
     sendRef.current = connection.send;
     return () => { connection.close(); sendRef.current = () => false; };
-  }, [roomId, participantId, token, joinedAt]);
+  }, [roomId, participantId, token, joinedAt, historyFromRow]);
 
   const send = (key: KeyInput) => {
     if (!sendRef.current(key)) eventsRef.current.onNotice('Not connected, input paused');

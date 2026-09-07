@@ -4,7 +4,7 @@ import { App } from '../App';
 import { FakeWebSocket } from './fakeWebSocket';
 import type { CommittedLine, LiveLine, RosterEntry, ServerMessage } from '../protocol';
 
-export const SESSION = { roomId: 1, roomName: 'Room 1', participantId: 10, handle: 'Alice', token: 'test-token', joinedAt: 1 };
+export const SESSION = { roomId: 1, roomName: 'Room 1', participantId: 10, handle: 'Alice', token: 'test-token', joinedAt: 1, historyFromRow: 0 };
 export const alice: RosterEntry = { participantId: 10, handle: 'Alice', color: '#fff', slot: 0 };
 export const bob: RosterEntry = { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1 };
 
@@ -28,8 +28,8 @@ export function queryClient() { return new QueryClient({ defaultOptions: { queri
 
 // Renders the app with a stored session, waits for its hello, and answers
 // with `snap`. Returns the fake socket for sending more server messages.
-export async function renderJoined(snap: Snapshot = snapshot()) {
-  storeSession();
+export async function renderJoined(snap: Snapshot = snapshot(), session = SESSION) {
+  storeSession(session);
   const view = render(<QueryClientProvider client={queryClient()}><App /></QueryClientProvider>);
   const ws = await waitFor(() => {
     const socket = FakeWebSocket.latest();
