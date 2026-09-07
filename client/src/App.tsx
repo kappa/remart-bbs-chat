@@ -164,7 +164,6 @@ export function App() {
 
   const participants = room.participants;
   const ownParticipant = participants.find((p) => p.participantId === session?.participantId);
-  const ownText = ownParticipant?.text ?? "";
   const committedLines = useMemo(() => sortedCommitted(room), [room]);
   const documentLines = useMemo(() => computeDocumentLines(committedLines, participants), [committedLines, participants]);
 
@@ -705,12 +704,6 @@ export function App() {
           <div className="roster-empty">No callers</div>
         )}
         <div className="roster-footer">
-          <div
-            className="char-counter"
-            aria-live="polite"
-          >
-            {ownText.length} chars
-          </div>
           {warning ? (
             <div className="paste-warning" role="status">
               {warning}

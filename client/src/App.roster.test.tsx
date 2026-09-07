@@ -29,9 +29,10 @@ describe('Roster', () => {
     expect(screen.queryByText('Bob')).not.toBeInTheDocument();
   });
 
-  it('the char counter shows the length of the own live line', async () => {
+  it('no character count appears in the sidebar while typing', async () => {
     await renderJoined(snapshot({ liveLines: [typing(alice, 0, 'hello')] }));
-    expect(await screen.findByText('5 chars')).toBeInTheDocument();
+    expect(await screen.findByText('hello')).toBeInTheDocument();
+    expect(screen.queryByText(/chars/)).toBeNull();
   });
 
   it('a newcomer plays the join chirp; the first snapshot does not', async () => {
