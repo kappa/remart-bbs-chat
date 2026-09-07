@@ -15,20 +15,19 @@ Describe implemented behavior there; keep future proposals in these tasks.
 
 ## Recommended implementation order
 
-Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, and 21 are done and tasks 8 and 9 are
-closed; see their checkboxes. Keep task numbers stable; the table below lists
-only the open tasks, in the order to execute them:
+Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 19, and 21 are done and tasks 8 and 9
+are closed; see their checkboxes. Keep task numbers stable; the table below
+lists only the open tasks, in the order to execute them:
 
 | Order | Task | Reason |
 | --- | --- | --- |
-| 1 | 19 — Mobile keyboard | Code done; the on-device verification that closes the task remains. |
-| 2 | 23 — Preserve the room session across reload | Confirmed by code and browser coverage; settle reload/closed-tab lifecycle before implementation. |
-| 3 | 16 — Clickable URLs | Row rendering; independent. |
-| 4 | 22 — Join notice in the page title | Small client notification feature; independent of audible notifications. |
-| 5 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 6 | 20 — Restore the join sound | Low priority, unconfirmed. Test first; tasks 15 and 17 wait for it. |
-| 7 | 15 — Join-sound switch | Needs a working chirp from task 20. |
-| 8 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
+| 1 | 23 — Preserve the room session across reload | Confirmed by code and browser coverage; settle reload/closed-tab lifecycle before implementation. |
+| 2 | 16 — Clickable URLs | Row rendering; independent. |
+| 3 | 22 — Join notice in the page title | Small client notification feature; independent of audible notifications. |
+| 4 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 5 | 20 — Restore the join sound | Low priority, unconfirmed. Test first; tasks 15 and 17 wait for it. |
+| 6 | 15 — Join-sound switch | Needs a working chirp from task 20. |
+| 7 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
 
 ## Working a task
 
@@ -708,7 +707,9 @@ Close the GitHub issue when the task is done.
 
 ## 19. Keep the typing position above the on-screen keyboard on mobile
 
-- [ ] **Bug** (code implemented: session layout sized to the visual viewport via --app-height/--app-offset, `interactive-widget=resizes-content` in the viewport meta, capture textarea moved to the top-left, resize re-follows a bottom reader; the real-device checks below still close this task)
+- [x] **Bug** (done: session layout follows the visual viewport, including
+  when the keyboard is already open; confirmed working on-device by the issue
+  reporter and GitHub issue #8 closed)
 - **Source:** [GitHub issue #8](https://github.com/kappa/remart-bbs-chat/issues/8).
 - **Location:**
   - `client/index.html`: the viewport meta
