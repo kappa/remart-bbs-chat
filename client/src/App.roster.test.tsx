@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { api } from './api';
 import { renderJoined, serverSend, snapshot, alice, bob, idle, typing } from './testing/roomFixtures';
 
@@ -33,6 +34,39 @@ describe('Roster', () => {
     await renderJoined(snapshot({ liveLines: [typing(alice, 0, 'hello')] }));
     expect(await screen.findByText('hello')).toBeInTheDocument();
     expect(screen.queryByText(/chars/)).toBeNull();
+  });
+
+  it('the sidebar offers Type, Help, and Leave with no single-key command buttons', async () => {
+    await renderJoined();
+    expect(screen.getByRole('button', { name: 'Type' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Help' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Leave' })).toBeInTheDocument();
+    expect(screen.queryByText('[l]')).toBeNull();
+    expect(screen.queryByText('[?]')).toBeNull();
+    expect(screen.queryByText('[q]')).toBeNull();
+  });
+
+  it('Help opens the overlay; Escape and Close dismiss it', async () => {
+    const user = userEvent.setup();
+    await renderJoined();
+    await user.click(screen.getByRole('button', { name: 'Help' }));
+    expect(await screen.findByText('CHAT COMMANDS')).toBeInTheDocument();
+    await user.keyboard('{Escape}');
+    expect(screen.queryByText('CHAT COMMANDS')).toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Help' }));
+    expect(await screen.findByText('CHAT COMMANDS')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Close' }));
+    expect(screen.queryByText('CHAT COMMANDS')).toBeNull();
+  });
+
+  it('a typed ? reaches the server and its help command opens the overlay', async () => {
+    const user = userEvent.setup();
+    const { ws } = await renderJoined();
+    await user.click(await screen.findByLabelText('Shared chat area'));
+    await user.keyboard('?{Enter}');
+    expect(ws.keys().map((k) => [k.kind, k.char ?? ''])).toEqual([['char', '?'], ['enter', '']]);
+    serverSend(ws, { type: 'command', name: 'help' });
+    expect(await screen.findByText('CHAT COMMANDS')).toBeInTheDocument();
   });
 
   it('a newcomer plays the join chirp; the first snapshot does not', async () => {

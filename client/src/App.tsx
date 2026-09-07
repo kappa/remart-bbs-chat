@@ -358,13 +358,6 @@ export function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handle, joining, session]);
 
-  const refreshRoster = () => {
-    if (!session) return;
-    api.getRoster({ roomId: session.roomId })
-      .then(() => setFeedback("Roster refreshed"))
-      .catch((reason: unknown) => setError(reason instanceof Error ? reason.message : "Roster failed"));
-  };
-
   const leave = () => {
     if (!session) return;
     api.leaveRoom({ roomId: session.roomId, participantId: session.participantId, token: session.token })
@@ -716,32 +709,13 @@ export function App() {
           >
             Type
           </button>
-          <div className="command-buttons" aria-label="Chat commands">
-            <button
-              type="button"
-              className="command-button"
-              title="Refresh roster"
-              onClick={() => refreshRoster()}
-            >
-              [l]
-            </button>
-            <button
-              type="button"
-              className="command-button"
-              title="Show help"
-              onClick={() => setShowHelp(true)}
-            >
-              [?]
-            </button>
-            <button
-              type="button"
-              className="command-button"
-              title="Leave room"
-              onClick={() => leave()}
-            >
-              [q]
-            </button>
-          </div>
+          <button
+            type="button"
+            className="help-button"
+            onClick={() => setShowHelp(true)}
+          >
+            Help
+          </button>
           <button type="button" className="leave-button" onClick={() => leave()}>
             Leave
           </button>

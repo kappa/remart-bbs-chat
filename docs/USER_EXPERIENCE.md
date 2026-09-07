@@ -86,7 +86,8 @@ command instead of sending chat:
 - `q` — leave the room.
 
 Anything longer than that single character is ordinary chat, even if it starts
-with one of those letters.
+with one of those letters. A Help button in the sidebar opens the same help
+as `?`, and a Leave button leaves the room like `q`.
 
 ## Roster and presence
 
