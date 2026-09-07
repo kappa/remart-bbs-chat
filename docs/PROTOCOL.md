@@ -295,6 +295,8 @@ so `" q"` is committed as text.
 
 - Backspace on an empty live line: advance the sequence number and echo `live`
   unchanged, so the sender's queue drains. No row is allocated.
+- Backspace removes one code point. Combining marks are separate code points
+  and take a Backspace of their own.
 - Enter on an idle participant: commit an empty line on a fresh row.
 - A second `hello` for a participant that already has a socket replaces the
   old socket, which is closed. This covers a tab reconnecting before its old

@@ -178,6 +178,38 @@ describe('Keystrokes', () => {
     done();
   });
 
+  it('backspace deletes an emoji as one code point and keeps the row (task 5)', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    a.send(key(1, 'char', '\u{1F600}'));
+    await a.next((m) => m.type === 'live' && m.seq === 1);
+    a.send(key(2, 'backspace'));
+    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: '', seq: 2 });
+    done();
+  });
+
+  it('backspace after aЖ😀 deletes one code point at a time (task 5)', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    a.send(key(1, 'char', 'a'));
+    a.send(key(2, 'char', 'Ж'));
+    a.send(key(3, 'char', '\u{1F600}'));
+    await a.next((m) => m.type === 'live' && m.seq === 3);
+    a.send(key(4, 'backspace'));
+    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: 'aЖ', seq: 4 });
+    a.send(key(5, 'backspace'));
+    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: 'a', seq: 5 });
+    done();
+  });
+
+  it('a combining mark is its own code point and takes its own backspace (task 5)', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    a.send(key(1, 'char', 'e'));
+    a.send(key(2, 'char', '\u0301'));
+    await a.next((m) => m.type === 'live' && m.seq === 2);
+    a.send(key(3, 'backspace'));
+    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: 'e', seq: 3 });
+    done();
+  });
+
   it('enter commits the line in place and clears the live line', async () => {
     const { alice, a, b, done } = await roomWithTwo();
     a.send(key(1, 'char', 'A'));

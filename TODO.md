@@ -139,7 +139,7 @@ only this file, `AGENTS.md`, and the repository.
 
 ## 5. Delete Unicode characters without corrupting surrogate pairs
 
-- [ ] **Bug**
+- [x] **Bug** (done: `applyBackspace` deletes one code point via `Array.from`, matching the code-point input unit; row ownership, empty-line echo, and sequence handling unchanged)
 - **Location:** `server/index.js` `applyBackspace` (one line: `liveText.slice(0,-1)`).
   Since server echo this is the only deletion site: the client sends a
   `backspace` keystroke and renders the echoed live line, so no client code

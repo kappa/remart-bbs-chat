@@ -180,7 +180,11 @@ function applyChar(participant, room, char){
 }
 
 function applyBackspace(participant){
-  participant.liveText = participant.liveText.slice(0,-1);
+  // Input arrives one code point at a time (isValidChar and the client's
+  // paste splitting both guarantee it), so deletion is one code point too:
+  // a UTF-16 slice would leave half of a surrogate pair behind.
+  const codePoints = Array.from(participant.liveText);
+  participant.liveText = codePoints.slice(0, -1).join('');
 }
 
 function commitLive(participant, room, at){

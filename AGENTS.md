@@ -126,7 +126,9 @@ The following describes the current implementation and its regression baseline.
 - Commands `l`, `?`, and `q` are recognized by the server on Enter against the
   exact live line (surrounding whitespace makes it chat). Unicode input
   passes through, paste is capped at 100 characters with a warning, and
-  client and server character validation stay aligned.
+  client and server character validation stay aligned. Backspace deletes one
+  code point, matching the code-point input unit; a lone surrogate is never
+  left behind.
 - Preserve the monospace terminal aesthetic, author-colored text, underline
   caret, responsive layout, and ordinary transcript rows without name prefixes.
 

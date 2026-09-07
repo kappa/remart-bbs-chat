@@ -45,7 +45,9 @@ name prefixes on ordinary lines because the color tells you who is who.
   immediate; on a slow one your own text lags by the round trip, but what
   you see is always what everyone sees.
 - Backspace visibly deletes characters for everyone too. At the very start of
-  a line, Backspace does nothing.
+  a line, Backspace does nothing. One character means one code point: an emoji
+  or a Cyrillic letter is a single character to delete, while a combining mark
+  is its own character and takes its own Backspace.
 - Your typing position is marked by a **blinking 2 px underline caret**,
   DOS-style. It is an underline, not a block.
 - **Enter** commits your line exactly where it is. Your cursor moves to a
