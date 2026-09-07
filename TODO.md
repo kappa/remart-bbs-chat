@@ -16,22 +16,18 @@ Describe implemented behavior there; keep future proposals in these tasks.
 ## Recommended implementation order
 
 Tasks 1, 4, 6, 7, 10, 11, 12, 13, and 14 are done and tasks 8 and 9 are
-closed; see their checkboxes. Keep task numbers stable; execute the remaining
-open tasks in this order:
+closed; see their checkboxes. Keep task numbers stable; the table below lists
+only the open tasks, in the order to execute them:
 
 | Order | Task | Reason |
 | --- | --- | --- |
 | 1 | 21 — Test-harness socket leak | Bug; a failing server test wedges the run at exit, so red runs of the TDD workflow hang. Small, isolated to `test-support.js`. |
-| 2 | 13 — Keep a mouse selection | Bug, small, isolated to the chat area's click handler. Done. |
-| 3 | 19 — Mobile keyboard | Bug for phone users; no dependencies, needs a device check. Code done; device check pending. |
-| 4 | 5 — Unicode deletion | Bug; server-only now, and defines the deletion unit that task 14 builds on. Done. |
-| 5 | 12 — Last 20 lines on join | High-priority feature; the last review item that changes the protocol, so land it before other features add their own. Done. |
-| 6 | 14 — Caret editing | Protocol change; needs task 5's unit. Done. |
-| 7 | 16 — Clickable URLs | Row rendering; independent. |
-| 8 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 9 | 20 — Restore the join sound | Low priority, unconfirmed. Test first; tasks 15 and 17 wait for it. |
-| 10 | 15 — Join-sound switch | Needs a working chirp from task 20. |
-| 11 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
+| 2 | 19 — Mobile keyboard | Code done; the on-device verification that closes the task remains. |
+| 3 | 16 — Clickable URLs | Row rendering; independent. |
+| 4 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 5 | 20 — Restore the join sound | Low priority, unconfirmed. Test first; tasks 15 and 17 wait for it. |
+| 6 | 15 — Join-sound switch | Needs a working chirp from task 20. |
+| 7 | 17 — Mentions | Row rendering and a second sound; after 15 and 16. |
 
 ## Working a task
 
