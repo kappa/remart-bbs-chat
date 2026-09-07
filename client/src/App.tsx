@@ -26,6 +26,9 @@ type Session = {
 
 const SESSION_KEY = "remart-bbs-chat.session";
 const HANDLE_KEY = "remart-bbs-chat.handle";
+const BASE_TITLE = "Remart BBS Chat";
+const TITLE_NOTICE_MS = 5000;
+const TITLE_TICK_MS = 400;
 
 // Arrow and position keys map one-to-one onto server caret keystrokes.
 const MOVEMENT_KINDS = { ArrowLeft: "left", ArrowRight: "right", Home: "home", End: "end" } as const;
@@ -129,6 +132,10 @@ export function App() {
   const [feedback, setFeedback] = useState("");
   const [warning, setWarning] = useState("");
   const [showHelp, setShowHelp] = useState(false);
+  const titleTimers = useRef<{ timeout: number | undefined; interval: number | undefined }>({
+    timeout: undefined,
+    interval: undefined,
+  });
   const chatRef = useRef<HTMLElement>(null);
   const containerRef = useRef<HTMLElement>(null);
   const keyboardRef = useRef<HTMLTextAreaElement>(null);
@@ -143,6 +150,33 @@ export function App() {
     retry: false,
   });
 
+  // A join notice rotates "<handle> joined" through the tab title for a
+  // few seconds, then restores the base title. It runs on its own timers
+  // so muted or blocked audio never suppresses it; a later join replaces
+  // the current notice cleanly.
+  const clearTitleNotice = () => {
+    window.clearTimeout(titleTimers.current.timeout);
+    window.clearInterval(titleTimers.current.interval);
+    titleTimers.current.timeout = undefined;
+    titleTimers.current.interval = undefined;
+  };
+  const stopTitleNotice = () => {
+    clearTitleNotice();
+    document.title = BASE_TITLE;
+  };
+  const startTitleNotice = (handle: string) => {
+    clearTitleNotice();
+    let rotated = `${handle} joined`;
+    document.title = rotated;
+    titleTimers.current.interval = window.setInterval(() => {
+      // Rotate by code point so an emoji handle never splits a surrogate.
+      const points = Array.from(rotated);
+      rotated = points.slice(1).join("") + points[0];
+      document.title = rotated;
+    }, TITLE_TICK_MS);
+    titleTimers.current.timeout = window.setTimeout(stopTitleNotice, TITLE_NOTICE_MS);
+  };
+
   const endSession = (message: string) => {
     storageRemove("session", SESSION_KEY);
     setSession(null);
@@ -150,6 +184,7 @@ export function App() {
     setFeedback("");
     setWarning("");
     setError(message);
+    stopTitleNotice();
   };
 
   const { room, status, send } = useRoomConnection(session, {
@@ -159,9 +194,17 @@ export function App() {
       else endSession("");
     },
     onSessionEnded: () => endSession("Room session ended. Join again."),
-    onNewcomer: playJoinSound,
+    onNewcomer: (entry) => {
+      playJoinSound();
+      startTitleNotice(entry.handle);
+    },
     onNotice: setWarning,
   });
+
+  useEffect(() => () => {
+    stopTitleNotice();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const participants = room.participants;
   const ownParticipant = participants.find((p) => p.participantId === session?.participantId);

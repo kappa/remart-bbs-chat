@@ -7,7 +7,7 @@ export type RoomSession = { roomId: number; participantId: number; token: string
 export type RoomEvents = {
   onCommand: (name: CommandName) => void;
   onSessionEnded: () => void;
-  onNewcomer: () => void;
+  onNewcomer: (entry: { handle: string }) => void;
   onNotice: (text: string) => void;
 };
 
@@ -39,12 +39,14 @@ export function useRoomConnection(session: RoomSession | null, events: RoomEvent
           return;
         }
         if (msg.type === 'roster' || msg.type === 'snapshot') {
-          const ids = (msg.type === 'roster' ? msg.roster : msg.liveLines).map((e) => e.participantId);
-          const newcomer = seeded && ids.some((id) => !knownIds.has(id) && id !== participantId);
+          const entries = msg.type === 'roster' ? msg.roster : msg.liveLines;
+          const newcomer = seeded
+            ? entries.find((e) => !knownIds.has(e.participantId) && e.participantId !== participantId)
+            : undefined;
           knownIds.clear();
-          for (const id of ids) knownIds.add(id);
+          for (const e of entries) knownIds.add(e.participantId);
           seeded = true;
-          if (newcomer) eventsRef.current.onNewcomer();
+          if (newcomer) eventsRef.current.onNewcomer({ handle: newcomer.handle });
         }
         setRoom((prev) => applyServerMessage(prev, msg));
       },

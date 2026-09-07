@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { screen } from '@testing-library/react';
+import { act, screen, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { api } from './api';
 import { renderJoined, serverSend, snapshot, alice, bob, idle, typing } from './testing/roomFixtures';
@@ -80,6 +80,125 @@ describe('Roster', () => {
     expect(document.activeElement).toBe(document.querySelector('.keyboard-capture'));
     await user.click(link);
     expect(document.activeElement).not.toBe(document.querySelector('.keyboard-capture'));
+  });
+
+  it('a newcomer rotates "<handle> joined" through the title for five seconds', async () => {
+    const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+    vi.useFakeTimers();
+    try {
+      serverSend(ws, { type: 'roster', roster: [alice, bob, carol] });
+      expect(document.title).toBe('Carol joined');
+      vi.advanceTimersByTime(400);
+      const first = document.title;
+      expect(first).not.toBe('Carol joined');
+      vi.advanceTimersByTime(400);
+      expect(document.title).not.toBe(first);
+      expect(document.title).not.toBe('Remart BBS Chat');
+      vi.advanceTimersByTime(5000);
+      expect(document.title).toBe('Remart BBS Chat');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('no title notice for the own join, the first snapshot, or a reconnect replay', async () => {
+    const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+    vi.useFakeTimers();
+    try {
+      expect(document.title).not.toContain('joined');
+      serverSend(ws, { type: 'roster', roster: [alice, bob, carol] });
+      expect(document.title).toBe('Carol joined');
+      vi.advanceTimersByTime(5000);
+      expect(document.title).toBe('Remart BBS Chat');
+      serverSend(ws, snapshot({ liveLines: [idle(alice), idle(bob), idle(carol)], roster: [alice, bob, carol] }));
+      vi.advanceTimersByTime(1000);
+      expect(document.title).toBe('Remart BBS Chat');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('a later join replaces the current title notice', async () => {
+    const dave = { participantId: 40, handle: 'Dave', color: '#0f0', slot: 3 };
+    const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+    vi.useFakeTimers();
+    try {
+      serverSend(ws, { type: 'roster', roster: [alice, bob, carol] });
+      expect(document.title).toBe('Carol joined');
+      vi.advanceTimersByTime(400);
+      serverSend(ws, { type: 'roster', roster: [alice, bob, carol, dave] });
+      expect(document.title).toBe('Dave joined');
+      vi.advanceTimersByTime(5000);
+      expect(document.title).toBe('Remart BBS Chat');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('leaving mid-notice restores the base title', async () => {
+    (api.leaveRoom as any).mockResolvedValue({ freed: true });
+    const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+    vi.useFakeTimers();
+    try {
+      serverSend(ws, { type: 'roster', roster: [alice, bob, carol] });
+      expect(document.title).toBe('Carol joined');
+      fireEvent.click(screen.getByRole('button', { name: 'Leave' }));
+      await act(async () => {});
+      expect(document.title).toBe('Remart BBS Chat');
+      vi.advanceTimersByTime(6000);
+      expect(document.title).toBe('Remart BBS Chat');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('rotates an emoji handle by code point without splitting surrogates', async () => {
+    const emoji = { participantId: 50, handle: 'Bo😀b', color: '#ff0', slot: 4 };
+    const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+    vi.useFakeTimers();
+    try {
+      serverSend(ws, { type: 'roster', roster: [alice, bob, emoji] });
+      expect(document.title).toBe('Bo😀b joined');
+      for (let i = 0; i < 12; i++) {
+        vi.advanceTimersByTime(400);
+        expect(document.title).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('unmounting restores the base title', async () => {
+    const { ws, unmount } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+    vi.useFakeTimers();
+    try {
+      serverSend(ws, { type: 'roster', roster: [alice, bob, carol] });
+      expect(document.title).toBe('Carol joined');
+      unmount();
+      expect(document.title).toBe('Remart BBS Chat');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('the title notice works when sound is unavailable', async () => {
+    const audio = (globalThis as any).AudioContext;
+    const webkit = (globalThis as any).webkitAudioContext;
+    delete (globalThis as any).AudioContext;
+    delete (globalThis as any).webkitAudioContext;
+    try {
+      const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+      vi.useFakeTimers();
+      try {
+        serverSend(ws, { type: 'roster', roster: [alice, bob, carol] });
+        expect(document.title).toBe('Carol joined');
+      } finally {
+        vi.useRealTimers();
+      }
+    } finally {
+      (globalThis as any).AudioContext = audio;
+      (globalThis as any).webkitAudioContext = webkit;
+    }
   });
 
   it('a newcomer plays the join chirp; the first snapshot does not', async () => {
