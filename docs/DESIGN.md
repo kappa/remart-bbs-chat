@@ -131,7 +131,11 @@ are not a design input.
 ## Typography and layout
 
 - Monospace is mandatory — proportional fonts would break the terminal
-  illusion and column alignment.
+  illusion and column alignment. Every terminal surface uses the single
+  `--mono` variable (transcript rows previously carried their own shorter
+  stack, which is what Chrome on Linux rendered as serif). The stack also
+  names explicit Linux-available faces ("Liberation Mono",
+  "DejaVu Sans Mono") before the generic family.
 - Line height is 1.55em: dense enough to feel like a terminal, loose enough
   to read.
 - The layout is responsive with no horizontal scrolling. The desktop typing

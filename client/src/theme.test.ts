@@ -6,7 +6,7 @@ describe('theme.css', ()=>{
   it('contains monospace mandatory and line-height 1.55em', ()=>{
     const cssPath = path.join(__dirname, 'theme.css');
     const css = fs.readFileSync(cssPath, 'utf8');
-    expect(css).toMatch(/font-family.*monospace/);
+    expect(css).toMatch(/--mono:[^;]*,\s*monospace\s*;/);
     expect(css).toMatch(/line-height:\s*1\.55em/);
     expect(css).toMatch(/min-height:\s*1\.55em/);
   });
@@ -23,5 +23,19 @@ describe('theme.css', ()=>{
     const css = fs.readFileSync(path.join(__dirname,'theme.css'),'utf8');
     expect(css).toMatch(/#roster/);
     expect(css).toMatch(/width:\s*160px/);
+  });
+  it('every transcript row uses the single canonical font variable', ()=>{
+    const css = fs.readFileSync(path.join(__dirname,'theme.css'),'utf8');
+    const chatLineBlock = css.match(/\.chat-line\s*\{([^}]*)\}/)?.[1] ?? '';
+    expect(chatLineBlock).toMatch(/font-family:\s*var\(--mono\)/);
+    expect(chatLineBlock).not.toMatch(/font-family:(?!\s*var\(--mono\))/);
+    for (const selector of ['.system-line', '.error-line']) {
+      const block = css.match(new RegExp(`${selector.replace('.', '\\.')}\\s*\\{([^}]*)\\}`))?.[1] ?? '';
+      expect(block).not.toMatch(/font-family:/);
+    }
+  });
+  it('--mono names a Linux-available monospace face before the generic family', ()=>{
+    const css = fs.readFileSync(path.join(__dirname,'theme.css'),'utf8');
+    expect(css).toMatch(/--mono:[^;]*"DejaVu Sans Mono"[^;]*,\s*monospace\s*;/);
   });
 });
