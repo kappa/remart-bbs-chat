@@ -246,6 +246,7 @@ export function App() {
         if (chat) chat.scrollTop = chat.scrollHeight;
       }
     };
+    applyViewport();
     vv.addEventListener("resize", applyViewport);
     vv.addEventListener("scroll", applyViewport);
     return () => {

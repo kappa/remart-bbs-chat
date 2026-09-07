@@ -99,6 +99,20 @@ describe('Visual viewport (task 19)', () => {
     Object.defineProperty(chat, 'clientHeight', { configurable: true, value: 100 });
   }
 
+  it('uses the current viewport when joining with the keyboard already open', async () => {
+    stubVisualViewport();
+    (window as any).visualViewport.height = 400;
+    (window as any).visualViewport.offsetTop = 120;
+    const { unmount } = await renderJoined();
+    try {
+      expect(container().style.getPropertyValue('--app-height')).toBe('400px');
+      expect(container().style.getPropertyValue('--app-offset')).toBe('120px');
+    } finally {
+      unmount();
+      delete (window as any).visualViewport;
+    }
+  });
+
   it('a viewport resize writes --app-height/--app-offset and keeps a bottom reader at the bottom', async () => {
     const { fire, listenerCount } = stubVisualViewport();
     const { unmount } = await renderJoined(snapshot({ committed: [line('a', 0, 'one')] }));
