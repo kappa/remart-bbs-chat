@@ -10,7 +10,12 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const ANSI_COLORS = ["#00FFFF","#FFFF00","#FF00FF","#00FF00","#FF8000","#80FF00","#FF0080","#00FF80","#8080FF","#FF8080"];
+// Standard 16-color VGA text-mode palette in participant assignment order:
+// the seven bright colors first (white seventh), then the dark colors and
+// light gray, then dark gray last. Black is reference-only and never
+// assigned, so it is not in this array.
+const VGA_COLORS = ["#5555FF","#55FF55","#55FFFF","#FF5555","#FF55FF","#FFFF55","#FFFFFF",
+  "#0000AA","#00AA00","#00AAAA","#AA0000","#AA00AA","#AA5500","#AAAAAA","#555555"];
 const HEARTBEAT_TIMEOUT_MS = 40000;
 
 function isValidChar(char){
@@ -348,7 +353,7 @@ app.post('/api/join', (req,res)=>{
   if(slot>=10) return res.status(409).json({error:'room full'});
 
   const usedColors = new Set(Array.from(room.participants.values()).map(p=>p.color));
-  const color = ANSI_COLORS.find(c=>!usedColors.has(c)) || ANSI_COLORS[slot%ANSI_COLORS.length];
+  const color = VGA_COLORS.find(c=>!usedColors.has(c)) || VGA_COLORS[slot%VGA_COLORS.length];
 
   const now = new Date();
   const joinRowIdx = greatestRow(room)+1;
@@ -487,7 +492,7 @@ export {
   server,
   wss,
   rooms,
-  ANSI_COLORS,
+  VGA_COLORS,
   HEARTBEAT_TIMEOUT_MS,
   isValidChar,
   getRoom,

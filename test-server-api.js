@@ -2,7 +2,7 @@ import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { serverModule, startServer, closeAllSockets, post, newRoom, join, connect } from './test-support.js';
 
-const { resetForTests, rooms, ANSI_COLORS } = serverModule;
+const { resetForTests, rooms, VGA_COLORS } = serverModule;
 let baseUrl, wsUrl, closeServer;
 
 before(async () => { ({ baseUrl, wsUrl, close: closeServer } = await startServer()); });
@@ -79,10 +79,32 @@ describe('Join semantics', () => {
       const { json } = await post(baseUrl, '/api/join', { roomId, handle: `u${i}` });
       colors.add(json.participant.color);
       slots.add(json.participant.slot);
-      assert.ok(ANSI_COLORS.includes(json.participant.color));
+      assert.ok(VGA_COLORS.includes(json.participant.color));
     }
     assert.equal(colors.size, 5);
     assert.equal(slots.size, 5);
+  });
+
+  it('assigns VGA colors bright-first with white seventh and no black', async () => {
+    const roomId = await newRoom(baseUrl);
+    const expected = ['#5555FF', '#55FF55', '#55FFFF', '#FF5555', '#FF55FF',
+      '#FFFF55', '#FFFFFF', '#0000AA', '#00AA00', '#00AAAA'];
+    const got = [];
+    for (let i = 0; i < 10; i++) {
+      const { json } = await post(baseUrl, '/api/join', { roomId, handle: `u${i}` });
+      got.push(json.participant.color);
+    }
+    assert.deepEqual(got, expected);
+    assert.ok(!got.includes('#000000'));
+  });
+
+  it('reuses a departed participant color for the next join', async () => {
+    const roomId = await newRoom(baseUrl);
+    const joined = [];
+    for (let i = 0; i < 10; i++) joined.push(await join(baseUrl, roomId, `u${i}`));
+    await post(baseUrl, '/api/leave', { roomId, participantId: joined[3].participantId, token: joined[3].token });
+    const rejoin = await join(baseUrl, roomId, 'newbie');
+    assert.equal(rejoin.color, joined[3].color);
   });
 
   it('defers ownership: no row until the first character', async () => {
