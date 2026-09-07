@@ -62,8 +62,8 @@ describe('openRoomConnection', () => {
     connection.send({ kind: 'char', char: 'A' });
     connection.send({ kind: 'char', char: 'B' });
     connection.send({ kind: 'char', char: 'C' });
-    first.serverSend({ type: 'live', participantId: 10, row: 0, text: 'A', seq: 1 });
-    first.serverSend({ type: 'live', participantId: 99, row: 1, text: 'x', seq: 2 });
+    first.serverSend({ type: 'live', participantId: 10, row: 0, text: 'A', caret: 0, seq: 1 });
+    first.serverSend({ type: 'live', participantId: 99, row: 1, text: 'x', caret: 0, seq: 2 });
     first.serverClose();
     expect(statuses.at(-1)).toBe('reconnecting');
     vi.advanceTimersByTime(100);

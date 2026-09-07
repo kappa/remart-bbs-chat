@@ -139,7 +139,7 @@ function publicLine(line){
 }
 
 function liveLineOf(p){
-  return {participantId:p.id, handle:p.handle, color:p.color, slot:p.slot, row:p.liveRow, text:p.liveText};
+  return {participantId:p.id, handle:p.handle, color:p.color, slot:p.slot, row:p.liveRow, text:p.liveText, caret:p.liveCaret};
 }
 
 // Filter the last 100 appended lines for this participant, then sort by row.
@@ -160,7 +160,7 @@ function snapshotMessage(room, participant){
 
 // Keystroke handling functions
 function liveMessage(p, seq){
-  return {type:'live', participantId:p.id, row:p.liveRow, text:p.liveText, seq};
+  return {type:'live', participantId:p.id, row:p.liveRow, text:p.liveText, caret:p.liveCaret, seq};
 }
 
 function committedMessage(line, participantId, seq){
@@ -177,18 +177,50 @@ function storeLine(room, participant, text, row, at){
   return line;
 }
 
-// The first character claims the next row; backspacing to empty keeps it.
-function applyChar(participant, room, char){
-  if(participant.liveRow == null) participant.liveRow = greatestRow(room)+1;
-  participant.liveText += char;
-}
-
-function applyBackspace(participant){
-  // Input arrives one code point at a time (isValidChar and the client's
-  // paste splitting both guarantee it), so deletion is one code point too:
-  // a UTF-16 slice would leave half of a surrogate pair behind.
+// The caret is a code-point index into liveText, owned by the server like
+// the line itself. Every position below is a code point, never a UTF-16
+// unit, so emoji and Cyrillic move and delete as single characters.
+function editLive(participant, room, kind, char){
   const codePoints = Array.from(participant.liveText);
-  participant.liveText = codePoints.slice(0, -1).join('');
+  const length = codePoints.length;
+  let caret = Math.min(Math.max(participant.liveCaret ?? length, 0), length);
+  switch(kind){
+    case 'char':
+      if(participant.liveRow == null) participant.liveRow = greatestRow(room)+1;
+      codePoints.splice(caret, 0, char);
+      caret++;
+      break;
+    case 'backspace':
+      if(caret > 0){ codePoints.splice(caret - 1, 1); caret--; }
+      break;
+    case 'delete':
+      if(caret < length) codePoints.splice(caret, 1);
+      break;
+    case 'left':
+      if(caret > 0) caret--;
+      break;
+    case 'right':
+      if(caret < length) caret++;
+      break;
+    case 'home':
+      caret = 0;
+      break;
+    case 'end':
+      caret = length;
+      break;
+    case 'word-left': {
+      while(caret > 0 && /\s/.test(codePoints[caret - 1])) caret--;
+      while(caret > 0 && !/\s/.test(codePoints[caret - 1])) caret--;
+      break;
+    }
+    case 'word-right': {
+      while(caret < length && /\s/.test(codePoints[caret])) caret++;
+      while(caret < length && !/\s/.test(codePoints[caret])) caret++;
+      break;
+    }
+  }
+  participant.liveText = codePoints.join('');
+  participant.liveCaret = caret;
 }
 
 function commitLive(participant, room, at){
@@ -196,10 +228,11 @@ function commitLive(participant, room, at){
   const line = storeLine(room, participant, participant.liveText, row, at);
   participant.liveText = '';
   participant.liveRow = null;
+  participant.liveCaret = 0;
   return line;
 }
 
-const KEY_KINDS = new Set(['char','backspace','enter']);
+const KEY_KINDS = new Set(['char','backspace','enter','left','right','word-left','word-right','home','end','delete']);
 
 // One ordered socket: equal seq applies, lower is a replay, higher is a gap.
 function handleKey(participant, room, msg){
@@ -208,19 +241,12 @@ function handleKey(participant, room, msg){
   if(seq < participant.nextSeq) return;
   if(seq > participant.nextSeq) return sendTo(participant, {type:'error', code:'seq-gap', expected:participant.nextSeq});
   participant.nextSeq++;
-  if(msg.kind==='char'){
-    if(isValidChar(msg.char)) applyChar(participant, room, msg.char);
-    return broadcast(room, liveMessage(participant, seq));
-  }
-  if(msg.kind==='backspace'){
-    applyBackspace(participant);
-    return broadcast(room, liveMessage(participant, seq));
-  }
   if(msg.kind==='enter'){
     const commandName = COMMANDS[participant.liveText];
     if(commandName){
       participant.liveText = '';
       participant.liveRow = null;
+      participant.liveCaret = 0;
       broadcast(room, liveMessage(participant, seq));
       sendTo(participant, {type:'command', name:commandName});
       if(commandName === 'leave'){
@@ -233,6 +259,12 @@ function handleKey(participant, room, msg){
     broadcast(room, liveMessage(participant, seq));
     return;
   }
+  if(msg.kind==='char'){
+    if(isValidChar(msg.char)) editLive(participant, room, 'char', msg.char);
+    return broadcast(room, liveMessage(participant, seq));
+  }
+  editLive(participant, room, msg.kind);
+  return broadcast(room, liveMessage(participant, seq));
 }
 
 function rosterMessage(room){
@@ -336,6 +368,7 @@ app.post('/api/join', (req,res)=>{
     slot,
     liveRow: null,
     liveText: '',
+    liveCaret: 0,
     joinedAt: now,
     historyFromRow,
     joinedLineCount: room.lines.length,
@@ -464,8 +497,7 @@ export {
   cleanupStaleInRoom,
   globalHandleExists,
   handleKey,
-  applyChar,
-  applyBackspace,
+  editLive,
   commitLive,
   liveMessage,
   committedMessage,

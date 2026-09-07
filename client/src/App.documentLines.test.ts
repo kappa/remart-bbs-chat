@@ -3,7 +3,7 @@ import { computeDocumentLines, isValidChar } from './documentLines';
 import type { CommittedLine, LiveLine } from './protocol';
 
 const line = (id: string, row: number, text: string): CommittedLine => ({ id, row, text, handle: 'a', color: '#fff', committedAt: 1 });
-const live = (participantId: number, row: number | null, text: string): LiveLine => ({ participantId, handle: `p${participantId}`, color: '#0f0', slot: participantId, row, text });
+const live = (participantId: number, row: number | null, text: string): LiveLine => ({ participantId, handle: `p${participantId}`, color: '#0f0', slot: participantId, row, text, caret: 0 });
 
 describe('computeDocumentLines', () => {
   it('orders committed and live rows together by row and skips idle participants', () => {

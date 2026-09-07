@@ -19,7 +19,7 @@ describe('Socket handshake', () => {
     assert.equal(snap.roomId, roomId);
     assert.deepEqual(snap.you, { participantId: alice.participantId, nextSeq: 1 });
     assert.deepEqual(snap.roster, [{ participantId: alice.participantId, handle: 'Alice', color: alice.color, slot: 0 }]);
-    assert.deepEqual(snap.liveLines, [{ participantId: alice.participantId, handle: 'Alice', color: alice.color, slot: 0, row: null, text: '' }]);
+    assert.deepEqual(snap.liveLines, [{ participantId: alice.participantId, handle: 'Alice', color: alice.color, slot: 0, row: null, text: '', caret: 0 }]);
     assert.equal(snap.committed.length, 1);
     const announcement = snap.committed[0];
     assert.equal(announcement.text, '* Alice joined');
@@ -160,7 +160,7 @@ describe('Keystrokes', () => {
   it('a character echoes the whole live line to sender and observer', async () => {
     const { alice, a, b, done } = await roomWithTwo();
     a.send(key(1, 'char', 'A'));
-    const expected = { type: 'live', participantId: alice.participantId, row: 2, text: 'A', seq: 1 };
+    const expected = { type: 'live', participantId: alice.participantId, row: 2, text: 'A', caret: 1, seq: 1 };
     assert.deepEqual(await a.next((m) => m.type === 'live'), expected);
     assert.deepEqual(await b.next((m) => m.type === 'live'), expected);
     done();
@@ -169,12 +169,12 @@ describe('Keystrokes', () => {
   it('backspace shortens the line; on an empty line it still echoes and advances seq', async () => {
     const { alice, a, done } = await roomWithTwo();
     a.send(key(1, 'backspace'));
-    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: null, text: '', seq: 1 });
+    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: null, text: '', caret: 0, seq: 1 });
     a.send(key(2, 'char', 'A'));
     a.send(key(3, 'char', 'B'));
     a.send(key(4, 'backspace'));
     await a.next((m) => m.type === 'live' && m.seq === 3);
-    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: 'A', seq: 4 });
+    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: 'A', caret: 1, seq: 4 });
     done();
   });
 
@@ -183,7 +183,7 @@ describe('Keystrokes', () => {
     a.send(key(1, 'char', '\u{1F600}'));
     await a.next((m) => m.type === 'live' && m.seq === 1);
     a.send(key(2, 'backspace'));
-    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: '', seq: 2 });
+    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: '', caret: 0, seq: 2 });
     done();
   });
 
@@ -194,9 +194,9 @@ describe('Keystrokes', () => {
     a.send(key(3, 'char', '\u{1F600}'));
     await a.next((m) => m.type === 'live' && m.seq === 3);
     a.send(key(4, 'backspace'));
-    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: 'aЖ', seq: 4 });
+    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: 'aЖ', caret: 2, seq: 4 });
     a.send(key(5, 'backspace'));
-    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: 'a', seq: 5 });
+    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: 'a', caret: 1, seq: 5 });
     done();
   });
 
@@ -206,7 +206,7 @@ describe('Keystrokes', () => {
     a.send(key(2, 'char', '\u0301'));
     await a.next((m) => m.type === 'live' && m.seq === 2);
     a.send(key(3, 'backspace'));
-    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: 'e', seq: 3 });
+    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: 2, text: 'e', caret: 1, seq: 3 });
     done();
   });
 
@@ -222,7 +222,7 @@ describe('Keystrokes', () => {
     assert.equal(committed.line.handle, 'Alice');
     assert.equal(committed.line.color, alice.color);
     const cleared = await b.next((m) => m.type === 'live');
-    assert.deepEqual(cleared, { type: 'live', participantId: alice.participantId, row: null, text: '', seq: 2 });
+    assert.deepEqual(cleared, { type: 'live', participantId: alice.participantId, row: null, text: '', caret: 0, seq: 2 });
     assert.ok(a.messages.some((m) => m.type === 'committed' && m.seq === 2), 'sender receives its own commit');
     done();
   });
@@ -282,7 +282,7 @@ describe('Keystrokes', () => {
   it('an invalid character is a no-op that still advances seq', async () => {
     const { alice, a, done } = await roomWithTwo();
     a.send(key(1, 'char', '\n'));
-    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: null, text: '', seq: 1 });
+    assert.deepEqual(await a.next((m) => m.type === 'live'), { type: 'live', participantId: alice.participantId, row: null, text: '', caret: 0, seq: 1 });
     a.send(key(2, 'char', 'Ж'));
     assert.equal((await a.next((m) => m.type === 'live')).text, 'Ж');
     done();
@@ -315,13 +315,115 @@ describe('Keystrokes', () => {
   });
 });
 
+describe('Caret editing (task 14)', () => {
+  // Types the characters one keystroke each so the caret is placed by the
+  // keys themselves, exactly as a client would.
+  async function typeLine(a, chars) {
+    chars.forEach((ch, i) => a.send(key(i + 1, 'char', ch)));
+    await a.next((m) => m.type === 'live' && m.seq === chars.length);
+  }
+
+  it('left then char inserts at the caret and reports it', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    await typeLine(a, ['a', 'b', 'c', ' ', 'd', 'e', 'f']);
+    a.send(key(8, 'left'));
+    assert.deepEqual(await a.next((m) => m.type === 'live' && m.seq === 8), { type: 'live', participantId: alice.participantId, row: 2, text: 'abc def', caret: 6, seq: 8 });
+    a.send(key(9, 'char', 'x'));
+    assert.deepEqual(await a.next((m) => m.type === 'live' && m.seq === 9), { type: 'live', participantId: alice.participantId, row: 2, text: 'abc dexf', caret: 7, seq: 9 });
+    done();
+  });
+
+  it('home then delete drops the first code point', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    await typeLine(a, ['a', 'b', 'c', ' ', 'd', 'e', 'f']);
+    a.send(key(8, 'home'));
+    await a.next((m) => m.type === 'live' && m.seq === 8);
+    a.send(key(9, 'delete'));
+    assert.deepEqual(await a.next((m) => m.type === 'live' && m.seq === 9), { type: 'live', participantId: alice.participantId, row: 2, text: 'bc def', caret: 0, seq: 9 });
+    done();
+  });
+
+  it('delete at the end and left at 0 are no-ops that still echo', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    await typeLine(a, ['a', 'b', 'c']);
+    a.send(key(4, 'delete'));
+    assert.deepEqual(await a.next((m) => m.type === 'live' && m.seq === 4), { type: 'live', participantId: alice.participantId, row: 2, text: 'abc', caret: 3, seq: 4 });
+    a.send(key(5, 'home'));
+    await a.next((m) => m.type === 'live' && m.seq === 5);
+    a.send(key(6, 'left'));
+    assert.deepEqual(await a.next((m) => m.type === 'live' && m.seq === 6), { type: 'live', participantId: alice.participantId, row: 2, text: 'abc', caret: 0, seq: 6 });
+    done();
+  });
+
+  it('word-left twice from the end lands at 0', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    await typeLine(a, ['a', 'b', 'c', ' ', 'd', 'e', 'f']);
+    a.send(key(8, 'word-left'));
+    assert.deepEqual(await a.next((m) => m.type === 'live' && m.seq === 8), { type: 'live', participantId: alice.participantId, row: 2, text: 'abc def', caret: 4, seq: 8 });
+    a.send(key(9, 'word-left'));
+    assert.deepEqual(await a.next((m) => m.type === 'live' && m.seq === 9), { type: 'live', participantId: alice.participantId, row: 2, text: 'abc def', caret: 0, seq: 9 });
+    done();
+  });
+
+  it('word-right from 0 lands after abc', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    await typeLine(a, ['a', 'b', 'c', ' ', 'd', 'e', 'f']);
+    a.send(key(8, 'home'));
+    await a.next((m) => m.type === 'live' && m.seq === 8);
+    a.send(key(9, 'word-right'));
+    assert.deepEqual(await a.next((m) => m.type === 'live' && m.seq === 9), { type: 'live', participantId: alice.participantId, row: 2, text: 'abc def', caret: 3, seq: 9 });
+    done();
+  });
+
+  it('left then backspace removes Ж from aЖ😀', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    await typeLine(a, ['a', 'Ж', '\u{1F600}']);
+    a.send(key(4, 'left'));
+    assert.deepEqual(await a.next((m) => m.type === 'live' && m.seq === 4), { type: 'live', participantId: alice.participantId, row: 2, text: 'aЖ😀', caret: 2, seq: 4 });
+    a.send(key(5, 'backspace'));
+    assert.deepEqual(await a.next((m) => m.type === 'live' && m.seq === 5), { type: 'live', participantId: alice.participantId, row: 2, text: 'a😀', caret: 1, seq: 5 });
+    done();
+  });
+
+  it('the snapshot live line carries caret', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    await typeLine(a, ['a', 'b']);
+    a.send(key(3, 'left'));
+    await a.next((m) => m.type === 'live' && m.seq === 3);
+    const fresh = await connect(wsUrl, alice);
+    const live = fresh.snapshot.liveLines.find((l) => l.participantId === alice.participantId);
+    assert.deepEqual(live, { participantId: alice.participantId, handle: 'Alice', color: alice.color, slot: 0, row: 2, text: 'ab', caret: 1 });
+    fresh.ws.close();
+    done();
+  });
+
+  it('enter commits regardless of caret and resets it to 0', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    await typeLine(a, ['a', 'b']);
+    a.send(key(3, 'home'));
+    await a.next((m) => m.type === 'live' && m.seq === 3);
+    a.send(key(4, 'enter'));
+    const committed = await a.next((m) => m.type === 'committed' && m.seq === 4);
+    assert.equal(committed.line.text, 'ab');
+    assert.deepEqual(await a.next((m) => m.type === 'live' && m.seq === 4), { type: 'live', participantId: alice.participantId, row: null, text: '', caret: 0, seq: 4 });
+    done();
+  });
+
+  it('movement on an idle line is a no-op that echoes', async () => {
+    const { alice, a, done } = await roomWithTwo();
+    a.send(key(1, 'right'));
+    assert.deepEqual(await a.next((m) => m.type === 'live' && m.seq === 1), { type: 'live', participantId: alice.participantId, row: null, text: '', caret: 0, seq: 1 });
+    done();
+  });
+});
+
 describe('Commands', () => {
   it('l clears the line and returns a roster command without committing', async () => {
     const { alice, a, b, done } = await roomWithTwo();
     a.send(key(1, 'char', 'l'));
     a.send(key(2, 'enter'));
     const cleared = await b.next((m) => m.type === 'live' && m.seq === 2);
-    assert.deepEqual(cleared, { type: 'live', participantId: alice.participantId, row: null, text: '', seq: 2 });
+    assert.deepEqual(cleared, { type: 'live', participantId: alice.participantId, row: null, text: '', caret: 0, seq: 2 });
     assert.deepEqual(await a.next((m) => m.type === 'command'), { type: 'command', name: 'roster' });
     await settle();
     assert.ok(!a.messages.some((m) => m.type === 'committed' && m.line.text === 'l'));

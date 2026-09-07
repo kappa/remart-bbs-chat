@@ -58,6 +58,7 @@ class Cdp {
 const ENTER = { windowsVirtualKeyCode: 13, code: 'Enter' };
 const BACKSPACE = { windowsVirtualKeyCode: 8, code: 'Backspace' };
 const ESCAPE = { windowsVirtualKeyCode: 27, code: 'Escape' };
+const ARROW_LEFT = { windowsVirtualKeyCode: 37, code: 'ArrowLeft' };
 
 async function main() {
   if (!existsSync(join(REPO, 'client', 'dist', 'index.html'))) {
@@ -125,6 +126,11 @@ async function main() {
   check('Enter: both tabs show committed "h" and the live row is gone',
     await alice.waitFor(`${text('.committed-line')}.includes('h') && !${text('.live-line')}.includes('h')`) && await bob.waitFor(`${text('.committed-line')}.includes('h')`));
 
+  await alice.focus(); await alice.type('abd'); await alice.key('ArrowLeft', ARROW_LEFT); await alice.type('c'); await alice.key('Enter', ENTER);
+  check('abd, Left, c, Enter: both tabs show committed "abcd"',
+    await alice.waitFor(`${text('.committed-line')}.includes('abcd')`) && await bob.waitFor(`${text('.committed-line')}.includes('abcd')`),
+    `alice=${JSON.stringify(await alice.eval(text('.committed-line')))} bob=${JSON.stringify(await bob.eval(text('.committed-line')))}`);
+
   await alice.type('?'); await alice.key('Enter', ENTER);
   check('"?" Enter opens help in Alice\'s tab only', await alice.waitFor(`!!document.querySelector('.help-overlay')`) && !(await bob.eval(`!!document.querySelector('.help-overlay')`)));
   check('"?" was not committed as chat', !(await alice.eval(`${text('.committed-line')}.includes('?')`)));
@@ -141,7 +147,7 @@ async function main() {
   check('Bob reload: Alice sees "* Bob left" then "* Bob joined" (pagehide beacon, then auto-rejoin)',
     await alice.waitFor(`${text('.committed-line')}.slice(-2).join('|') === '* Bob left|* Bob joined'`, 8000), JSON.stringify(await alice.eval(text('.committed-line'))));
   check('Bob reload: back in the room as a new participant with the stored history and a fresh announcement',
-    await bob.waitFor(`${inRoom} && ${text('.committed-line')}.join('|') === '* Alice joined|* Bob joined|h|* Bob left|* Bob joined'`, 8000) && (await bob.eval(participantId)) !== bobIdBefore, JSON.stringify(await bob.eval(text('.committed-line'))));
+    await bob.waitFor(`${inRoom} && ${text('.committed-line')}.join('|') === '* Alice joined|* Bob joined|h|abcd|* Bob left|* Bob joined'`, 8000) && (await bob.eval(participantId)) !== bobIdBefore, JSON.stringify(await bob.eval(text('.committed-line'))));
   await bob.focus(); await bob.type('yo'); await bob.key('Enter', ENTER);
   check('Bob types after reload: "yo" committed in both tabs', await bob.waitFor(`${text('.committed-line')}.includes('yo')`) && await alice.waitFor(`${text('.committed-line')}.includes('yo')`));
 

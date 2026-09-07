@@ -23,7 +23,7 @@ describe('Transcript regressions', () => {
   it('a live line backspaced to empty keeps its row and position', async () => {
     const { ws } = await renderJoined(snapshot({ liveLines: [typing(alice, 1, 'ab'), idle(bob)], roster: [alice, bob], committed: [line('c0', 0, 'top', bob)] }));
     await screen.findByText('ab');
-    serverSend(ws, { type: 'live', participantId: 10, row: 1, text: '', seq: 1 });
+    serverSend(ws, { type: 'live', participantId: 10, row: 1, text: '', caret: 0, seq: 1 });
     serverSend(ws, { type: 'committed', participantId: null, seq: null, line: line('c2', 2, 'later', bob) });
     await screen.findByText('later');
     expect(orders()).toEqual([0, 1, 2]);

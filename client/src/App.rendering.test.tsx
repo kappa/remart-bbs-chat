@@ -83,7 +83,7 @@ describe('Rendering from server state', () => {
     await user.keyboard('A');
     expect(ws.keys()).toEqual([{ type: 'key', seq: 1, kind: 'char', char: 'A' }]);
     expect(document.querySelector('.live-line')).toBeNull();
-    serverSend(ws, { type: 'live', participantId: 10, row: 1, text: 'A', seq: 1 });
+    serverSend(ws, { type: 'live', participantId: 10, row: 1, text: 'A', caret: 1, seq: 1 });
     expect(await screen.findByText('A')).toHaveClass('live-line');
   });
 
@@ -95,7 +95,7 @@ describe('Rendering from server state', () => {
     await user.keyboard('{Enter}');
     expect(ws.keys()).toEqual([{ type: 'key', seq: 1, kind: 'enter' }]);
     serverSend(ws, { type: 'committed', participantId: 10, seq: 1, line: line('c1', 0, 'typing') });
-    serverSend(ws, { type: 'live', participantId: 10, row: null, text: '', seq: 1 });
+    serverSend(ws, { type: 'live', participantId: 10, row: null, text: '', caret: 0, seq: 1 });
     const committed = await screen.findByText('typing');
     expect(committed).toHaveClass('committed-line');
     expect(committed).toHaveAttribute('data-document-order', '0');
@@ -147,7 +147,7 @@ describe('Rendering from server state', () => {
     const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), typing(bob, 0, 'b')] }));
     expect(await screen.findByText('b')).toBeInTheDocument();
     expect(document.querySelector('.local-cursor-preview')).not.toBeNull();
-    serverSend(ws, { type: 'live', participantId: 10, row: 1, text: 'a', seq: 1 });
+    serverSend(ws, { type: 'live', participantId: 10, row: 1, text: 'a', caret: 0, seq: 1 });
     await screen.findByText('a');
     expect(document.querySelector('.local-cursor-preview')).toBeNull();
     expect(document.querySelectorAll('[aria-label="Your typing position"]').length).toBe(1);
@@ -224,5 +224,49 @@ describe('Mouse selection (task 13)', () => {
     fireEvent.keyDown(document.body, { key: 'A' });
 
     expect(ws.keys().length).toBe(1);
+  });
+});
+
+describe('Editing keys (task 14)', () => {
+  const keydown = (key: string, extra: Record<string, unknown> = {}) =>
+    fireEvent.keyDown(document.body, { key, ...extra });
+
+  it('ArrowLeft, ArrowRight, Home, End, Delete, and Ctrl+Arrows send their kinds', async () => {
+    const { ws } = await renderJoined();
+    fireEvent.click(await screen.findByLabelText('Shared chat area'));
+
+    keydown('ArrowLeft');
+    keydown('ArrowRight');
+    keydown('Home');
+    keydown('End');
+    keydown('Delete');
+    keydown('ArrowLeft', { ctrlKey: true });
+    keydown('ArrowRight', { ctrlKey: true });
+
+    expect(ws.keys().map((k) => k.kind)).toEqual(['left', 'right', 'home', 'end', 'delete', 'word-left', 'word-right']);
+  });
+
+  it('Ctrl+C keeps its browser meaning and sends nothing', async () => {
+    const { ws } = await renderJoined();
+    fireEvent.click(await screen.findByLabelText('Shared chat area'));
+
+    keydown('c', { ctrlKey: true });
+
+    expect(ws.keys()).toEqual([]);
+  });
+
+  it('the own live row draws the caret at the echoed position; observers get none', async () => {
+    await renderJoined(snapshot({ liveLines: [typing(alice, 0, 'abc', 1), typing(bob, 2, 'xy', 1)] }));
+    await screen.findByText('xy');
+
+    const own = document.querySelector('.live-line[data-line-slot="0"]')!;
+    expect(own.textContent).toBe('abc');
+    expect(own.querySelector('.caret-char')?.textContent).toBe('b');
+    expect(own.childNodes[0].textContent).toBe('a');
+    expect(own.lastChild?.textContent).toBe('c');
+
+    const other = document.querySelector('.live-line[data-line-slot="1"]')!;
+    expect(other.textContent).toBe('xy');
+    expect(other.querySelector('.caret-char')).toBeNull();
   });
 });

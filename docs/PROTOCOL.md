@@ -232,12 +232,17 @@ All messages are JSON text frames. Unknown fields are ignored.
 { type: "key", seq: number, kind: "char", char: string }
 { type: "key", seq: number, kind: "backspace" }
 { type: "key", seq: number, kind: "enter" }
+{ type: "key", seq: number, kind: "left" | "right" }
+{ type: "key", seq: number, kind: "word-left" | "word-right" }
+{ type: "key", seq: number, kind: "home" | "end" }
+{ type: "key", seq: number, kind: "delete" }
 ```
 
 `hello` must be the first message on a socket. `key` carries one keystroke.
 Paste is a burst of `char` keystrokes, capped at 100 code points on the
 client. `char` must satisfy the character rule described under
-[Edge cases](#edge-cases-1).
+[Edge cases](#edge-cases-1). The movement and delete kinds operate on the
+server-owned caret, also described there.
 
 ### Server to the sender only
 
@@ -245,7 +250,7 @@ client. `char` must satisfy the character rule described under
 { type: "snapshot", roomId: number,
   you: { participantId: number, nextSeq: number },
   liveLines: Array<{ participantId: number, handle: string, color: string,
-                     slot: number, row: number | null, text: string }>,
+                     slot: number, row: number | null, text: string, caret: number }>,
   committed: Array<{ id: string, row: number, text: string, handle: string,
                      color: string, committedAt: number }>,
   roster: Array<{ participantId: number, handle: string, color: string, slot: number }> }
@@ -270,14 +275,15 @@ by slot; idle ones have `row: null` and `text: ""`.
 ### Server to everyone in the room
 
 ```ts
-{ type: "live", participantId: number, row: number | null, text: string, seq: number }
+{ type: "live", participantId: number, row: number | null, text: string, caret: number, seq: number }
 { type: "committed", participantId: number | null, seq: number | null,
   line: { id: string, row: number, text: string, handle: string, color: string, committedAt: number } }
 { type: "roster", roster: Array<{ participantId: number, handle: string, color: string, slot: number }> }
 ```
 
 `live` replaces the named participant's live line entirely. `row: null` with
-empty text means idle. `committed` adds one committed line; after a commit the
+empty text means idle. `caret` is the author's typing position as a code-point
+index into `text`; the author's client renders it and other clients ignore it. `committed` adds one committed line; after a commit the
 server also sends `live` with `row: null` for that participant. `seq` is the
 keystroke that caused the message; server-initiated changes (leave
 preservation, announcements) use `participantId: null` and `seq: null`.
@@ -314,6 +320,18 @@ so `" q"` is committed as text.
   unchanged, so the sender's queue drains. No row is allocated.
 - Backspace removes one code point. Combining marks are separate code points
   and take a Backspace of their own.
+- The server owns each participant's caret: a code-point index into
+  `liveText`, sent as `caret` on `live` and in snapshot live lines.
+  `char` inserts at the caret and moves it right; `backspace` deletes the
+  code point before it; `delete` deletes the code point after it; `left`,
+  `right`, `home`, and `end` move it; `word-left` and `word-right` move to
+  the start of the word before, or the end of the word after, the caret —
+  words are whitespace-delimited. All positions are code points, so emoji
+  and Cyrillic move and delete as single characters. Movement or deletion at
+  the ends of the line is a no-op that still echoes and advances `seq`.
+  Movement on an idle line claims no row; only `char` claims one. Enter
+  commits the whole line regardless of caret position and resets the caret
+  to 0, and the `l`, `?`, `q` commands still match the whole line text.
 - Enter on an idle participant: commit an empty line on a fresh row.
 - A second `hello` for a participant that already has a socket replaces the
   old socket, which is closed. This covers a tab reconnecting before its old
@@ -384,13 +402,13 @@ sequenceDiagram
     S-->>A: WS snapshot {you:{nextSeq:1},liveLines,committed,roster}
     Note over A: Renders the snapshot; no local echo
     A->>S: WS key {seq:1,kind:"char",char:"A"}
-    S-->>A: WS live {participantId:2,row:1,text:"A",seq:1}
-    S-->>B: WS live {participantId:2,row:1,text:"A",seq:1}
+    S-->>A: WS live {participantId:2,row:1,text:"A",caret:1,seq:1}
+    S-->>B: WS live {participantId:2,row:1,text:"A",caret:1,seq:1}
     A->>S: WS key {seq:2,kind:"enter"}
     S-->>A: WS committed {participantId:2,seq:2,line:{row:1,text:"A"}}
     S-->>B: WS committed {participantId:2,seq:2,line:{row:1,text:"A"}}
-    S-->>A: WS live {participantId:2,row:null,text:"",seq:2}
-    S-->>B: WS live {participantId:2,row:null,text:"",seq:2}
+    S-->>A: WS live {participantId:2,row:null,text:"",caret:0,seq:2}
+    S-->>B: WS live {participantId:2,row:null,text:"",caret:0,seq:2}
 ```
 
 The live line appears on the author's client only when the server echoes it,

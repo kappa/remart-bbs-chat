@@ -7,7 +7,7 @@ const bob = { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1 };
 const line = (id: string, row: number, text: string, committedAt = 5): CommittedLine => ({ id, row, text, handle: 'Alice', color: '#fff', committedAt });
 const snapshot = (over: Partial<Extract<ServerMessage, { type: 'snapshot' }>> = {}): ServerMessage => ({
   type: 'snapshot', roomId: 1, you: { participantId: 10, nextSeq: 1 },
-  liveLines: [{ ...bob, row: null, text: '' }, { ...alice, row: null, text: '' }],
+  liveLines: [{ ...bob, row: null, text: '', caret: 0 }, { ...alice, row: null, text: '', caret: 0 }],
   committed: [], roster: [bob, alice], ...over,
 });
 
@@ -20,11 +20,18 @@ describe('applyServerMessage', () => {
 
   it('live replaces one participant line and returns the same object when unchanged', () => {
     const room = applyServerMessage(emptyRoom(), snapshot());
-    const typed = applyServerMessage(room, { type: 'live', participantId: 20, row: 2, text: 'hi', seq: 1 });
-    expect(typed.participants.find((p) => p.participantId === 20)).toMatchObject({ row: 2, text: 'hi' });
-    expect(typed.participants.find((p) => p.participantId === 10)).toMatchObject({ row: null, text: '' });
-    expect(applyServerMessage(typed, { type: 'live', participantId: 20, row: 2, text: 'hi', seq: 2 })).toBe(typed);
-    expect(applyServerMessage(typed, { type: 'live', participantId: 99, row: 2, text: 'x', seq: null })).toBe(typed);
+    const typed = applyServerMessage(room, { type: 'live', participantId: 20, row: 2, text: 'hi', caret: 0, seq: 1 });
+    expect(typed.participants.find((p) => p.participantId === 20)).toMatchObject({ row: 2, text: 'hi', caret: 0 });
+    expect(typed.participants.find((p) => p.participantId === 10)).toMatchObject({ row: null, text: '', caret: 0 });
+    expect(applyServerMessage(typed, { type: 'live', participantId: 20, row: 2, text: 'hi', caret: 0, seq: 2 })).toBe(typed);
+    expect(applyServerMessage(typed, { type: 'live', participantId: 99, row: 2, text: 'x', caret: 0, seq: null })).toBe(typed);
+  });
+
+  it('live carries the caret and keeps identity when the caret is unchanged', () => {
+    const room = applyServerMessage(emptyRoom(), snapshot());
+    const moved = applyServerMessage(room, { type: 'live', participantId: 20, row: 2, text: 'hi', caret: 1, seq: 1 });
+    expect(moved.participants.find((p) => p.participantId === 20)).toMatchObject({ text: 'hi', caret: 1 });
+    expect(applyServerMessage(moved, { type: 'live', participantId: 20, row: 2, text: 'hi', caret: 1, seq: 2 })).toBe(moved);
   });
 
   it('committed adds a line once by id and orders by row', () => {
@@ -37,7 +44,7 @@ describe('applyServerMessage', () => {
 
   it('roster removes departed participants and keeps live text of the rest', () => {
     let room = applyServerMessage(emptyRoom(), snapshot());
-    room = applyServerMessage(room, { type: 'live', participantId: 10, row: 2, text: 'keep', seq: 1 });
+    room = applyServerMessage(room, { type: 'live', participantId: 10, row: 2, text: 'keep', caret: 0, seq: 1 });
     room = applyServerMessage(room, { type: 'roster', roster: [alice, { participantId: 30, handle: 'Carol', color: '#f0f', slot: 1 }] });
     expect(room.participants.map((p) => p.handle)).toEqual(['Alice', 'Carol']);
     expect(room.participants[0]).toMatchObject({ row: 2, text: 'keep' });

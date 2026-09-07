@@ -27,9 +27,9 @@ export function applyServerMessage(room: RoomState, msg: ServerMessage): RoomSta
       const index = room.participants.findIndex((p) => p.participantId === msg.participantId);
       if (index === -1) return room;
       const current = room.participants[index];
-      if (current.row === msg.row && current.text === msg.text) return room;
+      if (current.row === msg.row && current.text === msg.text && current.caret === msg.caret) return room;
       const participants = room.participants.slice();
-      participants[index] = { ...current, row: msg.row, text: msg.text };
+      participants[index] = { ...current, row: msg.row, text: msg.text, caret: msg.caret };
       return { ...room, participants };
     }
     case 'committed': {
@@ -41,7 +41,7 @@ export function applyServerMessage(room: RoomState, msg: ServerMessage): RoomSta
       const known = new Map(room.participants.map((p) => [p.participantId, p]));
       const participants = msg.roster.map((entry) => {
         const previous = known.get(entry.participantId);
-        return { ...entry, row: previous?.row ?? null, text: previous?.text ?? '' };
+        return { ...entry, row: previous?.row ?? null, text: previous?.text ?? '', caret: previous?.caret ?? 0 };
       });
       return { ...room, participants: bySlot(participants) };
     }

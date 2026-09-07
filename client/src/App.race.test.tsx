@@ -27,12 +27,12 @@ describe('Fast input under delayed echo', () => {
     expect(liveRows()).toEqual(['X']);
     expect(document.querySelectorAll('.committed-line').length).toBe(0);
 
-    serverSend(ws, { type: 'live', participantId: 10, row: 3, text: 'A', seq: 1 });
+    serverSend(ws, { type: 'live', participantId: 10, row: 3, text: 'A', caret: 0, seq: 1 });
     serverSend(ws, { type: 'committed', participantId: 10, seq: 2, line: line('c1', 3, 'A') });
-    serverSend(ws, { type: 'live', participantId: 10, row: null, text: '', seq: 2 });
-    serverSend(ws, { type: 'live', participantId: 10, row: 4, text: 'B', seq: 3 });
-    serverSend(ws, { type: 'live', participantId: 10, row: 4, text: '', seq: 4 });
-    serverSend(ws, { type: 'live', participantId: 10, row: 4, text: 'C', seq: 5 });
+    serverSend(ws, { type: 'live', participantId: 10, row: null, text: '', caret: 0, seq: 2 });
+    serverSend(ws, { type: 'live', participantId: 10, row: 4, text: 'B', caret: 0, seq: 3 });
+    serverSend(ws, { type: 'live', participantId: 10, row: 4, text: '', caret: 0, seq: 4 });
+    serverSend(ws, { type: 'live', participantId: 10, row: 4, text: 'C', caret: 0, seq: 5 });
 
     await waitFor(() => expect(liveRows()).toEqual(['X', 'C']));
     const committed = screen.getByText('A');
@@ -43,9 +43,9 @@ describe('Fast input under delayed echo', () => {
 
   it('a transient character then backspace from another participant is shown then cleared', async () => {
     const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
-    serverSend(ws, { type: 'live', participantId: 20, row: 0, text: 'x', seq: 1 });
+    serverSend(ws, { type: 'live', participantId: 20, row: 0, text: 'x', caret: 0, seq: 1 });
     expect(await screen.findByText('x')).toBeInTheDocument();
-    serverSend(ws, { type: 'live', participantId: 20, row: 0, text: '', seq: 2 });
+    serverSend(ws, { type: 'live', participantId: 20, row: 0, text: '', caret: 0, seq: 2 });
     await waitFor(() => expect(screen.queryByText('x')).not.toBeInTheDocument());
     expect(liveRows()).toEqual(['']);
   });

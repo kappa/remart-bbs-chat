@@ -26,6 +26,9 @@ type Session = {
 const SESSION_KEY = "remart-bbs-chat.session";
 const HANDLE_KEY = "remart-bbs-chat.handle";
 
+// Arrow and position keys map one-to-one onto server caret keystrokes.
+const MOVEMENT_KINDS = { ArrowLeft: "left", ArrowRight: "right", Home: "home", End: "end" } as const;
+
 function playJoinSound() {
   try {
     const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
@@ -380,9 +383,24 @@ export function App() {
 
   // Key-to-keystroke mapping for the document-level listener: sends the
   // matching chat keystroke and reports whether the key was chat input.
-  // Modifier combinations keep their browser meaning (copy, paste, ...).
+  // Ctrl/Alt+Arrow moves by word; every other modifier combination keeps its
+  // browser meaning (copy, paste, ...).
   const handleChatKey = (event: KeyboardEvent) => {
-    if (!session || event.metaKey || event.ctrlKey || event.altKey) return false;
+    if (!session || event.metaKey) return false;
+
+    if (event.ctrlKey || event.altKey) {
+      if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        send({ kind: "word-left" });
+        return true;
+      }
+      if (event.key === "ArrowRight") {
+        event.preventDefault();
+        send({ kind: "word-right" });
+        return true;
+      }
+      return false;
+    }
 
     if (event.key === "Backspace") {
       event.preventDefault();
@@ -390,9 +408,22 @@ export function App() {
       return true;
     }
 
+    if (event.key === "Delete") {
+      event.preventDefault();
+      send({ kind: "delete" });
+      return true;
+    }
+
     if (event.key === "Enter") {
       event.preventDefault();
       submitActiveLine();
+      return true;
+    }
+
+    const movementKind = MOVEMENT_KINDS[event.key as keyof typeof MOVEMENT_KINDS];
+    if (movementKind) {
+      event.preventDefault();
+      send({ kind: movementKind });
       return true;
     }
 
@@ -410,6 +441,10 @@ export function App() {
 
     if (nativeEvent.inputType === "deleteContentBackward") {
       eraseCharacter();
+      return;
+    }
+    if (nativeEvent.inputType === "deleteContentForward") {
+      send({ kind: "delete" });
       return;
     }
     if (nativeEvent.inputType === "insertLineBreak") {
@@ -589,6 +624,11 @@ export function App() {
 
           const { participant } = row;
           const isOwnLine = participant.participantId === session.participantId;
+          // The caret rides on the echo; only the author's client draws it.
+          // Mid-line it underlines the code point under it instead of adding
+          // a block, so the text does not shift sideways.
+          const codePoints = isOwnLine ? Array.from(participant.text) : [];
+          const caret = Math.min(participant.caret, codePoints.length);
           return (
             <div
               className="chat-line live-line"
@@ -597,10 +637,20 @@ export function App() {
               data-document-order={row.order}
               style={{ color: participant.color }}
             >
-              {participant.text}
-              {isOwnLine ? (
-                <span className="caret" aria-label="Your typing position"> </span>
-              ) : null}
+              {isOwnLine && caret < codePoints.length ? (
+                <>
+                  {codePoints.slice(0, caret).join("")}
+                  <span className="caret-char" aria-label="Your typing position">{codePoints[caret]}</span>
+                  {codePoints.slice(caret + 1).join("")}
+                </>
+              ) : (
+                <>
+                  {participant.text}
+                  {isOwnLine ? (
+                    <span className="caret" aria-label="Your typing position"> </span>
+                  ) : null}
+                </>
+              )}
             </div>
           );
         })}

@@ -15,9 +15,9 @@ Describe implemented behavior there; keep future proposals in these tasks.
 
 ## Recommended implementation order
 
-Tasks 1, 4, 6, 7, 10, 11, 12, and 13 are done and tasks 8 and 9 are closed; see
-their checkboxes. Keep task numbers stable; execute the remaining open tasks
-in this order:
+Tasks 1, 4, 6, 7, 10, 11, 12, 13, and 14 are done and tasks 8 and 9 are
+closed; see their checkboxes. Keep task numbers stable; execute the remaining
+open tasks in this order:
 
 | Order | Task | Reason |
 | --- | --- | --- |
@@ -488,7 +488,7 @@ Close the GitHub issue when the task is done.
 
 ## 14. Edit the live line with arrows, Delete, Home, and End
 
-- [ ] **Requested feature**
+- [x] **Requested feature** (done: server-owned `liveCaret` echoed as `caret` on `live`; keystroke kinds `left`, `right`, `word-left`, `word-right`, `home`, `end`, `delete`; `char` inserts at the caret; client maps Arrow/Home/End/Delete and Ctrl/Alt+Arrows; mid-line the caret underlines the code point under it)
 - **Source:** [GitHub issue #3](https://github.com/kappa/remart-bbs-chat/issues/3).
 - **Depends on:** task 5 (the code-point deletion unit). Do task 5 first.
 - **Location:**

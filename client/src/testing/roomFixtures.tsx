@@ -12,8 +12,8 @@ export function storeSession(session = SESSION) {
   sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));
 }
 
-export function idle(entry: RosterEntry): LiveLine { return { ...entry, row: null, text: '' }; }
-export function typing(entry: RosterEntry, row: number, text: string): LiveLine { return { ...entry, row, text }; }
+export function idle(entry: RosterEntry): LiveLine { return { ...entry, row: null, text: '', caret: 0 }; }
+export function typing(entry: RosterEntry, row: number, text: string, caret = Array.from(text).length): LiveLine { return { ...entry, row, text, caret }; }
 
 export function line(id: string, row: number, text: string, author: RosterEntry = alice, committedAt = 2): CommittedLine {
   return { id, row, text, handle: author.handle, color: author.color, committedAt };

@@ -105,7 +105,14 @@ The following describes the current implementation and its regression baseline.
   roster `slot` never determines transcript order.
 - The first character claims a row, Enter commits in place, backspacing to
   empty keeps the row, and an idle participant has no shared row (their own
-  client shows a local caret preview). Enter on an empty line is valid.
+  client shows a local caret preview). The server owns each participant's
+  caret (`liveCaret`), a code-point index into the live line echoed as
+  `caret` on `live`: `char` inserts at it and moves it right, `backspace`
+  and `delete` remove the code point before/after it, and the movement kinds
+  (`left`, `right`, `word-left`, `word-right`, `home`, `end`) move it in
+  code-point units, word boundaries being whitespace. Movement is a no-op
+  echo that never claims a row, and only the author's client renders the
+  caret. Enter on an empty line is valid.
 - Text renders only from server echo. Keystrokes are numbered per participant,
   applied in order on one socket, replayed after reconnect, ignored when
   replayed, and reported as `seq-gap` when lost. Nothing renders before the
