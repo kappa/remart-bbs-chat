@@ -15,25 +15,21 @@ Describe implemented behavior there; keep future proposals in these tasks.
 
 ## Recommended implementation order
 
-Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 19, and 21 are done and tasks 8 and 9
-are closed; see their checkboxes. Keep task numbers stable; the table below
-lists only the open tasks, in the order to execute them:
+Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 16, 19, 21, 26, 27, 28, and 29
+are done and tasks 8 and 9 are closed; see their checkboxes. Keep task
+numbers stable; the table below lists only the open tasks, in the order
+to execute them:
 
 | Order | Task | Reason |
 | --- | --- | --- |
 | 1 | 23 — Preserve the room session across reload | Confirmed by code and browser coverage; settle reload/closed-tab lifecycle before implementation. |
-| 2 | 26 — Chrome/Linux transcript font | Confirmed platform regression against the mandatory monospace design. |
-| 3 | 29 — Remove character counter | Small sidebar cleanup; independent. |
-| 4 | 28 — Replace command buttons with Help | Small sidebar cleanup; preserve typed commands and explicit Leave. |
-| 5 | 27 — Report a problem link | Small sidebar addition; independent. |
-| 6 | 24 — Favicon | Small static asset; independent. |
-| 7 | 16 — Clickable URLs | Row rendering; independent. |
-| 8 | 22 — Join notice in the page title | Small client notification feature; independent of audible notifications. |
-| 9 | 25 — Mention-handle autocomplete | Client input UI; land before mention styling so both share token rules. |
-| 10 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 11 | 20 — Restore the join sound | Confirmed flaky. Test first; tasks 15 and 17 wait for it. |
-| 12 | 15 — Join-sound switch | Needs a reliable chirp from task 20. |
-| 13 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
+| 2 | 24 — Favicon | Small static asset; independent. |
+| 3 | 22 — Join notice in the page title | Small client notification feature; independent of audible notifications. |
+| 4 | 25 — Mention-handle autocomplete | Client input UI; land before mention styling so both share token rules. |
+| 5 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 6 | 20 — Restore the join sound | Confirmed flaky. Test first; tasks 15 and 17 wait for it. |
+| 7 | 15 — Join-sound switch | Needs a reliable chirp from task 20. |
+| 8 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
 
 ## Working a task
 
@@ -626,7 +622,7 @@ Close the GitHub issue when the task is done.
 
 ## 16. Make URLs in transcript lines clickable
 
-- [ ] **Requested feature**
+- [x] **Requested feature** (done: render-time link splitter for committed lines; manually verified, GitHub issue #5 closed)
 - **Source:** [GitHub issue #5](https://github.com/kappa/remart-bbs-chat/issues/5).
 - **Location:** `client/src/App.tsx` transcript row rendering; possibly a
   small pure helper next to `client/src/documentLines.ts`.
@@ -1122,7 +1118,7 @@ GitHub issue numbers and these task numbers stable.
 
 ## 26. Keep the transcript monospace in Chrome on Linux
 
-- [ ] **Bug, browser compatibility**
+- [x] **Bug, browser compatibility** (done: transcript rows consolidated on var(--mono) with a Linux-available fallback; verified in Chrome on Linux, GitHub issue #14 closed)
 - **Source:** [GitHub issue #14](https://github.com/kappa/remart-bbs-chat/issues/14).
 - **Confirmed requirement:** The issue describes the desired face as
   “sans-serif,” but `docs/DESIGN.md` requires monospace and the terminal layout
@@ -1149,7 +1145,7 @@ GitHub issue numbers and these task numbers stable.
 
 ## 27. Add a “Report a problem” sidebar link
 
-- [ ] **Requested feature**
+- [x] **Requested feature** (done: roster-footer anchor to the issue form; manually verified, GitHub issue #15 closed)
 - **Source:** [GitHub issue #15](https://github.com/kappa/remart-bbs-chat/issues/15).
 - **Location:** `client/src/App.tsx` roster footer; `client/src/theme.css`;
   `client/src/App.roster.test.tsx`.
@@ -1171,7 +1167,7 @@ GitHub issue numbers and these task numbers stable.
 
 ## 28. Replace the duplicate sidebar command buttons with Help
 
-- [ ] **Requested UI cleanup**
+- [x] **Requested UI cleanup** (done: single Help control replacing the [l][?][q] row; manually verified, GitHub issue #16 closed)
 - **Source:** [GitHub issue #16](https://github.com/kappa/remart-bbs-chat/issues/16).
 - **Location:** `client/src/App.tsx` roster footer and help overlay;
   `client/src/theme.css` command-button layout; roster/rendering tests and
@@ -1195,7 +1191,7 @@ GitHub issue numbers and these task numbers stable.
 
 ## 29. Remove the sidebar character counter
 
-- [ ] **Requested UI cleanup**
+- [x] **Requested UI cleanup** (done: counter element, styles, and derived value removed; manually verified, GitHub issue #17 closed)
 - **Source:** [GitHub issue #17](https://github.com/kappa/remart-bbs-chat/issues/17).
 - **Location:** `client/src/App.tsx` `ownText` and `.char-counter` rendering;
   `client/src/theme.css`; `client/src/App.roster.test.tsx`.
