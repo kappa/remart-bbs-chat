@@ -98,6 +98,7 @@ async function main() {
       type: async (s) => { for (const ch of s) await t.key(ch); },
       focus: () => t.eval(`document.querySelector('.keyboard-capture')?.focus(), !!document.activeElement?.classList.contains('keyboard-capture')`),
       reload: () => cdp.send('Page.reload', {}, sessionId),
+      goto: (url) => cdp.send('Page.navigate', { url }, sessionId),
     };
     return t;
   };
@@ -155,16 +156,29 @@ async function main() {
   await alice.focus(); await alice.type('l'); await alice.key('Enter', ENTER);
   check('"l" Enter shows "Roster refreshed"', await alice.waitFor(has('Roster refreshed')));
 
-  // A reload fires pagehide, whose leave beacon removes Bob; the reloaded
-  // page's ?room=1 then joins him again as a new participant.
+  // A reload sends no leave: the reloaded page reconnects with the stored
+  // session and keeps its participant, live text, and sequence position,
+  // and the observer sees no leave/join lines. Same for a plain-URL load.
+  await bob.focus(); await bob.type('xx');
+  check('Bob live "xx" visible in both tabs before reload',
+    await bob.waitFor(`${text('.live-line')}.includes('xx')`) && await alice.waitFor(`${text('.live-line')}.includes('xx')`));
   const bobIdBefore = await bob.eval(participantId);
+  const aliceCommittedBefore = JSON.stringify(await alice.eval(text('.committed-line')));
   await bob.reload();
-  check('Bob reload: Alice sees "* Bob left" then "* Bob joined" (pagehide beacon, then auto-rejoin)',
-    await alice.waitFor(`${text('.committed-line')}.slice(-2).join('|') === '* Bob left|* Bob joined'`, 8000), JSON.stringify(await alice.eval(text('.committed-line'))));
-  check('Bob reload: back in the room as a new participant with the stored history and a fresh announcement',
-    await bob.waitFor(`${inRoom} && ${text('.committed-line')}.join('|') === '* Alice joined|* Bob joined|h|abcd|* Bob left|* Bob joined'`, 8000) && (await bob.eval(participantId)) !== bobIdBefore, JSON.stringify(await bob.eval(text('.committed-line'))));
-  await bob.focus(); await bob.type('yo'); await bob.key('Enter', ENTER);
-  check('Bob types after reload: "yo" committed in both tabs', await bob.waitFor(`${text('.committed-line')}.includes('yo')`) && await alice.waitFor(`${text('.committed-line')}.includes('yo')`));
+  check('Bob ?room reload: same participant ID',
+    await bob.waitFor(inRoom, 8000) && (await bob.eval(participantId)) === bobIdBefore, `before=${bobIdBefore} after=${await bob.eval(participantId)}`);
+  check('Bob ?room reload: live "xx" restored in both tabs',
+    await bob.waitFor(`${text('.live-line')}.includes('xx')`, 8000) && await alice.waitFor(`${text('.live-line')}.includes('xx')`, 8000));
+  check('Bob ?room reload: Alice transcript gains no leave/join lines',
+    JSON.stringify(await alice.eval(text('.committed-line'))) === aliceCommittedBefore, JSON.stringify(await alice.eval(text('.committed-line'))));
+  await bob.goto(`http://localhost:${PORT}/`);
+  check('Bob plain-URL load: same participant ID',
+    await bob.waitFor(inRoom, 8000) && (await bob.eval(participantId)) === bobIdBefore, `after=${await bob.eval(participantId)}`);
+  check('Bob plain-URL load: live "xx" restored; Alice transcript still unchanged',
+    await bob.waitFor(`${text('.live-line')}.includes('xx')`, 8000) && JSON.stringify(await alice.eval(text('.committed-line'))) === aliceCommittedBefore);
+  await bob.focus(); await bob.type('yy'); await bob.key('Enter', ENTER);
+  check('Bob types after reload: "xxyy" committed in both tabs (sequence continues)',
+    await bob.waitFor(`${text('.committed-line')}.includes('xxyy')`) && await alice.waitFor(`${text('.committed-line')}.includes('xxyy')`));
 
   await alice.focus(); await alice.type('q'); await alice.key('Enter', ENTER);
   check('"q" Enter returns Alice to the lobby', await alice.waitFor(has('ROOMS')));

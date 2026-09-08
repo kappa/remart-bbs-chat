@@ -31,8 +31,7 @@ docs as part of the relevant change.
 - `client/src/useRoomConnection.ts`: React binding between the connection and
   app events.
 - `client/src/protocol.ts`: wire message types.
-- `client/src/api.ts`: REST client for rooms, join, leave, roster, and
-  page-exit leave requests.
+- `client/src/api.ts`: REST client for rooms, join, leave, and roster.
 - `client/src/documentLines.ts`: document row ordering and character helpers.
 - `client/src/theme.css`: terminal appearance and responsive layout.
 - `client/src/main.tsx`: React entry point and QueryClient provider.
@@ -136,6 +135,9 @@ The following describes the current implementation and its regression baseline.
   stale cleanup), announces, broadcasts `committed` then `roster`, and closes
   the socket. The server pings sockets every 12 seconds;
   silence past 40 seconds is stale, swept every 15 seconds and on join.
+  Reloads and closed tabs never leave deliberately: the stored session
+  reconnects as the same participant with live state intact, while a truly
+  closed tab lingers until the stale sweep (up to about a minute).
 - Handles are unique case-insensitively across all rooms; rooms allow up to
   ten participants. Browser storage is prototype session convenience. The
   `?name=` override must not overwrite the remembered default handle.

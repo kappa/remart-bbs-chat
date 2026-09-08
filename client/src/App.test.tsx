@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { App } from './App';
 import { api } from './api';
+import { renderJoined } from './testing/roomFixtures';
 
 vi.mock('./api', () => ({
   api: {
@@ -14,7 +15,6 @@ vi.mock('./api', () => ({
     getRoster: vi.fn(),
     getRoomState: vi.fn(),
   },
-  keepaliveApi: { leaveRoom: vi.fn() }
 }));
 
 function createTestQueryClient(){
@@ -83,5 +83,15 @@ describe('Lobby rendering', ()=>{
     renderApp();
     const input = await screen.findByLabelText(/handle/i) as HTMLInputElement;
     expect(input.value).toBe('Bob');
+  });
+});
+
+describe('Session lifecycle (task 23)', ()=>{
+  it('pagehide sends no leave request; the stored session stays', async ()=>{
+    const { unmount } = await renderJoined();
+    window.dispatchEvent(new Event('pagehide'));
+    expect(api.leaveRoom).not.toHaveBeenCalled();
+    expect(sessionStorage.getItem('remart-bbs-chat.session')).not.toBeNull();
+    unmount();
   });
 });

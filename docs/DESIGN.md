@@ -103,6 +103,13 @@ are not a design input.
 - The server pings each socket every 12 seconds; a participant silent for
   40 seconds is cleaned up. Cleanup preserves a disconnected participant's
   non-empty unsent text; only abandoned empty rows may disappear.
+- Reloading must not look like leaving, and browsers cannot reliably tell a
+  reload from a tab close — so the client sends no leave on page exit at
+  all. A reload reconnects with the stored session; a closed tab lingers
+  until the stale sweep. This trades prompt closed-tab departure (up to
+  about a minute of ghost presence) for reload continuity with no timers,
+  no provisional state, and no replacement race between a delayed leave
+  beacon and an already reconnected socket.
 - Duplicate display names are rejected case-insensitively. There is no
   name-reclaim flow: holding a name is holding it.
 

@@ -8,7 +8,7 @@ import {
   type FormEvent,
   type UIEvent,
 } from "react";
-import { api, keepaliveApi } from "./api";
+import { api } from "./api";
 import { computeDocumentLines, isValidChar } from "./documentLines";
 import { splitLinks } from "./links";
 import { sortedCommitted } from "./roomState";
@@ -226,17 +226,6 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [session]);
 
-  // Page-hide leaves the room; the open socket is presence
-  useEffect(() => {
-    if (!session) return;
-    const currentSession = session;
-    const leaveOnPageHide = () => {
-      void keepaliveApi.leaveRoom({ roomId: currentSession.roomId, participantId: currentSession.participantId, token: currentSession.token });
-    };
-    window.addEventListener("pagehide", leaveOnPageHide);
-    return () => window.removeEventListener("pagehide", leaveOnPageHide);
-  }, [session]);
-
   useEffect(() => {
     if (!feedback) return;
     const timer = window.setTimeout(() => setFeedback(""), 2000);
@@ -406,6 +395,9 @@ export function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [handle, joining, session]);
 
+  // The only deliberate exits: reloads and closed tabs never leave, so a
+  // reload reconnects with the stored session and token while a closed tab
+  // lingers until the server's stale sweep.
   const leave = () => {
     if (!session) return;
     api.leaveRoom({ roomId: session.roomId, participantId: session.participantId, token: session.token })

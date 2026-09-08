@@ -224,10 +224,9 @@ added, the participant's socket is closed, and remaining sockets receive the
 `committed` messages and then `roster`. If the room empties it is deleted
 without broadcasts.
 
-On `pagehide`, the browser sends this same JSON as an `application/json` Blob via
-`navigator.sendBeacon`. If unavailable or throwing, it falls back to a POST fetch
-with `keepalive:true`. A false return from `sendBeacon` does not trigger the
-fallback. The client does not inspect the leave response on this exit path.
+The browser sends no leave on page exit. A reload reconnects with the
+stored session and token (see [Presence and lifetime](#presence-and-lifetime));
+only explicit Leave and the `q` command end the session at once.
 
 ## WebSocket message reference
 
@@ -343,7 +342,8 @@ so `" q"` is committed as text.
 - Enter on an idle participant: commit an empty line on a fresh row.
 - A second `hello` for a participant that already has a socket replaces the
   old socket, which is closed. This covers a tab reconnecting before its old
-  connection times out.
+  connection times out, and every page reload: the reloaded page authenticates
+  with its stored credentials and continues as the same participant.
 - Anything other than `hello` as the first message, or a `hello` with a bad
   token: `error unauthorized` and close. `hello` for a room or participant
   that no longer exists: `error unknown-participant` and close.
@@ -390,7 +390,22 @@ never had a participant are not removed by the stale sweep.
   stale occupants before they have been deleted.
 - Socket close does not remove the participant: a dropped connection does not
   end the session, and a reconnecting tab replaces its old socket via `hello`.
-  Closing the tab leaves through the `pagehide` beacon instead.
+  Closing the tab sends no leave either: the participant, handle, color, and
+  slot persist until the stale sweep removes them, normally 40–55 seconds
+  after last activity (40-second threshold, 15-second sweep, plus cleanup on
+  join). Joining the same handle from a fresh tab can fail until then;
+  explicit Leave and `q` release it promptly.
+- A reload reconnects with the stored session and keeps participant ID,
+  token, color, slot, live row, text, and caret, sequence position, and the
+  join-history boundary. It emits no leave/join announcements and no newcomer
+  notification. The new socket replaces the old one through the existing
+  authenticated `hello`, receives a recovery snapshot, and resumes numbering
+  from the snapshot's `nextSeq`. A reload after participant removal or server
+  restart cannot restore the session (`unknown-participant` ends it).
+- Full document reload recovers only server-confirmed state. Unacknowledged
+  keystrokes live in page memory and are lost on reload (same-document
+  reconnect still replays them), and scrollback is capped at the last 100
+  committed records filtered by the original join boundary.
 - Stale cleanup preserves nonempty text at the last-seen time, matching the
   leave path above.
 - Rooms are deleted when leave or stale cleanup removes their last participant.

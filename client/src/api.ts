@@ -20,15 +20,3 @@ export const api = {
   joinRoom:(args:{roomId:number, handle:string}):Promise<{participant:JoinedParticipant, roster:RosterEntry[], room:Room}> => fetchJson('/api/join', {method:'POST', body:JSON.stringify(args)}),
   leaveRoom:(args:{roomId:number, participantId:number, token:string}):Promise<{freed:boolean}> => fetchJson('/api/leave', {method:'POST', body:JSON.stringify(args)}),
 };
-
-export const keepaliveApi = {
-  leaveRoom:(args:{roomId:number, participantId:number, token:string})=>{
-    try{
-      const blob = new Blob([JSON.stringify(args)], {type:'application/json'});
-      // @ts-ignore
-      if(navigator.sendBeacon) return navigator.sendBeacon('/api/leave', blob);
-    }catch{}
-    fetch('/api/leave', {method:'POST', body:JSON.stringify(args), headers:{'Content-Type':'application/json'}, keepalive:true}).catch(()=>{});
-    return true;
-  }
-};

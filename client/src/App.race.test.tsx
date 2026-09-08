@@ -9,7 +9,6 @@ import { renderJoined, serverSend, snapshot, line, alice, bob, idle, typing, sto
 
 vi.mock('./api', () => ({
   api: { listRooms: vi.fn(), getOrCreateRoom: vi.fn(), joinRoom: vi.fn(), leaveRoom: vi.fn(), getRoster: vi.fn() },
-  keepaliveApi: { leaveRoom: vi.fn() },
 }));
 
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.clearAllMocks(); (api.listRooms as any).mockResolvedValue({ rooms: [] }); });

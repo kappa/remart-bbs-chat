@@ -22,6 +22,10 @@ name prefixes on ordinary lines because the color tells you who is who.
 - Two people cannot use the same name in a room (case-insensitive). There is no
   way to take someone's name while they hold it.
 - You are in one room at a time.
+- Reloading the page keeps you in the room as the same person, with your
+  unfinished line intact, and nobody sees you leave and rejoin. Only
+  explicit Leave and the `q` command depart at once; closing the tab
+  without leaving holds your name for up to about a minute.
 
 ## The shared transcript
 

@@ -97,6 +97,36 @@ describe('Socket handshake', () => {
     assert.deepEqual(participants.map((p) => p.handle), ['Alice']);
   });
 
+  it('a reload keeps identity and live state and stays silent to observers (task 23)', async () => {
+    const roomId = await newRoom(baseUrl);
+    const alice = await join(baseUrl, roomId, 'Alice');
+    const bob = await join(baseUrl, roomId, 'Bob');
+    const observer = await connect(wsUrl, bob);
+    const first = await connect(wsUrl, alice);
+    first.send({ type: 'key', seq: 1, kind: 'char', char: 'h' });
+    first.send({ type: 'key', seq: 2, kind: 'char', char: 'i' });
+    await first.next((m) => m.type === 'live' && m.text === 'hi');
+    // Reload: the old socket drops without a leave, then the same
+    // credentials return on a new socket.
+    first.ws.close();
+    await first.closed;
+    observer.cursor = observer.messages.length;
+    const second = await connect(wsUrl, alice);
+    assert.equal(second.snapshot.you.participantId, alice.participantId);
+    const own = second.snapshot.liveLines.find((l) => l.participantId === alice.participantId);
+    assert.equal(own.text, 'hi');
+    assert.equal(own.row !== null, true);
+    assert.equal(second.snapshot.you.nextSeq, 3);
+    await settle(100);
+    // Only committed/roster would announce a departure or newcomer; an
+    // in-flight live echo from before the cursor is not a join/leave signal.
+    const noise = observer.messages.slice(observer.cursor).filter((m) =>
+      m.type === 'committed' || m.type === 'roster');
+    assert.deepEqual(noise, []);
+    second.ws.close();
+    observer.ws.close();
+  });
+
   it('malformed JSON after hello gets invalid-message and the socket stays open', async () => {
     const roomId = await newRoom(baseUrl);
     const alice = await join(baseUrl, roomId, 'Alice');
