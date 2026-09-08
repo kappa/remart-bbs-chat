@@ -945,54 +945,100 @@ GitHub issue numbers and these task numbers stable.
 
 - [ ] **Bug, session lifecycle**
 - **Source:** [GitHub issue #11](https://github.com/kappa/remart-bbs-chat/issues/11).
-- **Confirmed current behavior:** `App.tsx` sends authenticated
-  `POST /api/leave` from `pagehide`. The repository's two-tab browser check
-  records the consequence on reload: the server removes the participant,
-  observers receive leave and join announcements, and the reloaded page joins
-  under a new participant ID. The rejoin is fast and can look seamless unless
-  the identity and transcript events are inspected. A focused check against
-  the deployed app confirmed both effects: the participant ID changed and the
-  observer received one leave and one join announcement.
-- **Latest browser report:** Manual Firefox reloads reconnect without visible
-  leave/join announcements. In Google Chrome, using the Reload button can
-  destroy the session and return the user to the lobby, making this a severe
-  Chrome regression rather than only cosmetic transcript noise.
+- **Confirmed cause and browser discrepancy (2026-09-07):** `App.tsx` sends
+  authenticated `POST /api/leave` from `pagehide`, so reload deliberately
+  removes the participant. With a plain `/` URL the client returns to the
+  lobby; `?room=...` enables automatic rejoin under a new ID/token, which can
+  look seamless but adds leave/join announcements. The existing browser check
+  uses this autojoin URL and expects the broken behavior. Both outcomes were
+  reproduced locally in headless Chrome 151 and Firefox 153; Firefox also
+  failed when joining directly through the plain-URL lobby. The deployed
+  JavaScript checksum matched the tested local build.
+  The user's Firefox reload really does preserve the session: their Network
+  panel shows the leave POST as **Blocked By NoScript**, followed by a new
+  WebSocket connection. This explains the discrepancy; it is not evidence of
+  Firefox-specific session recovery. Earlier production checks also recorded
+  changed participant identity and leave/join announcements.
+- **Desired behavior confirmed by the user:** Make the seamless reload seen
+  with NoScript work in all supported browsers without an extension. Preserve
+  the existing participant and server-confirmed live state; do not announce
+  a departure or a newcomer just because the document reloads. Check the
+  lifecycle side effects below before considering the task complete.
 - **Location:** `client/src/App.tsx` page-exit effect;
   `client/src/api.ts` `keepaliveApi`; `client/src/connection.ts` reconnect and
   replay; `server/index.js` leave/removal and socket replacement;
   `check-browser.mjs`; session lifecycle sections in maintained docs.
-- **Decision required before implementation:** Browsers do not reliably tell
-  `pagehide` caused by reload from one caused by closing the tab. Choose and
-  document one policy:
-  1. Stop sending leave on `pagehide`; reload reconnects with the existing
-     token, while a closed tab remains in the roster until the existing
-     40-second stale timeout.
-  2. Make page-exit leave provisional for a short server-side grace period;
-     reconnecting with the same token cancels removal, while a truly closed tab
-     leaves after the grace period. This keeps prompt closed-tab departure but
-     adds timer and lifecycle complexity.
-  The issue settles reload continuity, but not this closed-tab tradeoff. Do not
-  implement until the grace policy and duration are approved and recorded.
-- **Required behavior after that decision:** Reload retains the same
+- **Recommended solution:** Remove the `pagehide` leave effect and retire
+  `keepaliveApi` and its obsolete test mocks. Keep authenticated HTTP Leave
+  and `q` immediate. Use the existing socket-close/reconnect/stale-cleanup
+  behavior: socket closure keeps the participant, and a new authenticated
+  `hello` replaces its old socket and receives a recovery snapshot. No new
+  endpoint, provisional-leave timer, or shorter grace interval is proposed.
+  This is the simplest design and avoids a delayed exit beacon invalidating
+  an already reconnected session. Do not substitute `visibilitychange` or
+  `beforeunload` as a leave trigger; switching tabs must not leave the room.
+  `pagehide.persisted` identifies cache preservation, not a reliable
+  reload-versus-tab-close distinction (see
+  [MDN pagehide](https://developer.mozilla.org/en-US/docs/Web/API/Window/pagehide_event)).
+- **Required continuity:** While the server participant still exists and
+  browser session storage is available, reload retains the same
   participant ID, token, color, slot, live row, caret, sequence position, and
   join-history boundary. It emits no leave/join announcements and no newcomer
   notification. The new socket replaces the old socket through the existing
-  authenticated `hello`, receives a recovery snapshot, and replays only
-  unacknowledged input. Explicit Leave and the `q` command remain immediate.
-- **Tests:** First reverse the two-tab browser check's current reload
-  expectations: record Bob's participant ID, live text/caret, and Alice's
-  transcript; reload Bob; assert the ID and live state survive and Alice
-  receives no leave/join lines. Add server tests for reconnect during the
-  chosen policy window, explicit leave remaining immediate, expiry when no
-  reconnect arrives, and replacement of the old socket. Add client coverage
-  that reload does not deliberately invalidate the stored session or enqueue
-  duplicate keystrokes. Manually verify the Reload button in current Chrome
-  and Firefox: both must remain in the room with the same participant identity
-  and no leave/join announcements.
+  authenticated `hello` and resumes numbering from the snapshot's `nextSeq`.
+  Experimentally suppressing only the beacon preserved all these fields in
+  both local browsers; typing afterward inserted at the preserved mid-line
+  caret and appeared correctly to the observer.
+- **Side effects and scope to verify:**
+  - Closing a tab or navigating away holds its participant, handle, color,
+    and slot until stale cleanup. The existing threshold is 40 seconds since
+    last activity, with a sweep every 15 seconds and cleanup on join: periodic
+    removal normally occurs 40–55 seconds after last activity, not exactly
+    40 seconds after tab closure. Room occupancy listings can stop counting a
+    stale participant before physical removal. Joining the same handle from
+    a fresh tab can temporarily fail. Explicit Leave/`q` releases it promptly.
+  - Abandoned nonempty live text stays live until cleanup, which commits it
+    with the last-activity timestamp and announces departure once. A room with
+    no open sockets survives until its final participant is removed. Reload of a sole
+    occupant must preserve the room as well as the participant.
+  - A reload after participant removal or server restart cannot restore the
+    session. Keep the existing session-ended handling; do not promise an
+    unlimited reconnect window. Backgrounding alone must not deliberately
+    leave, though a suspended browser may still expire through inactivity.
+  - Back/forward-cache restoration can resume an existing document rather
+    than mount a new app. Verify that its socket resumes/reconnects and the UI
+    updates; add lifecycle recovery only if this test exposes a gap. Do not
+    leave two active reconnect loops or let an old socket's close clear its
+    replacement. Duplicated tabs with copied credentials must not gain a
+    second active server socket; tab duplication is not a new session feature.
+  - The pending keystroke queue lives only in JavaScript memory. Ordinary
+    socket reconnect replays unacknowledged input, but full document reload
+    destroys that queue. Server-applied input survives in the snapshot;
+    input that never reached the server can be lost. The proposed fix covers
+    server-confirmed state; durable pending-input replay needs separate
+    persistence work and must not be claimed as an effect of removing leave.
+  - Accumulated client scrollback also lives in memory. Reload receives at
+    most the last 100 committed records, filtered by the original join
+    boundary. Preserving that boundary does not restore unlimited scrollback
+    or scroll position. Document this reload limit; broader history recovery
+    would require separate work. Same-document reconnect must keep its
+    existing scrollback-preservation behavior.
+- **Tests before completion:** Work test-first. Reverse the browser check's
+  reload expectations and cover both plain `/` and `?room=...` URLs. Assert
+  ID/token and live row/text/caret survive, subsequent typing uses the correct
+  sequence, and the observer sees no extra commit, leave/join, or newcomer
+  notification. Include repeated reloads, a sole occupant, and a slow socket
+  reconnect before removal. Cover no leave request on pagehide, immediate
+  explicit Leave/`q`, abandoned-tab expiry and handle/slot release, stale live
+  text preservation, old-socket replacement, and session-ended handling after
+  removal/restart. Exercise back/forward navigation and background/foreground
+  recovery. Run both suites, typecheck, build, and the browser check; verify
+  actual Reload controls in Chrome and Firefox with leave requests unblocked,
+  and Safari/WebKit where available, reporting any untested browser coverage.
 - **Protocol docs:** Update `docs/PROTOCOL.md` page-exit, socket-close,
-  reconnect, leave, and presence rules to match the selected policy. Update
+  reconnect, leave, and presence rules to match implemented behavior. Update
   `docs/USER_EXPERIENCE.md`, `docs/DESIGN.md`, and the session-lifecycle rule in
-  `AGENTS.md`. Remove or revise `keepaliveApi` if pagehide leave is retired.
+  `AGENTS.md`, including the closed-tab delay and full-reload recovery limits.
 
 ## 24. Add a favicon for tab identification
 
@@ -1001,19 +1047,39 @@ GitHub issue numbers and these task numbers stable.
 - **Confirmed current behavior:** `client/index.html` deliberately uses
   `<link rel="icon" href="data:,">`, which suppresses favicon requests and
   leaves the tab without an identifying icon.
-- **Location:** `client/index.html`; a new static asset under `client/public/`;
+- **Location:** `client/index.html`; new static assets under `client/public/`;
   client build verification.
-- **Suggested implementation:** Add a small repo-native SVG favicon matching
-  the black terminal background and cyan/gray DOS palette, and point the icon
-  link at its root-relative built path. Keep it legible at 16×16 and avoid a
-  generated bitmap or dependency. Include a dark background in the asset so
-  it remains recognizable in light and dark browser chrome.
+- **Artwork:** Create one square, repo-native SVG master matching the black
+  terminal background and cyan/gray DOS palette. Use a simple symbol that is
+  legible at 16×16; avoid fine detail and lengthy lettering. Include a dark
+  background so it remains recognizable in light and dark browser chrome.
+  Export the raster fallback from this master; no image-generation or runtime
+  dependency is needed.
+- **Recommended asset set:**
+  - `favicon.svg`: square vector, for example `viewBox="0 0 32 32"`. This is
+    the main icon and scales without separate raster sizes.
+  - `favicon.ico`: one ICO file containing **16×16 and 32×32** images for
+    compatibility fallback.
+  - Optional `apple-touch-icon.png`: **180×180 PNG** for iPhone/iPad Home
+    Screen shortcuts. This is separate from the browser-tab requirement.
+  SVG plus ICO is sufficient for this task; a web-app manifest and larger
+  installable-app icons are outside its scope.
+- **Implementation:** Put the assets under `client/public/`. Replace the
+  empty icon link in `client/index.html` with root-relative `rel="icon"`
+  links for the ICO fallback and SVG (`type="image/svg+xml"`, `sizes="any"`).
+  If the optional Apple icon is included, give it a separate
+  `rel="apple-touch-icon"` link with `sizes="180x180"`. See
+  [MDN icon links](https://developer.mozilla.org/en-US/docs/Web/HTML/Reference/Attributes/rel)
+  and [Apple Home Screen icons](https://developer.apple.com/library/archive/documentation/AppleApplications/Reference/SafariWebContent/ConfiguringWebApplications/ConfiguringWebApplications.html).
 - **Acceptance:** The deployed tab displays the Remart icon instead of the
   browser's generic document icon; direct navigation and reload request the
-  icon successfully; the client build copies it to the expected path.
-- **Tests:** Add a focused static/build assertion for the icon link and asset,
-  then run the client build. Manually inspect the deployed icon at ordinary
-  tab size in Chrome and Firefox.
+  icons successfully; the client build copies them to the expected paths.
+- **Tests:** Add a focused static/build assertion for the icon links and
+  assets, then run the client build. Verify both asset URLs return the actual
+  images and the ICO contains the intended sizes. Manually inspect the
+  deployed icon at ordinary tab size in Chrome and Firefox, in light and dark
+  browser themes; check Safari where available. Account for favicon caching
+  when verifying an updated icon.
 - **Docs:** No product-document or protocol change is required.
 
 ## 25. Autocomplete participant handles after `@`
@@ -1145,3 +1211,68 @@ GitHub issue numbers and these task numbers stable.
 - **Tests:** Replace the existing counter assertion with absence coverage and
   keep a focused assertion that an oversized paste still shows its warning.
 - **Docs:** Remove any counter mention if one exists; no protocol change.
+
+## 30. Use the standard 16-color VGA text-mode palette
+
+- [ ] **Bug, participant colors**
+- **Source:** User report and six-participant roster screenshot in this
+  conversation. Participants 4 and 6 appear almost the same green.
+- **Confirmed cause:** `server/index.js` defines a custom ten-color
+  `ANSI_COLORS` array. Its fourth color is `#00FF00` and its sixth is
+  `#80FF00`; distinct hex values do not make these reliably distinguishable
+  at the chat's small text size. Existing allocation tests check uniqueness
+  but do not catch the visual similarity.
+- **Requested solution:** Replace the custom palette with the standard
+  **16-color VGA text-mode palette**. The reference values below are in VGA
+  index order; participant assignment uses the bright-first order specified
+  separately below (not a configurable modern terminal theme):
+
+  | Index | Color | Hex | Index | Color | Hex |
+  | --- | --- | --- | --- | --- | --- |
+  | 0 | Black | `#000000` | 8 | Dark gray | `#555555` |
+  | 1 | Blue | `#0000AA` | 9 | Light blue | `#5555FF` |
+  | 2 | Green | `#00AA00` | 10 | Light green | `#55FF55` |
+  | 3 | Cyan | `#00AAAA` | 11 | Light cyan | `#55FFFF` |
+  | 4 | Red | `#AA0000` | 12 | Light red | `#FF5555` |
+  | 5 | Magenta | `#AA00AA` | 13 | Light magenta | `#FF55FF` |
+  | 6 | Brown | `#AA5500` | 14 | Yellow | `#FFFF55` |
+  | 7 | Light gray | `#AAAAAA` | 15 | White | `#FFFFFF` |
+
+  Reference: [PC Emulation Book palette tables](https://book.martypc.net/appendices/video/palettes).
+- **Location:** `server/index.js` palette and join-time color allocation;
+  `test-server-api.js` and palette-dependent fixtures; roster, live text,
+  committed text, and announcement rendering for visual verification.
+- **User-selected assignment order:** Start with the seven bright colors,
+  including white: light blue, light green, light cyan, light red, light
+  magenta, yellow, white (VGA indices 9–15). Follow with blue, green, cyan,
+  red, magenta, brown, light gray (indices 1–7), then dark gray (index 8).
+  Black (index 0) is reference-only and must not appear in the assignable
+  array. The resulting 15-color allocation order is:
+
+  ```text
+  #5555FF #55FF55 #55FFFF #FF5555 #FF55FF #FFFF55 #FFFFFF
+  #0000AA #00AA00 #00AAAA #AA0000 #AA00AA #AA5500 #AAAAAA #555555
+  ```
+
+  Assign the first unused color in this order. Dark gray is placed last so
+  it does not displace one of the first seven bright colors. VGA includes
+  dark colors and normal/bright pairs, so inspect readability and distinction
+  at actual text size without substituting custom hues or changing this order.
+  Preserve unique colors among active participants, stable colors across
+  reconnects, and safe reuse after departure. Keep the room capacity at ten.
+- **Acceptance:** Every newly assigned participant color is a standard VGA
+  value and is visible on black. Roster swatches, handles, live lines, and
+  announcements agree on the assigned color. Committed lines retain their
+  stored author-color snapshots after departure and color reuse; do not
+  recolor historical lines by looking up a current roster slot.
+- **Tests:** Work test-first. Verify the exact allocation order, including
+  white as the seventh color and no black. Exercise ten joins to check unique,
+  nonblack VGA foreground assignments in the specified order. Cover
+  departure/rejoin color reuse, reconnect stability, and preservation of
+  committed author colors. Visually inspect six- and ten-participant rosters
+  and transcripts at ordinary text size on black in Chrome and Firefox;
+  specifically revisit the reported fourth/sixth-participant confusion.
+- **Docs:** Record the standard palette and foreground selection policy in
+  `docs/DESIGN.md`; update palette claims elsewhere if needed. Keep the wire
+  color representation unchanged and synchronize `docs/PROTOCOL.md` if its
+  documented color guarantees change.
