@@ -15,19 +15,19 @@ Describe implemented behavior there; keep future proposals in these tasks.
 
 ## Recommended implementation order
 
-Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 22, 26, 27,
-28, and 29 are done and tasks 8 and 9 are closed; see their checkboxes.
+Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 22, 23, 26,
+27, 28, and 29 are done and tasks 8 and 9 are closed; see their
+checkboxes.
 Keep task numbers stable; the table below lists only the open tasks, in
 the order to execute them:
 
 | Order | Task | Reason |
 | --- | --- | --- |
-| 1 | 23 — Preserve the room session across reload | Confirmed by code and browser coverage; settle reload/closed-tab lifecycle before implementation. |
-| 2 | 24 — Favicon | Small static asset; independent. |
-| 3 | 25 — Mention-handle autocomplete | Client input UI; land before mention styling so both share token rules. |
-| 4 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 5 | 20 — Restore the join sound | Confirmed flaky. Test first; task 17 waits for it. |
-| 6 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
+| 1 | 24 — Favicon | Small static asset; independent. |
+| 2 | 25 — Mention-handle autocomplete | Client input UI; land before mention styling so both share token rules. |
+| 3 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 4 | 20 — Restore the join sound | Confirmed flaky. Test first; task 17 waits for it. |
+| 5 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
 
 ## Working a task
 
@@ -937,7 +937,7 @@ GitHub issue numbers and these task numbers stable.
 
 ## 23. Preserve the participant session across page reload
 
-- [ ] **Bug, session lifecycle**
+- [x] **Bug, session lifecycle** (done: no leave on page exit; stored session reconnects as the same participant with live state intact; manually verified, GitHub issue #11 closed)
 - **Source:** [GitHub issue #11](https://github.com/kappa/remart-bbs-chat/issues/11).
 - **Confirmed cause and browser discrepancy (2026-09-07):** `App.tsx` sends
   authenticated `POST /api/leave` from `pagehide`, so reload deliberately
