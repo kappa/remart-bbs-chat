@@ -106,6 +106,9 @@ as `?`, and a Leave button leaves the room like `q`.
   separating space so the end never glues to the start) for five
   seconds before returning to normal. A Join sound checkbox in the
   sidebar turns the chirp off; the choice is remembered in that browser.
+  Browsers only allow sound after you have clicked or typed in the page,
+  so a tab you have just opened or reloaded stays silent until your first
+  keystroke or click; the title still rotates.
 - If your connection drops in the middle of a line, your unsent text is kept,
   not thrown away.
 - A status line reads "Connecting..." or "Reconnecting..." while the room is

@@ -16,7 +16,7 @@ Describe implemented behavior there; keep future proposals in these tasks.
 ## Recommended implementation order
 
 Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 22, 23, 24,
-26, 27, 28, 29, and 30 are done and tasks 8 and 9 are closed; see
+26, 27, 28, 29, and 30 are done and tasks 8, 9, and 20 are closed; see
 their checkboxes.
 Keep task numbers stable; the table below lists only the open tasks, in
 the order to execute them:
@@ -25,8 +25,7 @@ the order to execute them:
 | --- | --- | --- |
 | 1 | 25 — Mention-handle autocomplete | Client input UI; land before mention styling so both share token rules. |
 | 2 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 3 | 20 — Restore the join sound | Confirmed flaky. Test first; task 17 waits for it. |
-| 4 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
+| 3 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
 
 ## Working a task
 
@@ -598,7 +597,7 @@ Close the GitHub issue when the task is done.
 
 ## 15. Add a client-side switch to turn off the join sound
 
-- [x] **Requested feature** (done: Join sound checkbox gating the chirp at its call site, persisted in localStorage; manually verified, GitHub issue #4 closed. Task 20's audible-path hardening still applies to the same call site when it lands)
+- [x] **Requested feature** (done: Join sound checkbox gating the chirp at its call site, persisted in localStorage; manually verified, GitHub issue #4 closed. Task 20 was later closed WONTFIX, so no audible-path change is pending at this call site)
 - **Source:** [GitHub issue #4](https://github.com/kappa/remart-bbs-chat/issues/4).
 - **Location:** `client/src/App.tsx` join-sound playback and the roster
   footer; browser `localStorage`.
@@ -802,7 +801,22 @@ Close the GitHub issue when the task is done.
 
 ## 20. Restore the join sound
 
-- [ ] **Bug, confirmed flaky, low priority**
+- [x] **Bug, confirmed flaky, low priority** (closed WONTFIX 2026-09-08: not
+  a defect in the chirp code; the browser autoplay policy mutes a tab that has
+  had no click or keystroke since its last page load. GitHub issue #9 closed
+  as not planned with the root cause.)
+- **Root cause:** `playJoinSound` creates a new AudioContext per newcomer.
+  Without sticky user activation the browser creates it `suspended`, nothing
+  scheduled on it renders, and it is closed 600 ms later; Chrome logs "The
+  AudioContext was not allowed to start". After one click or keystroke in the
+  tab the context is `running` and both oscillators end on schedule, background
+  tab included. Activation is per page load, and a reload restores the session
+  with no gesture, so the reloaded tab looks alive but is silent until touched.
+  Reproduction: reload the listening tab, do not touch it, join from another
+  tab (silent); press a key in it, join again (chirp). Measured in headless
+  Chrome 151 by wrapping AudioContext to record state, `statechange`, and
+  oscillator `ended` events. Keeping one context and calling `resume()` before
+  each chirp would not change what a user hears here, so no code change.
 - **Source:** [GitHub issue #9](https://github.com/kappa/remart-bbs-chat/issues/9).
 - **Location:** `client/src/App.tsx` `playJoinSound`;
   `client/src/useRoomConnection.ts` newcomer detection (`onNewcomer` fires on
