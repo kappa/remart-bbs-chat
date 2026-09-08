@@ -15,20 +15,19 @@ Describe implemented behavior there; keep future proposals in these tasks.
 
 ## Recommended implementation order
 
-Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 26, 27, 28, and
-29 are done and tasks 8 and 9 are closed; see their checkboxes. Keep
-task numbers stable; the table below lists only the open tasks, in the
-order to execute them:
+Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 22, 26, 27,
+28, and 29 are done and tasks 8 and 9 are closed; see their checkboxes.
+Keep task numbers stable; the table below lists only the open tasks, in
+the order to execute them:
 
 | Order | Task | Reason |
 | --- | --- | --- |
 | 1 | 23 — Preserve the room session across reload | Confirmed by code and browser coverage; settle reload/closed-tab lifecycle before implementation. |
 | 2 | 24 — Favicon | Small static asset; independent. |
-| 3 | 22 — Join notice in the page title | Small client notification feature; independent of audible notifications. |
-| 4 | 25 — Mention-handle autocomplete | Client input UI; land before mention styling so both share token rules. |
-| 5 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 6 | 20 — Restore the join sound | Confirmed flaky. Test first; task 17 waits for it. |
-| 7 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
+| 3 | 25 — Mention-handle autocomplete | Client input UI; land before mention styling so both share token rules. |
+| 4 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 5 | 20 — Restore the join sound | Confirmed flaky. Test first; task 17 waits for it. |
+| 6 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
 
 ## Working a task
 
@@ -899,7 +898,7 @@ GitHub issue numbers and these task numbers stable.
 
 ## 22. Show join notices in the browser-tab title
 
-- [ ] **Requested feature**
+- [x] **Requested feature** (done: five-second "<handle> joined " marquee with code-point rotation, restored on timeout/leave/unmount; manually verified with the separator, GitHub issue #10 closed)
 - **Source:** [GitHub issue #10](https://github.com/kappa/remart-bbs-chat/issues/10).
 - **Confirmed current behavior:** The document title is always
   `Remart BBS Chat`; joining participants affect only the transcript, roster,
