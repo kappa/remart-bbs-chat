@@ -15,19 +15,18 @@ Describe implemented behavior there; keep future proposals in these tasks.
 
 ## Recommended implementation order
 
-Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 22, 23, 26,
-27, 28, and 29 are done and tasks 8 and 9 are closed; see their
+Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 22, 23, 24,
+26, 27, 28, and 29 are done and tasks 8 and 9 are closed; see their
 checkboxes.
 Keep task numbers stable; the table below lists only the open tasks, in
 the order to execute them:
 
 | Order | Task | Reason |
 | --- | --- | --- |
-| 1 | 24 — Favicon | Small static asset; independent. |
-| 2 | 25 — Mention-handle autocomplete | Client input UI; land before mention styling so both share token rules. |
-| 3 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 4 | 20 — Restore the join sound | Confirmed flaky. Test first; task 17 waits for it. |
-| 5 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
+| 1 | 25 — Mention-handle autocomplete | Client input UI; land before mention styling so both share token rules. |
+| 2 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 3 | 20 — Restore the join sound | Confirmed flaky. Test first; task 17 waits for it. |
+| 4 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
 
 ## Working a task
 
@@ -1036,7 +1035,7 @@ GitHub issue numbers and these task numbers stable.
 
 ## 24. Add a favicon for tab identification
 
-- [ ] **Requested feature**
+- [x] **Requested feature**
 - **Source:** [GitHub issue #12](https://github.com/kappa/remart-bbs-chat/issues/12).
 - **Confirmed current behavior:** `client/index.html` deliberately uses
   `<link rel="icon" href="data:,">`, which suppresses favicon requests and
