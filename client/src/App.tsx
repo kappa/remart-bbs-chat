@@ -168,7 +168,9 @@ export function App() {
   };
   const startTitleNotice = (handle: string) => {
     clearTitleNotice();
-    let rotated = `${handle} joined`;
+    // The trailing space separates the end from the start as the text
+    // rotates, so "joined" is never glued to the handle.
+    let rotated = `${handle} joined `;
     document.title = rotated;
     titleTimers.current.interval = window.setInterval(() => {
       // Rotate by code point so an emoji handle never splits a surrogate.

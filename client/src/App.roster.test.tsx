@@ -94,6 +94,10 @@ describe('Roster', () => {
       vi.advanceTimersByTime(400);
       expect(document.title).not.toBe(first);
       expect(document.title).not.toBe('Remart BBS Chat');
+      for (let i = 0; i < 10; i++) {
+        vi.advanceTimersByTime(400);
+        expect(document.title).not.toMatch(/joined\S/);
+      }
       vi.advanceTimersByTime(5000);
       expect(document.title).toBe('Remart BBS Chat');
     } finally {

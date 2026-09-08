@@ -98,7 +98,8 @@ as `?`, and a Leave button leaves the room like `q`.
   roughly ten participants. A Report a problem link at its foot opens the
   issue form in a new tab.
 - When someone new joins, you hear a short two-tone chirp, and the
-  browser-tab title rotates their name as `<handle> joined` for five
+  browser-tab title rotates their name as `<handle> joined` (with a
+  separating space so the end never glues to the start) for five
   seconds before returning to normal. A Join sound checkbox in the
   sidebar turns the chirp off; the choice is remembered in that browser.
 - If your connection drops in the middle of a line, your unsent text is kept,
