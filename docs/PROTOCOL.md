@@ -74,16 +74,18 @@ Join and leave announcements are ordinary committed records whose content is
 flag. Stored colors survive the author's departure. Colors are allocated from:
 
 ```json
-["#5555FF","#55FF55","#55FFFF","#FF5555","#FF55FF","#FFFF55","#FFFFFF",
- "#0000AA","#00AA00","#00AAAA","#AA0000","#AA00AA","#AA5500","#AAAAAA","#555555"]
+["#A6D854","#FFD92F","#FC8D62","#8080FF","#00FFFF",
+ "#E78AC3","#8DA0CB","#FF00FF","#FF5555","#FFFFFF",
+ "#66C2A5","#867924","#926D75","#00A600","#108A92",
+ "#D70082","#9E59BA","#CABE9A","#E3CAFF","#BE5900"]
 ```
 
-These are the assignable foregrounds of the standard 16-color VGA text-mode
-palette in participant assignment order: the seven bright colors first,
-then the dark colors and light gray, then dark gray last. Black is never
-assigned. The first participant to join takes the first unused color in
-this order, so the first seven arrivals are the bright set including
-white.
+This is the approved hybrid participant palette in assignment order: six
+ColorBrewer Set2 colors, selected original/VGA colors, white tenth, and
+nine Glasbey additions. Black is excluded. The first participant to join
+takes the first unused color in this order. Rooms hold ten participants,
+so only the first ten are assigned; the tail is reserved for a possible
+future capacity increase.
 
 The browser stores
 `{roomId, roomName, participantId, handle, token, joinedAt, historyFromRow}`
@@ -155,10 +157,10 @@ Example response (timestamps illustrative):
 {
   "participant": {
     "id":1,"roomId":1,"handle":"Alice","token":"9f2c…(32 hex chars)",
-    "color":"#5555FF","slot":0,"liveRow":null,"joinedAt":1788600000000,
+    "color":"#A6D854","slot":0,"liveRow":null,"joinedAt":1788600000000,
     "historyFromRow":0
   },
-  "roster":[{"handle":"Alice","color":"#5555FF","slot":0}],
+  "roster":[{"handle":"Alice","color":"#A6D854","slot":0}],
   "room":{"id":1,"name":"Room 1"}
 }
 ```

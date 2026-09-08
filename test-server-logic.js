@@ -13,7 +13,7 @@ const {
   globalHandleExists,
   rooms,
   resetForTests,
-  VGA_COLORS,
+  PARTICIPANT_COLORS,
   HEARTBEAT_TIMEOUT_MS,
 } = mod;
 
@@ -75,7 +75,7 @@ describe('Room creation and occupancy', () => {
       r1.participants.set(i + 1, {
         id: i + 1,
         handle: `user${i}`,
-        color: VGA_COLORS[i % VGA_COLORS.length],
+        color: PARTICIPANT_COLORS[i % PARTICIPANT_COLORS.length],
         slot: i,
         liveRow: null,
         liveText: '',
@@ -94,7 +94,7 @@ describe('Room creation and occupancy', () => {
       r1.participants.set(i + 100, {
         id: i + 100,
         handle: `user${i}`,
-        color: VGA_COLORS[i],
+        color: PARTICIPANT_COLORS[i],
         slot: i,
         liveRow: null,
         liveText: '',
@@ -119,7 +119,7 @@ describe('Room creation and occupancy', () => {
     const stale = {
       id: 999,
       handle: 'stale',
-      color: VGA_COLORS[0],
+      color: PARTICIPANT_COLORS[0],
       slot: 0,
       liveRow: null,
       liveText: '',
@@ -166,7 +166,7 @@ describe('cleanupStaleInRoom preserving nonempty', () => {
     const stale = {
       id: 10,
       handle: 'bob',
-      color: VGA_COLORS[0],
+      color: PARTICIPANT_COLORS[0],
       slot: 0,
       liveRow: 5,
       liveText: 'hello',
@@ -185,7 +185,7 @@ describe('cleanupStaleInRoom preserving nonempty', () => {
     const keeper = {
       id: 1,
       handle: 'keeper',
-      color: VGA_COLORS[1],
+      color: PARTICIPANT_COLORS[1],
       slot: 1,
       liveRow: null,
       liveText: '',
@@ -196,7 +196,7 @@ describe('cleanupStaleInRoom preserving nonempty', () => {
     const staleFull = {
       id: 2,
       handle: 'bob',
-      color: VGA_COLORS[0],
+      color: PARTICIPANT_COLORS[0],
       slot: 0,
       liveRow: 3,
       liveText: 'typed but not committed',
@@ -207,7 +207,7 @@ describe('cleanupStaleInRoom preserving nonempty', () => {
     const staleEmpty = {
       id: 3,
       handle: 'empty',
-      color: VGA_COLORS[2],
+      color: PARTICIPANT_COLORS[2],
       slot: 2,
       liveRow: null,
       liveText: '',

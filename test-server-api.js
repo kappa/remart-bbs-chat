@@ -2,7 +2,7 @@ import { describe, it, before, after, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { serverModule, startServer, closeAllSockets, post, newRoom, join, connect } from './test-support.js';
 
-const { resetForTests, rooms, VGA_COLORS } = serverModule;
+const { resetForTests, rooms, PARTICIPANT_COLORS } = serverModule;
 let baseUrl, wsUrl, closeServer;
 
 before(async () => { ({ baseUrl, wsUrl, close: closeServer } = await startServer()); });
@@ -79,23 +79,34 @@ describe('Join semantics', () => {
       const { json } = await post(baseUrl, '/api/join', { roomId, handle: `u${i}` });
       colors.add(json.participant.color);
       slots.add(json.participant.slot);
-      assert.ok(VGA_COLORS.includes(json.participant.color));
+      assert.ok(PARTICIPANT_COLORS.includes(json.participant.color));
     }
     assert.equal(colors.size, 5);
     assert.equal(slots.size, 5);
   });
 
-  it('assigns VGA colors bright-first with white seventh and no black', async () => {
+  it('uses the approved 20-color hybrid palette in order', async () => {
+    const expected = ['#A6D854', '#FFD92F', '#FC8D62', '#8080FF', '#00FFFF',
+      '#E78AC3', '#8DA0CB', '#FF00FF', '#FF5555', '#FFFFFF',
+      '#66C2A5', '#867924', '#926D75', '#00A600', '#108A92',
+      '#D70082', '#9E59BA', '#CABE9A', '#E3CAFF', '#BE5900'];
+    assert.deepEqual(PARTICIPANT_COLORS, expected);
+    assert.equal(PARTICIPANT_COLORS[9], '#FFFFFF');
+    assert.equal(PARTICIPANT_COLORS[10], '#66C2A5');
+    assert.equal(new Set(PARTICIPANT_COLORS).size, 20);
+    assert.ok(!PARTICIPANT_COLORS.includes('#000000'));
+  });
+
+  it('assigns the first ten hybrid colors in order; an eleventh join fails at capacity', async () => {
     const roomId = await newRoom(baseUrl);
-    const expected = ['#5555FF', '#55FF55', '#55FFFF', '#FF5555', '#FF55FF',
-      '#FFFF55', '#FFFFFF', '#0000AA', '#00AA00', '#00AAAA'];
     const got = [];
     for (let i = 0; i < 10; i++) {
       const { json } = await post(baseUrl, '/api/join', { roomId, handle: `u${i}` });
       got.push(json.participant.color);
     }
-    assert.deepEqual(got, expected);
-    assert.ok(!got.includes('#000000'));
+    assert.deepEqual(got, PARTICIPANT_COLORS.slice(0, 10));
+    assert.equal(got[9], '#FFFFFF');
+    assert.equal((await post(baseUrl, '/api/join', { roomId, handle: 'extra' })).status, 409);
   });
 
   it('reuses a departed participant color for the next join', async () => {

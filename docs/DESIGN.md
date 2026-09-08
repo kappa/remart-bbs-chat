@@ -87,13 +87,13 @@ are not a design input.
 
 - Color is assigned at join and identifies the author; that is why ordinary
   rows carry no name prefix.
-- Author colors are the assignable foregrounds of the standard 16-color VGA
-  text-mode palette: the seven bright colors first (light blue, light
-  green, light cyan, light red, light magenta, yellow, white), then blue,
-  green, cyan, red, magenta, brown, and light gray, then dark gray last.
-  Black is never assigned. The first unused color in that order goes to
-  each newcomer, so the first seven arrivals are the bright set, all
-  readable on the black terminal background.
+- Author colors come from the approved 20-color hybrid participant
+  palette: six ColorBrewer Set2 colors, selected original/VGA colors,
+  white tenth, and nine Glasbey additions, all chosen for distinction at
+  chat text size on the black terminal background. Black is excluded.
+  The first unused color in that order goes to each newcomer. Rooms hold
+  ten participants, so the eleventh color onward waits for a possible
+  future capacity increase.
 - Every committed line stores a color snapshot, so history keeps the right
   colors after people leave. Join/leave announcements use the person's own
   color for the same reason.

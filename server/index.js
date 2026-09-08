@@ -10,12 +10,15 @@ import { fileURLToPath } from 'url';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Standard 16-color VGA text-mode palette in participant assignment order:
-// the seven bright colors first (white seventh), then the dark colors and
-// light gray, then dark gray last. Black is reference-only and never
-// assigned, so it is not in this array.
-const VGA_COLORS = ["#5555FF","#55FF55","#55FFFF","#FF5555","#FF55FF","#FFFF55","#FFFFFF",
-  "#0000AA","#00AA00","#00AAAA","#AA0000","#AA00AA","#AA5500","#AAAAAA","#555555"];
+// Approved 20-color hybrid participant palette in assignment order: six
+// ColorBrewer Set2 colors, selected original/VGA colors, white tenth, and
+// nine Glasbey additions. Black is excluded. Rooms hold ten participants,
+// so only the first ten are reachable today; the tail is reserved for a
+// possible future capacity increase.
+const PARTICIPANT_COLORS = ["#A6D854","#FFD92F","#FC8D62","#8080FF","#00FFFF",
+  "#E78AC3","#8DA0CB","#FF00FF","#FF5555","#FFFFFF",
+  "#66C2A5","#867924","#926D75","#00A600","#108A92",
+  "#D70082","#9E59BA","#CABE9A","#E3CAFF","#BE5900"];
 const HEARTBEAT_TIMEOUT_MS = 40000;
 
 function isValidChar(char){
@@ -353,7 +356,7 @@ app.post('/api/join', (req,res)=>{
   if(slot>=10) return res.status(409).json({error:'room full'});
 
   const usedColors = new Set(Array.from(room.participants.values()).map(p=>p.color));
-  const color = VGA_COLORS.find(c=>!usedColors.has(c)) || VGA_COLORS[slot%VGA_COLORS.length];
+  const color = PARTICIPANT_COLORS.find(c=>!usedColors.has(c)) || PARTICIPANT_COLORS[slot%PARTICIPANT_COLORS.length];
 
   const now = new Date();
   const joinRowIdx = greatestRow(room)+1;
@@ -492,7 +495,7 @@ export {
   server,
   wss,
   rooms,
-  VGA_COLORS,
+  PARTICIPANT_COLORS,
   HEARTBEAT_TIMEOUT_MS,
   isValidChar,
   getRoom,

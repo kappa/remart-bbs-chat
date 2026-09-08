@@ -3,12 +3,12 @@
 import { readFileSync } from 'node:fs';
 
 const source = readFileSync(new URL('./server/index.js', import.meta.url), 'utf8');
-const colors = JSON.parse(source.match(/const VGA_COLORS = (\[[\s\S]*?\]);/)[1]);
+const colors = JSON.parse(source.match(/const PARTICIPANT_COLORS = (\[[\s\S]*?\]);/)[1]);
 const original = ['#00FFFF', '#FFFF00', '#FF00FF', '#00FF00', '#FF8000',
   '#80FF00', '#FF0080', '#00FF80', '#8080FF', '#FF8080'];
 const palettes = [
   { name: 'Original', colors: original, note: 'The original ten colors, in assignment order.' },
-  { name: 'Current VGA', colors, note: 'The current server allocation order; rooms use at most ten colors.' },
+  { name: 'Current hybrid', colors, note: 'The current server allocation order; rooms use at most ten colors.' },
   { name: 'ColorBrewer Set2', colors: ['#66C2A5', '#FC8D62', '#8DA0CB', '#E78AC3', '#A6D854', '#FFD92F', '#E5C494', '#B3B3B3'],
     note: 'Eight published colors. Softer orange, lime, and periwinkle-like tones.', url: 'https://d3js.org/d3-scale-chromatic/categorical#schemeSet2' },
   { name: 'Paul Tol Vibrant', colors: ['#EE7733', '#0077BB', '#33BBEE', '#EE3377', '#CC3311', '#009988', '#BBBBBB'],
