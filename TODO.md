@@ -16,8 +16,8 @@ Describe implemented behavior there; keep future proposals in these tasks.
 ## Recommended implementation order
 
 Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 22, 23, 24,
-26, 27, 28, and 29 are done and tasks 8 and 9 are closed; see their
-checkboxes.
+26, 27, 28, 29, and 30 are done and tasks 8 and 9 are closed; see
+their checkboxes.
 Keep task numbers stable; the table below lists only the open tasks, in
 the order to execute them:
 
@@ -1207,7 +1207,7 @@ GitHub issue numbers and these task numbers stable.
 
 ## 30. Use the approved 20-color hybrid participant palette
 
-- [ ] **Bug, participant colors**
+- [x] **Bug, participant colors** (done: approved 20-color hybrid palette assigned first-unused with white tenth; verified in Chrome and Firefox at full rooms; no GitHub issue for this task)
 - **Source and current state:** The user's six-participant screenshot exposed
   the original custom palette's similar green/lime assignments. Commit
   `b644e14` replaced that palette with bright-first VGA colors as initially
