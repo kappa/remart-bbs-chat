@@ -15,10 +15,10 @@ Describe implemented behavior there; keep future proposals in these tasks.
 
 ## Recommended implementation order
 
-Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 16, 19, 21, 26, 27, 28, and 29
-are done and tasks 8 and 9 are closed; see their checkboxes. Keep task
-numbers stable; the table below lists only the open tasks, in the order
-to execute them:
+Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 26, 27, 28, and
+29 are done and tasks 8 and 9 are closed; see their checkboxes. Keep
+task numbers stable; the table below lists only the open tasks, in the
+order to execute them:
 
 | Order | Task | Reason |
 | --- | --- | --- |
@@ -27,9 +27,8 @@ to execute them:
 | 3 | 22 — Join notice in the page title | Small client notification feature; independent of audible notifications. |
 | 4 | 25 — Mention-handle autocomplete | Client input UI; land before mention styling so both share token rules. |
 | 5 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 6 | 20 — Restore the join sound | Confirmed flaky. Test first; tasks 15 and 17 wait for it. |
-| 7 | 15 — Join-sound switch | Needs a reliable chirp from task 20. |
-| 8 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
+| 6 | 20 — Restore the join sound | Confirmed flaky. Test first; task 17 waits for it. |
+| 7 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
 
 ## Working a task
 
@@ -601,7 +600,7 @@ Close the GitHub issue when the task is done.
 
 ## 15. Add a client-side switch to turn off the join sound
 
-- [ ] **Requested feature**
+- [x] **Requested feature** (done: Join sound checkbox gating the chirp at its call site, persisted in localStorage; manually verified, GitHub issue #4 closed. Task 20's audible-path hardening still applies to the same call site when it lands)
 - **Source:** [GitHub issue #4](https://github.com/kappa/remart-bbs-chat/issues/4).
 - **Location:** `client/src/App.tsx` join-sound playback and the roster
   footer; browser `localStorage`.
