@@ -1206,67 +1206,93 @@ GitHub issue numbers and these task numbers stable.
   keep a focused assertion that an oversized paste still shows its warning.
 - **Docs:** Remove any counter mention if one exists; no protocol change.
 
-## 30. Use the standard 16-color VGA text-mode palette
+## 30. Use the approved 20-color hybrid participant palette
 
 - [ ] **Bug, participant colors**
-- **Source:** User report and six-participant roster screenshot in this
-  conversation. Participants 4 and 6 appear almost the same green.
-- **Confirmed cause:** `server/index.js` defines a custom ten-color
-  `ANSI_COLORS` array. Its fourth color is `#00FF00` and its sixth is
-  `#80FF00`; distinct hex values do not make these reliably distinguishable
-  at the chat's small text size. Existing allocation tests check uniqueness
-  but do not catch the visual similarity.
-- **Requested solution:** Replace the custom palette with the standard
-  **16-color VGA text-mode palette**. The reference values below are in VGA
-  index order; participant assignment uses the bright-first order specified
-  separately below (not a configurable modern terminal theme):
+- **Source and current state:** The user's six-participant screenshot exposed
+  the original custom palette's similar green/lime assignments. Commit
+  `b644e14` replaced that palette with bright-first VGA colors as initially
+  requested, but device testing found dark blue too dim, green/light green
+  and cyan/light green too similar, and the ordering unsatisfactory.
+  The user reviewed alternatives on black and approved the exact hybrid
+  below on **2026-09-08**. This replaces the earlier VGA-only requirement;
+  the server still needs to adopt the approved hybrid.
+- **Design requirements:** Colors should be visible on black, distinguish
+  authors at ordinary chat text size, and look appealing. Put the preferred,
+  clearly different colors first. Hex uniqueness alone does not establish
+  visual distinction. The approved palette combines six ColorBrewer Set2
+  colors, selected original/VGA colors, white, and nine Glasbey additions.
+- **Approved assignment order (one-based):**
 
-  | Index | Color | Hex | Index | Color | Hex |
-  | --- | --- | --- | --- | --- | --- |
-  | 0 | Black | `#000000` | 8 | Dark gray | `#555555` |
-  | 1 | Blue | `#0000AA` | 9 | Light blue | `#5555FF` |
-  | 2 | Green | `#00AA00` | 10 | Light green | `#55FF55` |
-  | 3 | Cyan | `#00AAAA` | 11 | Light cyan | `#55FFFF` |
-  | 4 | Red | `#AA0000` | 12 | Light red | `#FF5555` |
-  | 5 | Magenta | `#AA00AA` | 13 | Light magenta | `#FF55FF` |
-  | 6 | Brown | `#AA5500` | 14 | Yellow | `#FFFF55` |
-  | 7 | Light gray | `#AAAAAA` | 15 | White | `#FFFFFF` |
+  | Position | Color | Hex |
+  | --- | --- | --- |
+  | 1 | Set2 lime | `#A6D854` |
+  | 2 | Set2 yellow | `#FFD92F` |
+  | 3 | Set2 orange | `#FC8D62` |
+  | 4 | Original periwinkle | `#8080FF` |
+  | 5 | Pure cyan | `#00FFFF` |
+  | 6 | Set2 pink | `#E78AC3` |
+  | 7 | Set2 blue | `#8DA0CB` |
+  | 8 | Pure magenta | `#FF00FF` |
+  | 9 | VGA light red | `#FF5555` |
+  | 10 | White | `#FFFFFF` |
+  | 11 | Set2 teal | `#66C2A5` |
+  | 12 | Olive | `#867924` |
+  | 13 | Dusty rose | `#926D75` |
+  | 14 | Generated green | `#00A600` |
+  | 15 | Teal | `#108A92` |
+  | 16 | Raspberry | `#D70082` |
+  | 17 | Violet | `#9E59BA` |
+  | 18 | Sand | `#CABE9A` |
+  | 19 | Pale lavender | `#E3CAFF` |
+  | 20 | Burnt orange | `#BE5900` |
 
-  Reference: [PC Emulation Book palette tables](https://book.martypc.net/appendices/video/palettes).
+  ```js
+  ["#A6D854", "#FFD92F", "#FC8D62", "#8080FF", "#00FFFF",
+   "#E78AC3", "#8DA0CB", "#FF00FF", "#FF5555", "#FFFFFF",
+   "#66C2A5", "#867924", "#926D75", "#00A600", "#108A92",
+   "#D70082", "#9E59BA", "#CABE9A", "#E3CAFF", "#BE5900"]
+  ```
+
+- **Generation provenance:** The first eleven values were selected by the
+  user; the last nine were generated with Glasbey 0.3.0 using
+  `extend_palette(seed, palette_size=20, grid_size=64,
+  lightness_bounds=(40,90), chroma_bounds=(15,100), hue_bounds=(0,360),
+  optimize_palette=False)`. The seed was subsequently reordered by the user;
+  the generated tail kept its original order. The exact approved values
+  above are authoritative; do not regenerate or optimize them during
+  implementation. Generation was a design-time step, not an app dependency.
+  References: [ColorBrewer Set2](https://d3js.org/d3-scale-chromatic/categorical#schemeSet2),
+  [Glasbey extension](https://glasbey.readthedocs.io/en/latest/extending_palettes.html).
+  `preview-palette.mjs` includes the approved result alongside the earlier
+  palettes; run `node preview-palette.mjs > /tmp/remart-palette.html` to view it.
 - **Location:** `server/index.js` palette and join-time color allocation;
   `test-server-api.js` and palette-dependent fixtures; roster, live text,
   committed text, and announcement rendering for visual verification.
-- **User-selected assignment order:** Start with the seven bright colors,
-  including white: light blue, light green, light cyan, light red, light
-  magenta, yellow, white (VGA indices 9–15). Follow with blue, green, cyan,
-  red, magenta, brown, light gray (indices 1–7), then dark gray (index 8).
-  Black (index 0) is reference-only and must not appear in the assignable
-  array. The resulting 15-color allocation order is:
-
-  ```text
-  #5555FF #55FF55 #55FFFF #FF5555 #FF55FF #FFFF55 #FFFFFF
-  #0000AA #00AA00 #00AAAA #AA0000 #AA00AA #AA5500 #AAAAAA #555555
-  ```
-
-  Assign the first unused color in this order. Dark gray is placed last so
-  it does not displace one of the first seven bright colors. VGA includes
-  dark colors and normal/bright pairs, so inspect readability and distinction
-  at actual text size without substituting custom hues or changing this order.
-  Preserve unique colors among active participants, stable colors across
-  reconnects, and safe reuse after departure. Keep the room capacity at ten.
-- **Acceptance:** Every newly assigned participant color is a standard VGA
-  value and is visible on black. Roster swatches, handles, live lines, and
+- **Implementation and scope:** Replace `VGA_COLORS` with the exact approved
+  array and rename it to reflect participant colors rather than VGA. Keep
+  assignment as the first unused color in this order. Preserve unique colors
+  among active participants, stable colors across reconnects, and reuse after
+  departure. Black is excluded. The twenty-color array prepares for a possible
+  future capacity increase; **keep the room limit at ten in this task**.
+  Consequently white is the tenth assigned color and Set2 teal is eleventh,
+  reserved with the remaining tail for future capacity. Do not add a runtime
+  generator or color-selection dependency.
+- **Acceptance:** Newly assigned colors follow the approved array exactly.
+  Roster swatches, handles, live lines, and
   announcements agree on the assigned color. Committed lines retain their
   stored author-color snapshots after departure and color reuse; do not
   recolor historical lines by looking up a current roster slot.
-- **Tests:** Work test-first. Verify the exact allocation order, including
-  white as the seventh color and no black. Exercise ten joins to check unique,
-  nonblack VGA foreground assignments in the specified order. Cover
+- **Tests:** Work test-first. Verify all twenty palette values and their
+  order, including white tenth, Set2 teal eleventh, uniqueness, and no black.
+  Exercise ten joins to check actual assignments and that an eleventh join
+  still fails at capacity. Cover
   departure/rejoin color reuse, reconnect stability, and preservation of
   committed author colors. Visually inspect six- and ten-participant rosters
   and transcripts at ordinary text size on black in Chrome and Firefox;
-  specifically revisit the reported fourth/sixth-participant confusion.
-- **Docs:** Record the standard palette and foreground selection policy in
-  `docs/DESIGN.md`; update palette claims elsewhere if needed. Keep the wire
-  color representation unchanged and synchronize `docs/PROTOCOL.md` if its
-  documented color guarantees change.
+  compare with the approved preview and inspect the full twenty-color preview
+  separately without raising room capacity for the check.
+- **Docs:** Replace VGA-only claims in `docs/DESIGN.md` and
+  `docs/PROTOCOL.md` with the hybrid palette and first-unused assignment
+  policy; update other stale palette references and fixtures. Keep the wire
+  color representation and the ten-person capacity unchanged.
