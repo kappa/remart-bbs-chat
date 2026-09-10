@@ -224,7 +224,7 @@ export function App() {
   useEffect(() => () => { releaseSessionRef.current?.(); releaseSessionRef.current = null; }, []);
 
   const liveSession = session && claimedId === session.participantId ? session : null;
-  const { room, status, send, pending } = useRoomConnection(liveSession, {
+  const { room, status, send, sendPrivate, pending } = useRoomConnection(liveSession, {
     onCommand: (name) => {
       if (name === "help") setShowHelp(true);
       else if (name === "leave") endSession("");
@@ -235,6 +235,8 @@ export function App() {
       startTitleNotice(entry.handle);
     },
     onNotice: setWarning,
+    onPrivate: () => {},
+    onPrivateResult: () => {},
   });
 
   useEffect(() => () => {

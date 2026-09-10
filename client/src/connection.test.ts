@@ -197,6 +197,34 @@ describe('openRoomConnection', () => {
     ws.serverSend({ type: 'live', participantId: 10, row: 0, text: 'ab', caret: 2, seq: 2 });
     expect(connection.pendingCount()).toBe(0);
   });
+
+  it('sendPrivate transmits when open and leaves sequence numbers alone', () => {
+    const { connection } = open();
+    vi.runOnlyPendingTimers();
+    const ws = FakeWebSocket.latest();
+    ws.serverSend(snapshot(1));
+    expect(connection.sendPrivate(20, 'lunch?')).toBe(true);
+    connection.send({ kind: 'enter' });
+    expect(ws.sent.slice(1)).toEqual([
+      { type: 'private', to: 20, text: 'lunch?' },
+      { type: 'key', seq: 1, kind: 'enter' },
+    ]);
+  });
+
+  it('sendPrivate returns false before the snapshot and while reconnecting, and sends nothing later', () => {
+    const { connection } = open();
+    expect(connection.sendPrivate(20, 'early')).toBe(false);
+    vi.runOnlyPendingTimers();
+    const first = FakeWebSocket.latest();
+    first.serverSend(snapshot(1));
+    first.serverClose();
+    expect(connection.sendPrivate(20, 'gone')).toBe(false);
+    vi.runOnlyPendingTimers();
+    vi.runOnlyPendingTimers();
+    const second = FakeWebSocket.latest();
+    second.serverSend(snapshot(1));
+    expect(second.sent.filter((m) => m.type === 'private')).toEqual([]);
+  });
 });
 
 describe('socketUrl', () => {

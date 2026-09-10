@@ -5,7 +5,7 @@ export type RosterEntry = { participantId: number; handle: string; color: string
 export type LiveLine = RosterEntry & { row: number | null; text: string; caret: number };
 export type CommittedLine = { id: string; row: number; text: string; handle: string; color: string; committedAt: number };
 export type CommandName = 'help' | 'leave';
-export type ErrorCode = 'unauthorized' | 'unknown-participant' | 'seq-gap' | 'invalid-message';
+export type ErrorCode = 'unauthorized' | 'unknown-participant' | 'seq-gap' | 'invalid-message' | 'unknown-recipient';
 
 export type ServerMessage =
   | { type: 'snapshot'; roomId: number; you: { participantId: number; nextSeq: number }; liveLines: LiveLine[]; committed: CommittedLine[]; roster: RosterEntry[] }
@@ -13,7 +13,9 @@ export type ServerMessage =
   | { type: 'committed'; participantId: number | null; seq: number | null; line: CommittedLine }
   | { type: 'roster'; roster: RosterEntry[] }
   | { type: 'command'; name: CommandName }
-  | { type: 'error'; code: ErrorCode; expected?: number };
+  | { type: 'private'; from: number; handle: string; color: string; text: string }
+  | { type: 'private-sent'; to: number; handle: string }
+  | { type: 'error'; code: ErrorCode; expected?: number; to?: number };
 
 export type KeyInput =
   | { kind: 'char'; char: string }
@@ -28,4 +30,5 @@ export type KeyInput =
   | { kind: 'delete' };
 export type KeyMessage = { type: 'key'; seq: number } & KeyInput;
 export type PresenceMessage = { type: 'presence'; hidden: boolean };
-export type ClientMessage = { type: 'hello'; roomId: number; participantId: number; token: string } | KeyMessage | PresenceMessage;
+export type PrivateMessageOut = { type: 'private'; to: number; text: string };
+export type ClientMessage = { type: 'hello'; roomId: number; participantId: number; token: string } | KeyMessage | PresenceMessage | PrivateMessageOut;

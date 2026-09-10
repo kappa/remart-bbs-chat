@@ -15,6 +15,8 @@ export type RoomConnection = {
   pendingCount: () => number;
   // Reports tab visibility. Sent at once when open, and again after every snapshot.
   setHidden: (hidden: boolean) => void;
+  // Sends one private line now, or false when the socket is not open.
+  sendPrivate: (to: number, text: string) => boolean;
   close: () => void;
 };
 
@@ -121,6 +123,11 @@ export function openRoomConnection(credentials: ConnectionCredentials, handlers:
     setHidden(next) {
       hidden = next;
       sendPresence();
+    },
+    sendPrivate(to, text) {
+      if (!ready) return false;
+      transmit({ type: 'private', to, text });
+      return true;
     },
     close() {
       closed = true;
