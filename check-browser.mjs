@@ -4,7 +4,7 @@
 //
 //   npm run check:browser
 //
-// Alice and Bob join one room. Typing, Backspace, Enter, the ?, l, and q
+// Alice and Bob join one room. Typing, Backspace, Enter, the ? and q
 // commands, a page reload, and a server restart are exercised, then a second
 // room checks the 20-line join history window, and every observation is
 // printed as PASS or FAIL. Exit code 1 if anything failed.
@@ -154,7 +154,10 @@ async function main() {
   check('Escape closes help', await alice.waitFor(`!document.querySelector('.help-overlay')`));
 
   await alice.focus(); await alice.type('l'); await alice.key('Enter', ENTER);
-  check('"l" Enter shows "Roster refreshed"', await alice.waitFor(has('Roster refreshed')));
+  check('"l" Enter commits ordinary chat in both tabs',
+    await alice.waitFor(`${text('.committed-line')}.includes('l')`) && await bob.waitFor(`${text('.committed-line')}.includes('l')`),
+    `alice=${JSON.stringify(await alice.eval(text('.committed-line')))} bob=${JSON.stringify(await bob.eval(text('.committed-line')))}`);
+  check('"l" Enter shows no "Roster refreshed" feedback', !(await alice.eval(has('Roster refreshed'))));
 
   // A reload sends no leave: the reloaded page reconnects with the stored
   // session and keeps its participant, live text, and sequence position,

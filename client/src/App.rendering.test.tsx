@@ -159,7 +159,7 @@ describe('Rendering from server state', () => {
     // l + Enter should be sent as chat, not as a command
     expect(ws.keys().map((k) => [k.kind, k.char ?? ''])).toEqual([['char', 'l'], ['enter', '']]);
     // Server echoes the committed line
-    serverSend(ws, { type: 'committed', participantId: 10, seq: 1, line: { row: 0, text: 'l', color: '#fff', slot: 0 } });
+    serverSend(ws, { type: 'committed', participantId: 10, seq: 1, line: line('c1', 0, 'l') });
     expect(await screen.findByText('l')).toBeInTheDocument();
     // Help command still works
     await user.click(await screen.findByLabelText('Shared chat area'));

@@ -79,7 +79,7 @@ npm --prefix client test -- src/App.race.test.tsx
 
 `npm run check:browser` runs a two-tab end-to-end check (`check-browser.mjs`)
 in a headless Chrome driven over the DevTools protocol: typing, Backspace,
-Enter, the `?`, `l`, and `q` commands, a page reload, and a server restart.
+Enter, the `?` and `q` commands, a page reload, and a server restart.
 It needs a built client and a `google-chrome` binary (`CHROME` overrides) and
 is not part of `npm test`. Use it for changes to the typing protocol, the
 socket connection, or the transcript rendering; a plan's end-to-end step can
@@ -141,8 +141,9 @@ The following describes the current implementation and its regression baseline.
 - Handles are unique case-insensitively across all rooms; rooms allow up to
   ten participants. Browser storage is prototype session convenience. The
   `?name=` override must not overwrite the remembered default handle.
-- Commands `l`, `?`, and `q` are recognized by the server on Enter against the
-  exact live line (surrounding whitespace makes it chat). Unicode input
+- Commands `?` and `q` are recognized by the server on Enter against the
+  exact live line (surrounding whitespace makes it chat); a line containing
+  only `l` is ordinary chat. Unicode input
   passes through, paste is capped at 100 characters with a warning, and
   client and server character validation stay aligned. Backspace deletes one
   code point, matching the code-point input unit; a lone surrogate is never

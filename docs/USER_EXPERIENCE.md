@@ -85,16 +85,17 @@ name prefixes on ordinary lines because the color tells you who is who.
 
 ## Commands
 
-Typing exactly one character — `l`, `?`, or `q` — and pressing Enter runs a
+Typing exactly one character — `?` or `q` — and pressing Enter runs a
 command instead of sending chat:
 
-- `l` — refresh the participant roster.
 - `?` — show help.
 - `q` — leave the room.
 
-Anything longer than that single character is ordinary chat, even if it starts
+A line containing only `l` is ordinary chat. Anything longer than that single
+character is ordinary chat, even if it starts
 with one of those letters. A Help button in the sidebar opens the same help
-as `?`, and a Leave button leaves the room like `q`.
+as `?`, and a Leave button leaves the room like `q`. The roster updates
+automatically; no command refreshes it.
 
 ## Roster and presence
 

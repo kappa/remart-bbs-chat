@@ -263,7 +263,7 @@ server-owned caret, also described there.
   committed: Array<{ id: string, row: number, text: string, handle: string,
                      color: string, committedAt: number }>,
   roster: Array<{ participantId: number, handle: string, color: string, slot: number }> }
-{ type: "command", name: "roster" | "help" | "leave" }
+{ type: "command", name: "help" | "leave" }
 { type: "error", code: "unauthorized" | "unknown-participant" | "seq-gap" | "invalid-message",
   expected?: number }
 ```
@@ -316,11 +316,12 @@ recovers by resyncing.
 
 ### Commands
 
-Enter on a live line whose text is exactly `l`, `?`, or `q` does not commit.
+Enter on a live line whose text is exactly `?` or `q` does not commit.
 The server clears the live line, broadcasts `live` with empty text and
 `row: null`, and sends `command` to the sender. For `q` the server then runs
 the leave path (preserve nonempty text, announcement, roster) and closes the
-socket. Surrounding whitespace makes it ordinary chat: the comparison is exact,
+socket. A line containing only `l` is ordinary chat, committed through server
+echo. Surrounding whitespace makes it ordinary chat: the comparison is exact,
 so `" q"` is committed as text.
 
 ### Edge cases
@@ -340,7 +341,7 @@ so `" q"` is committed as text.
   the ends of the line is a no-op that still echoes and advances `seq`.
   Movement on an idle line claims no row; only `char` claims one. Enter
   commits the whole line regardless of caret position and resets the caret
-  to 0, and the `l`, `?`, `q` commands still match the whole line text.
+  to 0, and the `?`, `q` commands still match the whole line text.
 - Enter on an idle participant: commit an empty line on a fresh row.
 - A second `hello` for a participant that already has a socket replaces the
   old socket, which is closed. This covers a tab reconnecting before its old
@@ -366,7 +367,7 @@ so `" q"` is committed as text.
 | --- | --- |
 | Character or backspace | `live` |
 | Enter (non-command) | `committed`, then `live` (`row: null`, empty text) |
-| Command (`l`, `?`) | `live` (cleared), then `command` to the sender only |
+| Command (`?`) | `live` (cleared), then `command` to the sender only |
 | Command (`q`) | `live` (cleared), `command` to the sender, then the leave messages below; the sender's socket closes |
 | Join | `committed` (announcement), then `roster` to existing sockets; the newcomer receives the snapshot on `hello` |
 | Leave or stale cleanup with survivors | `committed` per preserved live line, `committed` (announcement), `roster` |
@@ -465,10 +466,9 @@ some input was lost".
 Session end: only `error unknown-participant` or `unauthorized`, the
 `command leave` reply, or the user's own leave action clears the session.
 
-Commands: Enter is a plain keystroke; the server decides. `command roster`
-shows "Roster refreshed", `help` opens the overlay, `leave` returns to the
-lobby. The toolbar buttons call HTTP roster/leave directly instead of typing
-the commands.
+Commands: Enter is a plain keystroke; the server decides. `command help`
+opens the overlay, `leave` returns to the lobby. The toolbar buttons call
+HTTP roster/leave directly instead of typing the commands.
 
 Rendering: `computeDocumentLines` over accumulated committed lines and live
 lines; nothing renders before the echo; the caret sits on the own live row

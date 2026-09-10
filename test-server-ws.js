@@ -449,15 +449,16 @@ describe('Caret editing (task 14)', () => {
 });
 
 describe('Commands', () => {
-  it('l clears the line and returns a roster command without committing', async () => {
-    const { alice, a, b, done } = await roomWithTwo();
+  it('l commits ordinary chat delivered to both participants, with no command', async () => {
+    const { a, b, done } = await roomWithTwo();
     a.send(key(1, 'char', 'l'));
     a.send(key(2, 'enter'));
-    const cleared = await b.next((m) => m.type === 'live' && m.seq === 2);
-    assert.deepEqual(cleared, { type: 'live', participantId: alice.participantId, row: null, text: '', caret: 0, seq: 2 });
-    assert.deepEqual(await a.next((m) => m.type === 'command'), { type: 'command', name: 'roster' });
+    const mine = await a.next((m) => m.type === 'committed');
+    assert.equal(mine.line.text, 'l');
+    const theirs = await b.next((m) => m.type === 'committed' && m.line.text === 'l');
+    assert.equal(theirs.line.text, 'l');
     await settle();
-    assert.ok(!a.messages.some((m) => m.type === 'committed' && m.line.text === 'l'));
+    assert.ok(!a.messages.some((m) => m.type === 'command'), 'l sends no command');
     assert.ok(!b.messages.some((m) => m.type === 'command'), 'observers do not receive commands');
     done();
   });
