@@ -29,6 +29,7 @@ the order to execute them:
 | 4 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
 | 5 | 34 — Investigate the shared-session socket takeover | Investigation only; explains the afk flicker seen with duplicated tabs. |
 | 6 | 35 — Fix the join-order race in the browser check | Small script fix; removes a flaky failure of the first checks. |
+| 7 | 36 — Delay AFK by five minutes of invisibility | Client-side timer; found while testing task 31. |
 
 ## Working a task
 
@@ -1451,8 +1452,9 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 
 ## Review issues 2026-09-09
 
-Tasks 34 and 35 come from the goblin review of the day's merges, not from
-GitHub issues. Keep their numbers stable.
+Tasks 34 and 35 come from the goblin review of the day's merges, and task
+36 from testing the merged build; none has a GitHub issue. Keep their
+numbers stable.
 
 ## 34. Investigate the socket takeover between tabs that share a session
 
@@ -1511,3 +1513,47 @@ GitHub issues. Keep their numbers stable.
 - **Tests:** The browser check is the test; there is no unit test for the
   script. Note the ten-run result in the commit message.
 - **Docs:** None; `AGENTS.md` already describes the check.
+
+## 36. Delay AFK by five minutes of invisibility
+
+- [ ] **Requested change, presence**
+- **Source:** Manual testing of task 31 on 2026-09-09.
+- **Location:** `client/src/useRoomConnection.ts`, where the
+  `visibilitychange` listener calls `connection.setHidden(document.hidden)`;
+  `client/src/connection.ts` `setHidden` and the post-snapshot resend;
+  `client/src/connection.test.ts` and the visibility test in
+  `client/src/App.roster.test.tsx`.
+- **Requested behavior:** A tab that goes into the background should not be
+  marked AFK at once. The marker appears only after the tab has been hidden
+  for five minutes without becoming visible again. Returning to the tab
+  clears the marker immediately, as today. The change is entirely
+  client-side: the server keeps owning the flag and keeps treating a
+  `presence` report as the truth; the client just waits before reporting
+  `hidden: true`.
+- **Implementation:** On `hidden`, start a five-minute timer instead of
+  reporting; on `visible`, cancel the timer and report `hidden: false` at
+  once if the tab had been reported hidden. When the timer fires, report
+  `hidden: true`. The value the connection re-sends after a snapshot is the
+  last reported value, not the raw `document.hidden`, so a reconnect during
+  the five minutes does not mark the tab AFK early and a reconnect after it
+  keeps the mark. Keep the timer in one place, the hook or the connection,
+  and make the delay a named constant.
+- **Known limit:** Browsers throttle timers in background tabs. In Chrome a
+  timer in a tab hidden for more than five minutes runs at most once a
+  minute, so the report can arrive up to about a minute late. That is
+  acceptable for an AFK marker; note it in the docs rather than working
+  around it.
+- **Acceptance:** In two tabs, backgrounding one shows no marker in the
+  other for five minutes, then the marker appears; switching back clears it
+  at once. A page reload during the five minutes shows no marker; a reload
+  after it keeps the marker until the tab is visible again.
+- **Tests:** Connection or hook tests with fake timers for: hidden then
+  visible before the delay sends nothing; hidden for the delay sends
+  `hidden: true`; visible after that sends `hidden: false`; a snapshot
+  during the delay resends `false` and one after it resends `true`. Update
+  the roster test that expects an immediate `hidden: true`. The browser
+  check can shorten the delay through an environment variable or leave the
+  timing to the unit tests and assert only the immediate clear.
+- **Docs:** `docs/PROTOCOL.md` client behavior (when `presence` is sent),
+  `docs/USER_EXPERIENCE.md` roster section, the AFK bullet in `AGENTS.md`,
+  and a note in `docs/superpowers/specs/2026-09-09-afk-presence-design.md`.
