@@ -1383,29 +1383,54 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 - **Docs:** Remove the Type button from the sidebar description in
   `docs/USER_EXPERIENCE.md`. No protocol change is required.
 
-## 33. Clean up the help dialog contents
+## 33. Remove the roster command and clean up Help
 
-- [ ] **Requested UI cleanup**
+- [ ] **Requested command removal and UI cleanup**
 - **Source:** [GitHub issue #21](https://github.com/kappa/remart-bbs-chat/issues/21).
-- **Location:** Help overlay markup in `client/src/App.tsx`; help-dialog styles
-  in `client/src/theme.css`; `client/src/App.roster.test.tsx` and maintained
-  behavior in `docs/USER_EXPERIENCE.md`.
-- **Current problems:** The dialog says Enter assigns a new empty line even
-  though an idle participant has no shared row; describes `l` as refreshing a
-  roster that already updates live; omits supported line-editing keys; and
-  exposes the `?name=` testing convenience as user help.
-- **Requested behavior:** Keep the dialog concise and user-facing. Describe the
-  three typed commands accurately, explain that Enter sends the current line,
-  summarize Backspace/Delete and caret movement, and retain the useful Unicode
-  and no-line-limit facts. Remove the per-tab testing paragraph. Reflect task
-  25's autocomplete keys if that task has landed when this one is implemented;
+- **Location:** Command recognition in `server/index.js`; command types in
+  `client/src/protocol.ts`; command handling and Help in `client/src/App.tsx`;
+  help-dialog styles in `client/src/theme.css`; server and client tests;
+  `check-browser.mjs`; and repository documentation.
+- **Current problems:** The `l` command does nothing useful: the roster already
+  updates live, and the command only acknowledges a supposed refresh without
+  refreshing data. Help also needs to cover supported line-editing keys and
+  keep its wording accurate and user-facing.
+- **Requested behavior:** Remove the `l` command completely, including server
+  recognition, the `roster` command response/type, client command handling and
+  "Roster refreshed" feedback, and all mentions of it as a supported command
+  in Help, tests, browser checks, and repository documentation. Typing `l` and
+  pressing Enter must commit an ordinary chat line through server echo.
+  Preserve automatic roster updates, roster wire messages, and roster APIs;
+  only the typed command is being removed. The remaining commands are `?`
+  (Help) and `q` (leave).
+- **Help content:** Explain that Enter sends the current line, Backspace
+  removes the character before the caret, and Delete removes the character
+  after it. Explicitly describe Left/Right, Home/End, and Ctrl+Left/Right
+  (Alt+Left/Right on macOS) for caret movement and word movement. Retain the
+  useful Unicode and no-line-limit facts. Remove the obsolete claim that
+  Enter assigns a new empty shared row and the per-tab testing paragraph.
+  Reflect task 25's autocomplete keys if that task has landed when implemented;
   do not describe unimplemented behavior.
-- **Acceptance:** Every statement in Help matches current behavior and the
-  maintained user-experience document. The dialog remains readable without
+- **Acceptance:** A line containing only `l` is delivered as chat to all
+  participants, with no command response or refresh feedback. Only `?` and
+  `q` retain command behavior. No supported-command listings or instructions
+  advertise the removed command. Every statement in Help matches current
+  behavior and the maintained user-experience document. The dialog remains readable without
   horizontal scrolling on narrow mobile screens, dismisses with Escape and its
   Close button, and returns keyboard focus to chat.
-- **Tests:** Update the Help component assertions to cover the corrected
-  command and editing descriptions and the absence of testing-only text. Keep
-  opening, Escape, Close, focus restoration, and narrow-layout browser coverage.
-- **Docs:** Make matching wording corrections in `docs/USER_EXPERIENCE.md` if
-  its command or typing descriptions are stale. No protocol change is required.
+- **Tests:** Add server and client regression coverage proving `l` followed by
+  Enter commits ordinary text through server echo, including delivery to
+  another participant, while `?`, `q`, and automatic roster updates still work.
+  Replace obsolete roster-command tests and browser-check expectations.
+  Assert the actual caret-movement descriptions in Help, the remaining commands,
+  and the absence of removed-command help and testing-only text. Keep opening,
+  Escape, Close, focus restoration, and narrow-layout browser coverage. Run both
+  test suites, client typecheck and build, and the two-tab browser check.
+- **Docs:** Synchronize `docs/PROTOCOL.md` in the implementation commit to
+  remove the command and its response from the wire reference. Update
+  `docs/USER_EXPERIENCE.md`, `README.md`, `AGENTS.md`, and any other command
+  mentions found by a repository-wide audit, including stale task/plan text.
+  Remove obsolete command instructions without presenting historical plans
+  as current requirements. Keep descriptions of ordinary roster functionality.
+- **Completion:** Tick this task's checkbox in `TODO.md` once implementation
+  and required validation are complete; include that update in the task commit.
