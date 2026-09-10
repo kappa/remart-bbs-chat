@@ -11,6 +11,8 @@ import {
 import { api } from "./api";
 import { computeDocumentLines, isValidChar } from "./documentLines";
 import { splitLinks } from "./links";
+import { mentionCandidates, mentionCompletion, mentionTokenBefore } from "./mentions";
+import type { RosterEntry } from "./protocol";
 import { sortedCommitted } from "./roomState";
 import { useRoomConnection } from "./useRoomConnection";
 
@@ -134,6 +136,9 @@ export function App() {
   const [warning, setWarning] = useState("");
   const [showHelp, setShowHelp] = useState(false);
   const [soundOn, setSoundOn] = useState(() => storageGet("local", SOUND_KEY) !== "off");
+  const [mentionSelection, setMentionSelection] = useState<number | null>(null);
+  const [mentionDismissedAt, setMentionDismissedAt] = useState<number | null>(null);
+  const handleChatKeyRef = useRef<(event: KeyboardEvent) => boolean>(() => false);
   const titleTimers = useRef<{ timeout: number | undefined; interval: number | undefined }>({
     timeout: undefined,
     interval: undefined,
@@ -212,8 +217,21 @@ export function App() {
 
   const participants = room.participants;
   const ownParticipant = participants.find((p) => p.participantId === session?.participantId);
+  const mentionToken = ownParticipant ? mentionTokenBefore(ownParticipant.text, ownParticipant.caret) : null;
+  const mentionCandidatesList: RosterEntry[] =
+    mentionToken && session && mentionDismissedAt !== mentionToken.start
+      ? mentionCandidates(mentionToken.prefix, participants, session.participantId)
+      : [];
+  const mentionOpen = mentionCandidatesList.length > 0;
+  const mentionIndex = Math.max(0, mentionCandidatesList.findIndex((p) => p.participantId === mentionSelection));
+  const mentionHighlighted: RosterEntry | undefined = mentionCandidatesList[mentionIndex];
+  const mentionStart = mentionToken?.start;
   const committedLines = useMemo(() => sortedCommitted(room), [room]);
   const documentLines = useMemo(() => computeDocumentLines(committedLines, participants), [committedLines, participants]);
+
+  useEffect(() => {
+    if (mentionDismissedAt != null && mentionStart !== mentionDismissedAt) setMentionDismissedAt(null);
+  }, [mentionStart, mentionDismissedAt]);
 
   const focusKeyboard = () => {
     keyboardRef.current?.focus({ preventScroll: true });
@@ -259,7 +277,7 @@ export function App() {
     const onDocumentKey = (event: KeyboardEvent) => {
       const active = document.activeElement;
       if (active !== document.body && active !== chatRef.current && active !== keyboardRef.current) return;
-      if (handleChatKey(event)) focusKeyboard();
+      if (handleChatKeyRef.current(event)) focusKeyboard();
     };
     document.addEventListener("keydown", onDocumentKey);
     return () => document.removeEventListener("keydown", onDocumentKey);
@@ -412,6 +430,19 @@ export function App() {
   };
   const eraseCharacter = () => { if (session) send({ kind: "backspace" }); };
   const submitActiveLine = () => { if (session) send({ kind: "enter" }); };
+  const moveMention = (delta: number) => {
+    const count = mentionCandidatesList.length;
+    if (!count) return;
+    setMentionSelection(mentionCandidatesList[(mentionIndex + delta + count) % count].participantId);
+  };
+  const pickMention = (entry?: RosterEntry) => {
+    const chosen = entry ?? mentionHighlighted;
+    if (!mentionToken || !chosen) return;
+    for (const char of mentionCompletion(chosen.handle, mentionToken.prefix)) appendCharacter(char);
+    setMentionDismissedAt(mentionToken.start);
+  };
+  const dismissMention = () => { if (mentionToken) setMentionDismissedAt(mentionToken.start); };
+  const onEnter = () => { if (mentionOpen) pickMention(); else submitActiveLine(); };
 
   // Key-to-keystroke mapping for the document-level listener: sends the
   // matching chat keystroke and reports whether the key was chat input.
@@ -434,6 +465,24 @@ export function App() {
       return false;
     }
 
+    if (mentionOpen) {
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        event.preventDefault();
+        moveMention(event.key === "ArrowDown" ? 1 : -1);
+        return true;
+      }
+      if (event.key === "Tab") {
+        event.preventDefault();
+        pickMention();
+        return true;
+      }
+      if (event.key === "Escape") {
+        event.preventDefault();
+        dismissMention();
+        return true;
+      }
+    }
+
     if (event.key === "Backspace") {
       event.preventDefault();
       eraseCharacter();
@@ -448,7 +497,7 @@ export function App() {
 
     if (event.key === "Enter") {
       event.preventDefault();
-      submitActiveLine();
+      onEnter();
       return true;
     }
 
@@ -465,6 +514,8 @@ export function App() {
     return true;
   };
 
+  handleChatKeyRef.current = handleChatKey;
+
   const onKeyboardInput = (event: FormEvent<HTMLTextAreaElement>) => {
     if (!session) return;
     const nativeEvent = event.nativeEvent as InputEvent;
@@ -480,7 +531,7 @@ export function App() {
       return;
     }
     if (nativeEvent.inputType === "insertLineBreak") {
-      submitActiveLine();
+      onEnter();
       return;
     }
     if (!nativeEvent.inputType.startsWith("insert") || !nativeEvent.data) {
