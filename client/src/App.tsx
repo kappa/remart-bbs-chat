@@ -130,7 +130,6 @@ export function App() {
   const [handle, setHandle] = useState(initialHandle);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
-  const [feedback, setFeedback] = useState("");
   const [warning, setWarning] = useState("");
   const [showHelp, setShowHelp] = useState(false);
   const [soundOn, setSoundOn] = useState(() => storageGet("local", SOUND_KEY) !== "off");
@@ -185,7 +184,6 @@ export function App() {
     storageRemove("session", SESSION_KEY);
     setSession(null);
     setShowHelp(false);
-    setFeedback("");
     setWarning("");
     setError(message);
     stopTitleNotice();
@@ -224,12 +222,6 @@ export function App() {
     const timer = window.setTimeout(focusKeyboard, 0);
     return () => window.clearTimeout(timer);
   }, [session]);
-
-  useEffect(() => {
-    if (!feedback) return;
-    const timer = window.setTimeout(() => setFeedback(""), 2000);
-    return () => window.clearTimeout(timer);
-  }, [feedback]);
 
   useEffect(() => {
     if (!warning) return;
@@ -719,11 +711,6 @@ export function App() {
             <span className="caret" aria-label="Your typing position">
               {" "}
             </span>
-          </div>
-        ) : null}
-        {feedback ? (
-          <div className="chat-line system-line" role="status">
-            {feedback}
           </div>
         ) : null}
         {error ? (

@@ -52,7 +52,7 @@ are not a design input.
 - Typing does not wait for echoes. Keystrokes are numbered and streamed; the
   server applies them in order and echoes each. Fast `A`, Enter, `B`,
   Backspace, `C` produces the same transcript on every screen.
-- Commands (`l`, `?`, `q`) are recognized by the server against the real live
+- Commands (`?`, `q`) are recognized by the server against the real live
   line, so a lagging screen cannot turn a command into chat or vice versa.
 
 ## Transport: one socket per participant

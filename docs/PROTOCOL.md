@@ -468,8 +468,7 @@ Session end: only `error unknown-participant` or `unauthorized`, the
 
 Commands: Enter is a plain keystroke; the server decides. `command help`
 opens the overlay, `leave` returns to the lobby, and any other name is
-ignored. The toolbar buttons call
-HTTP roster/leave directly instead of typing the commands.
+ignored. The Leave button calls HTTP leave directly instead of typing `q`.
 
 Rendering: `computeDocumentLines` over accumulated committed lines and live
 lines; nothing renders before the echo; the caret sits on the own live row
