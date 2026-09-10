@@ -36,7 +36,6 @@ export function MentionList({ candidates, highlightedId, onPick, container }: Pr
                 onPick(entry);
               }}
             >
-              {highlighted ? "> " : "  "}
               {entry.handle}
             </span>
           );

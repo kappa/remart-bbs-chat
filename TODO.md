@@ -1554,7 +1554,7 @@ their numbers stable.
 
 ## 38. Drop the > marker from the handle list
 
-- [ ] **Requested UI cleanup, handle autocomplete**
+- [x] **Requested UI cleanup, handle autocomplete** (done: options render the bare handle, highlight by background only)
 - **Source:** Manual testing on 2026-09-09.
 - **Location:** The option text in `client/src/MentionList.tsx`
   (`{highlighted ? "> " : "  "}` before the handle); `.mention-list` and

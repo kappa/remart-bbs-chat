@@ -171,11 +171,11 @@ describe('Handle autocomplete list', () => {
   it('opens on an echoed @ with the other participants in roster order and highlights the first', async () => {
     const { ws } = await typingAt('@');
     const options = await screen.findAllByRole('option');
-    expect(options.map((o) => o.textContent)).toEqual(['> Bob', '  Carol']);
+    expect(options.map((o) => o.textContent)).toEqual(['Bob', 'Carol']);
     expect(options[0]).toHaveAttribute('aria-selected', 'true');
     expect(options[1]).toHaveStyle({ color: '#f0f' });
     echo(ws, '@c', 2);
-    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['> Carol']);
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Carol']);
     echo(ws, '@x', 3);
     expect(screen.queryByRole('listbox')).toBeNull();
   });
@@ -191,7 +191,7 @@ describe('Handle autocomplete list', () => {
     const { user } = await typingAt('@');
     await screen.findByRole('listbox');
     await user.keyboard('{ArrowDown}');
-    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['  Bob', '> Carol']);
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Bob', 'Carol']);
   });
 
   it('clicking an entry picks it and keeps keyboard focus', async () => {
