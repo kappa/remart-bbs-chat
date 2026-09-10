@@ -18,8 +18,9 @@ vi.mock('./notifications', () => ({
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.clearAllMocks(); (api.listRooms as any).mockResolvedValue({ rooms: [] }); });
 
 const two = () => snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] });
+let nextRow = 5;
 const committed = (ws: any, id: string, text: string, participantId: number | null = 20, author = bob) =>
-  serverSend(ws, { type: 'committed', participantId, seq: participantId == null ? null : 1, line: line(id, 5, text, author) });
+  serverSend(ws, { type: 'committed', participantId, seq: participantId == null ? null : 1, line: line(id, nextRow++, text, author) });
 const waitForCommitted = (text: string) => waitFor(() =>
   expect(Array.from(document.querySelectorAll('.committed-line'), (row) => row.textContent)).toContain(text));
 

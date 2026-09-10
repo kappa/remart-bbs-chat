@@ -4,15 +4,22 @@ export type Notification =
   | { kind: 'mention'; handle: string; text: string };
 
 export type NotificationChannel = { notify: (n: Notification) => void; stop: () => void };
-export type Notifier = { notify: (n: Notification) => void; stop: () => void };
+// A notifier is itself a channel that fans out to the others.
+export type Notifier = NotificationChannel;
 
 export const TITLE_NOTICE_MS = 5000;
 export const TITLE_TICK_MS = 400;
 
+// Channels are independent: one that throws never silences the next.
 export function createNotifier(channels: NotificationChannel[]): Notifier {
+  const each = (call: (channel: NotificationChannel) => void) => {
+    for (const channel of channels) {
+      try { call(channel); } catch { /* a broken channel is not the others' problem */ }
+    }
+  };
   return {
-    notify: (n) => { for (const channel of channels) channel.notify(n); },
-    stop: () => { for (const channel of channels) channel.stop(); },
+    notify: (n) => each((channel) => channel.notify(n)),
+    stop: () => each((channel) => channel.stop()),
   };
 }
 
@@ -43,10 +50,16 @@ export function titleChannel(doc: { title: string }, baseTitle: string): Notific
 }
 
 type AudioCtor = new () => AudioContext;
-const audioContext = (): AudioContext | null => {
-  const Ctor: AudioCtor | undefined = (window as any).AudioContext || (window as any).webkitAudioContext;
+function audioContext(): AudioContext | null {
+  const Ctor = window.AudioContext ?? (window as Window & { webkitAudioContext?: AudioCtor }).webkitAudioContext;
   return Ctor ? new Ctor() : null;
-};
+}
+
+// close() returns a promise that rejects when the browser already closed the
+// context; a plain try/catch would not see that.
+function releaseLater(ctx: AudioContext, afterMs: number) {
+  setTimeout(() => { try { ctx.close().catch(() => {}); } catch { /* already closed */ } }, afterMs);
+}
 
 function playChirp() {
   const ctx = audioContext();
@@ -73,7 +86,7 @@ function playChirp() {
   gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.38);
   osc2.start(ctx.currentTime + 0.12);
   osc2.stop(ctx.currentTime + 0.4);
-  setTimeout(() => { try { ctx.close(); } catch { /* already closed */ } }, 600);
+  releaseLater(ctx, 600);
 }
 
 function playBell() {
@@ -90,7 +103,7 @@ function playBell() {
   gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
   osc.start();
   osc.stop(ctx.currentTime + 0.55);
-  setTimeout(() => { try { ctx.close(); } catch { /* already closed */ } }, 800);
+  releaseLater(ctx, 800);
 }
 
 export function soundChannel(isOn: () => boolean): NotificationChannel {

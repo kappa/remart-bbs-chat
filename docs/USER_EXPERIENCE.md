@@ -136,8 +136,10 @@ automatically; no command refreshes it.
   bell, distinct from the join chirp, and the tab title rotates
   `<name> mentioned you` for five seconds. The Sounds checkbox silences
   the bell as well as the chirp; the title still rotates. Lines from
-  before you joined, your own lines, and lines shown again after a
-  reconnect never ring.
+  before you joined and your own lines never ring, and neither does
+  anything that arrives with the fresh copy of the room after a
+  reconnect, even a mention sent while you were away; the name is still
+  colored.
 - If your connection drops in the middle of a line, your unsent text is kept,
   not thrown away.
 - A status line reads "Connecting..." or "Reconnecting..." while the room is

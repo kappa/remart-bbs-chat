@@ -25,7 +25,7 @@ the order to execute them:
 | --- | --- | --- |
 | 1 | 36 — Delay AFK by five minutes of invisibility | Client-side timer; found while testing task 31. |
 | 2 | 42 — Limit handles to mentionable shapes | Found reviewing task 17: names with spaces or punctuation can never be mentioned. |
-| 3 | 37 — Stop remembering the Join sound checkbox | Small client cleanup; the box starts on every load. |
+| 3 | 37 — Stop remembering the Sounds checkbox | Small client cleanup; the box starts on every load. |
 | 4 | 38 — Drop the > marker from the handle list | Small client cleanup; the background already marks the selection. |
 | 5 | 40 — Drive the lobby in the browser check instead of ?name= | Lets the ?name= override go if nothing else needs it. |
 | 6 | 41 — Add ?silent=1 and make the browser check silent | Small client change plus the check's URLs; hover text documents it. |
@@ -618,7 +618,7 @@ Close the GitHub issue when the task is done.
 
 ## 17. Ring a bell and highlight `@nickname` mentions
 
-- [x] **Requested feature** (done: committed roster mentions render in the mentioned participant’s color; first-seen mentions notify the recipient with a bell and title notice through one Sounds switch)
+- [x] **Requested feature** (done: committed roster mentions render in the mentioned participant's color; first-seen mentions notify the recipient with a bell and title notice through one Sounds switch)
 - **Spec and plan:** [docs/superpowers/specs/2026-09-09-mentions-design.md](docs/superpowers/specs/2026-09-09-mentions-design.md),
   [docs/superpowers/plans/2026-09-09-mentions.md](docs/superpowers/plans/2026-09-09-mentions.md).
   Where the plan and this task disagree, the spec records the approved decision.
@@ -1525,7 +1525,7 @@ their numbers stable.
   `docs/USER_EXPERIENCE.md` roster section, the AFK bullet in `AGENTS.md`,
   and a note in `docs/superpowers/specs/2026-09-09-afk-presence-design.md`.
 
-## 37. Stop remembering the Join sound checkbox
+## 37. Stop remembering the Sounds checkbox
 
 - [ ] **Requested change, sidebar**
 - **Source:** Manual testing on 2026-09-09.
@@ -1533,7 +1533,7 @@ their numbers stable.
   `onChange` in `client/src/App.tsx`; the sound tests in
   `client/src/App.roster.test.tsx` that seed and read
   `remart-bbs-chat.sound` in `localStorage`.
-- **Requested behavior:** The Join sound checkbox starts on every time the
+- **Requested behavior:** The Sounds checkbox starts on every time the
   page loads and is not remembered between loads. Unticking it lasts for
   the current page only. Nothing about the sound is written to or read from
   browser storage.
@@ -1548,7 +1548,7 @@ their numbers stable.
   `off`, and keep the test that unticking suppresses the chirp. Assert that
   toggling writes nothing to `localStorage`.
 - **Docs:** In `docs/USER_EXPERIENCE.md`, the roster and presence bullet
-  says the Join sound choice "is remembered in that browser"; change it to
+  says the Sounds choice "is remembered in that browser"; change it to
   say the checkbox starts on with every page load and unticking it lasts
   for that page. Drop any similar mention from `AGENTS.md` if present.
 
@@ -1629,12 +1629,12 @@ their numbers stable.
 - [ ] **Requested feature, sidebar and tooling**
 - **Source:** Running `npm run check:browser` on 2026-09-09 produced join
   chirps from the headless tabs.
-- **Location:** The `soundOn` state and the Join sound checkbox in
+- **Location:** The `soundOn` state and the Sounds checkbox in
   `client/src/App.tsx`; the tab URLs built in `check-browser.mjs`; the sound
   bullet in `docs/USER_EXPERIENCE.md`; the sound tests in
   `client/src/App.roster.test.tsx`.
 - **Requested behavior:** A page opened with `?silent=1` in the URL starts
-  with the Join sound checkbox off. The user can still tick it. Hovering the
+  with the Sounds checkbox off. The user can still tick it. Hovering the
   checkbox label shows a short hint that `?silent=1` in the address starts
   the app with sound off, for people who want silence by default. The
   browser check opens every tab with `silent=1` so its runs make no sound.
@@ -1652,7 +1652,7 @@ their numbers stable.
   `window.location.search` and asserts the checkbox is unticked and the
   chirp is not played on a newcomer; a test that the label carries the hint.
   The browser check is the test for its own URLs.
-- **Docs:** Mention `?silent=1` next to the Join sound checkbox in
+- **Docs:** Mention `?silent=1` next to the Sounds checkbox in
   `docs/USER_EXPERIENCE.md`, and add the rule to `AGENTS.md`.
 
 ## 42. Limit handles to mentionable shapes

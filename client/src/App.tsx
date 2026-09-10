@@ -131,13 +131,13 @@ export function App() {
   const [warning, setWarning] = useState("");
   const [showHelp, setShowHelp] = useState(false);
   const [soundOn, setSoundOn] = useState(() => storageGet("local", SOUND_KEY) !== "off");
+  // The sound channel reads the switch through a ref so one notifier serves
+  // the whole session; the ref is assigned in an effect, never during render.
   const soundOnRef = useRef(soundOn);
-  soundOnRef.current = soundOn;
-  const notifierRef = useRef<Notifier | null>(null);
-  if (!notifierRef.current) {
-    notifierRef.current = createNotifier([titleChannel(document, BASE_TITLE), soundChannel(() => soundOnRef.current)]);
-  }
-  const notifier = notifierRef.current;
+  useEffect(() => { soundOnRef.current = soundOn; }, [soundOn]);
+  const [notifier] = useState<Notifier>(() =>
+    createNotifier([titleChannel(document, BASE_TITLE), soundChannel(() => soundOnRef.current)]),
+  );
   const [mentionSelection, setMentionSelection] = useState<number | null>(null);
   const [mentionDismissedAt, setMentionDismissedAt] = useState<number | null>(null);
   const [parkedKey, setParkedKey] = useState<"enter" | "tab" | null>(null);

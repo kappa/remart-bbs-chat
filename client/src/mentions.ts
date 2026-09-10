@@ -1,5 +1,6 @@
 // Mention tokens for handle autocomplete. Everything here works on the
 // server-echoed live text and caret; nothing predicts local keystrokes.
+import { stripTrailingPunctuation } from './links';
 import type { RosterEntry } from './protocol';
 
 export type MentionToken = { start: number; prefix: string };
@@ -38,17 +39,16 @@ export function mentionCompletion(handle: string, prefix: string): string[] {
 
 export type MentionSegment =
   | { kind: 'text'; text: string }
-  | { kind: 'mention'; text: string; handle: string; participantId: number; color: string };
+  | { kind: 'mention'; text: string; handle: string; color: string };
 
-const MENTION_PATTERN = /(^|\s)(@[^\s]+)/gu;
-const TRAILING_PUNCTUATION = /[.,;:!?)\]}]+$/u;
+const MENTION_PATTERN = /(^|\s)(@\S+)/gu;
 
 function findMentions(text: string): { start: number; end: number; name: string }[] {
   const found: { start: number; end: number; name: string }[] = [];
   for (const match of text.matchAll(MENTION_PATTERN)) {
-    const token = match[2].replace(TRAILING_PUNCTUATION, '');
+    const token = stripTrailingPunctuation(match[2]);
     if (token.length < 2) continue;
-    const start = (match.index ?? 0) + match[1].length;
+    const start = match.index + match[1].length;
     found.push({ start, end: start + token.length, name: token.slice(1) });
   }
   return found;
@@ -64,7 +64,7 @@ export function splitMentions(text: string, roster: RosterEntry[]): MentionSegme
     const entry = roster.find((candidate) => candidate.handle.toLowerCase() === wanted);
     if (!entry) continue;
     if (start > pos) segments.push({ kind: 'text', text: text.slice(pos, start) });
-    segments.push({ kind: 'mention', text: text.slice(start, end), handle: entry.handle, participantId: entry.participantId, color: entry.color });
+    segments.push({ kind: 'mention', text: text.slice(start, end), handle: entry.handle, color: entry.color });
     pos = end;
   }
   if (pos < text.length || segments.length === 0) segments.push({ kind: 'text', text: text.slice(pos) });

@@ -39,13 +39,13 @@ describe('titleChannel', () => {
 });
 
 describe('soundChannel', () => {
-  function audioSpy() {
+  function audioSpy(close: () => unknown = () => {}) {
     const oscillators: any[] = [];
     class Ctx {
       currentTime = 0; destination = {};
       createOscillator() { const o = { type: '', frequency: { value: 0 }, connect() {}, start() {}, stop() {} }; oscillators.push(o); return o; }
       createGain() { return { gain: { setValueAtTime() {}, linearRampToValueAtTime() {}, exponentialRampToValueAtTime() {} }, connect() {} }; }
-      close() {}
+      close() { return close(); }
     }
     (globalThis as any).AudioContext = Ctx;
     return oscillators;
@@ -65,6 +65,13 @@ describe('soundChannel', () => {
     soundChannel(() => false).notify({ kind: 'join', handle: 'Bob' });
     expect(oscillators).toEqual([]);
   });
+  it('releases the context after the tone, even when closing it rejects', async () => {
+    const closes: number[] = [];
+    audioSpy(() => { closes.push(1); return Promise.reject(new Error('already closed')); });
+    soundChannel(() => true).notify({ kind: 'mention', handle: 'Bob', text: 'x' });
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(closes).toEqual([1]);
+  });
   it('swallows audio failures', () => {
     (globalThis as any).AudioContext = class { constructor() { throw new Error('blocked'); } };
     expect(() => soundChannel(() => true).notify({ kind: 'mention', handle: 'Bob', text: 'x' })).not.toThrow();
@@ -79,5 +86,14 @@ describe('createNotifier', () => {
     notifier.notify({ kind: 'join', handle: 'Bob' });
     notifier.stop();
     expect(calls).toEqual(['a:join', 'b:join', 'a:stop', 'b:stop']);
+  });
+  it('a throwing channel does not stop the others', () => {
+    const calls: string[] = [];
+    const bad: NotificationChannel = { notify: () => { throw new Error('boom'); }, stop: () => { throw new Error('boom'); } };
+    const good: NotificationChannel = { notify: (n) => calls.push(n.kind), stop: () => calls.push('stop') };
+    const notifier = createNotifier([bad, good]);
+    expect(() => notifier.notify({ kind: 'join', handle: 'Bob' })).not.toThrow();
+    expect(() => notifier.stop()).not.toThrow();
+    expect(calls).toEqual(['join', 'stop']);
   });
 });

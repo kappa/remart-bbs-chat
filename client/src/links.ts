@@ -4,6 +4,16 @@ export type TextSegment =
   | { kind: 'text'; text: string }
   | { kind: 'link'; text: string; href: string };
 
+// Sentence punctuation that follows an address or a mention belongs to the
+// sentence. A backward scan keeps this linear; `[...]+$` backtracks
+// quadratically on a long punctuation run.
+const TRAILING_PUNCTUATION = new Set('.,;:!?)]}');
+export function stripTrailingPunctuation(token: string): string {
+  let end = token.length;
+  while (end > 0 && TRAILING_PUNCTUATION.has(token[end - 1])) end--;
+  return token.slice(0, end);
+}
+
 // Conservative matcher: http/https followed by non-whitespace. Trailing
 // punctuation that usually belongs to the sentence, not the address, is
 // left in the text stream.
@@ -14,7 +24,7 @@ export function splitLinks(text: string): TextSegment[] {
   for (const match of text.matchAll(pattern)) {
     const raw = match[0];
     const start = match.index;
-    const href = raw.replace(/[.,;:!?)\]}]+$/, '');
+    const href = stripTrailingPunctuation(raw);
     const tail = raw.slice(href.length);
     if (start > pos) segments.push({ kind: 'text', text: text.slice(pos, start) });
     // A match with nothing beyond the scheme and stripped punctuation

@@ -44,7 +44,6 @@ button.roster-entry:focus-visible { outline:1px solid var(--accent); outline-off
 .chat-line { min-height:1.55em; font-family:var(--mono); color:#ccc; line-height:1.55em; white-space:break-spaces; overflow-wrap:anywhere; }
 .system-line { margin-bottom:0.8em; color:#888; font-style:italic; }
 .committed-line a { color:inherit; }
-.mention { font-weight:bold; }
 .typing-hint { display:none; }
 .caret { display:inline-block; width:0.62em; height:2px; overflow:hidden; vertical-align:-0.12em; background:#ccc; animation:blink 1s step-start infinite; }
 .caret-char { border-bottom:2px solid #ccc; animation:blink-underline 1s step-start infinite; }

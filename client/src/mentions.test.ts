@@ -61,13 +61,25 @@ describe('mentionCompletion', () => {
 });
 
 describe('splitMentions', () => {
-  const mention = (text: string, entry: typeof alice) => ({ kind: 'mention', text, handle: entry.handle, participantId: entry.participantId, color: entry.color });
+  const mention = (text: string, entry: typeof alice) => ({ kind: 'mention', text, handle: entry.handle, color: entry.color });
   it('colors a mention at the start, after a space, and before punctuation', () => {
     expect(splitMentions('@Alice hi', roster)).toEqual([mention('@Alice', alice), { kind: 'text', text: ' hi' }]);
     expect(splitMentions('hi @Bob, and @Carol?', roster)).toEqual([
       { kind: 'text', text: 'hi ' }, mention('@Bob', bob), { kind: 'text', text: ', and ' }, mention('@Carol', carol), { kind: 'text', text: '?' },
     ]);
     expect(splitMentions('(@Alice)', roster)).toEqual([{ kind: 'text', text: '(@Alice)' }]);
+  });
+  it('strips ), ], and } after the name and keeps them as text', () => {
+    expect(splitMentions('@Alice) @Bob] @Carol}', roster)).toEqual([
+      mention('@Alice', alice), { kind: 'text', text: ') ' }, mention('@Bob', bob), { kind: 'text', text: '] ' }, mention('@Carol', carol), { kind: 'text', text: '}' },
+    ]);
+  });
+  it('handles a long punctuation run in linear time', () => {
+    const text = '@' + ','.repeat(20000) + 'x';
+    const started = performance.now();
+    expect(splitMentions(text, roster)).toEqual([{ kind: 'text', text }]);
+    expect(mentionsHandle(text, 'Alice')).toBe(false);
+    expect(performance.now() - started).toBeLessThan(100);
   });
   it('matches case-insensitively, including Cyrillic', () => {
     expect(splitMentions('@alice @ЖЕНЯ', roster)).toEqual([mention('@alice', alice), { kind: 'text', text: ' ' }, mention('@ЖЕНЯ', zhenya)]);
@@ -87,6 +99,8 @@ describe('splitMentions', () => {
 describe('mentionsHandle', () => {
   it('answers the same cases', () => {
     expect(mentionsHandle('hi @alice!', 'Alice')).toBe(true);
+    expect(mentionsHandle('@ALICE.', 'Alice')).toBe(true);
+    expect(mentionsHandle('@Alice)', 'alice')).toBe(true);
     expect(mentionsHandle('hi @Al', 'Alice')).toBe(false);
     expect(mentionsHandle('foo@Alice', 'Alice')).toBe(false);
     expect(mentionsHandle('@Женя', 'женя')).toBe(true);
