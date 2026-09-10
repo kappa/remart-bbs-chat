@@ -250,10 +250,10 @@ export function App() {
       setPrivateMessages((list) => [...list, { id, ...message, receivedAt: Date.now() }]);
     },
     onPrivateResult: (result) => {
-      if (result.ok) setFeedback(`sent to ${result.handle}`);
+      if (result.ok) setWarning(`sent to ${result.handle}`);
       else {
         const target = room.participants.find((p) => p.participantId === result.to);
-        setFeedback(target ? `${target.handle} is not reachable` : "not delivered");
+        setWarning(target ? `${target.handle} is not reachable` : "not delivered");
       }
     },
   });
