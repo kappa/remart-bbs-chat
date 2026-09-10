@@ -1359,7 +1359,7 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 
 ## 32. Remove the sidebar Type button
 
-- [ ] **Requested UI cleanup**
+- [x] **Requested UI cleanup**
 - **Source:** [GitHub issue #20](https://github.com/kappa/remart-bbs-chat/issues/20).
 - **Location:** `client/src/App.tsx` roster footer;
   `.keyboard-button` rules in `client/src/theme.css`;
