@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { mentionTokenBefore, mentionCandidates, mentionCompletion } from './mentions';
+import { mentionTokenBefore, mentionCandidates, mentionCompletion, splitMentions, mentionsHandle } from './mentions';
 import type { RosterEntry } from './protocol';
 
 const alice: RosterEntry = { participantId: 10, handle: 'Alice', color: '#fff', slot: 0, afk: false };
@@ -57,5 +57,39 @@ describe('mentionCompletion', () => {
   });
   it('returns nothing when the prefix already spells the handle', () => {
     expect(mentionCompletion('Carol', 'carol')).toEqual([]);
+  });
+});
+
+describe('splitMentions', () => {
+  const mention = (text: string, entry: typeof alice) => ({ kind: 'mention', text, handle: entry.handle, participantId: entry.participantId, color: entry.color });
+  it('colors a mention at the start, after a space, and before punctuation', () => {
+    expect(splitMentions('@Alice hi', roster)).toEqual([mention('@Alice', alice), { kind: 'text', text: ' hi' }]);
+    expect(splitMentions('hi @Bob, and @Carol?', roster)).toEqual([
+      { kind: 'text', text: 'hi ' }, mention('@Bob', bob), { kind: 'text', text: ', and ' }, mention('@Carol', carol), { kind: 'text', text: '?' },
+    ]);
+    expect(splitMentions('(@Alice)', roster)).toEqual([{ kind: 'text', text: '(@Alice)' }]);
+  });
+  it('matches case-insensitively, including Cyrillic', () => {
+    expect(splitMentions('@alice @ЖЕНЯ', roster)).toEqual([mention('@alice', alice), { kind: 'text', text: ' ' }, mention('@ЖЕНЯ', zhenya)]);
+  });
+  it('requires equality, not a prefix, and ignores unknown names', () => {
+    expect(splitMentions('@Al @Alicee @Dave', roster)).toEqual([{ kind: 'text', text: '@Al @Alicee @Dave' }]);
+  });
+  it('ignores @ inside a word or an address', () => {
+    expect(splitMentions('foo@Alice name@example.com', roster)).toEqual([{ kind: 'text', text: 'foo@Alice name@example.com' }]);
+  });
+  it('returns one text segment for plain and empty text', () => {
+    expect(splitMentions('hello', roster)).toEqual([{ kind: 'text', text: 'hello' }]);
+    expect(splitMentions('', roster)).toEqual([{ kind: 'text', text: '' }]);
+  });
+});
+
+describe('mentionsHandle', () => {
+  it('answers the same cases', () => {
+    expect(mentionsHandle('hi @alice!', 'Alice')).toBe(true);
+    expect(mentionsHandle('hi @Al', 'Alice')).toBe(false);
+    expect(mentionsHandle('foo@Alice', 'Alice')).toBe(false);
+    expect(mentionsHandle('@Женя', 'женя')).toBe(true);
+    expect(mentionsHandle('', 'Alice')).toBe(false);
   });
 });
