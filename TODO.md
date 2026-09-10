@@ -26,10 +26,12 @@ the order to execute them:
 | 1 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
 | 2 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
 | 3 | 36 — Delay AFK by five minutes of invisibility | Client-side timer; found while testing task 31. |
-| 4 | 37 — Stop remembering the Join sound checkbox | Small client cleanup; the box starts on every load. |
-| 5 | 38 — Drop the > marker from the handle list | Small client cleanup; the background already marks the selection. |
-| 6 | 40 — Drive the lobby in the browser check instead of ?name= | Lets the ?name= override go if nothing else needs it. |
-| 7 | 41 — Add ?silent=1 and make the browser check silent | Small client change plus the check's URLs; hover text documents it. |
+| 4 | 42 — Limit handles to mentionable shapes | Found reviewing task 17: names with spaces or punctuation can never be mentioned. |
+| 5 | 37 — Stop remembering the Join sound checkbox | Small client cleanup; the box starts on every load. |
+| 6 | 38 — Drop the > marker from the handle list | Small client cleanup; the background already marks the selection. |
+| 7 | 40 — Drive the lobby in the browser check instead of ?name= | Lets the ?name= override go if nothing else needs it. |
+| 8 | 41 — Add ?silent=1 and make the browser check silent | Small client change plus the check's URLs; hover text documents it. |
+| 9 | 43 — Cap the size of a socket frame | Found reviewing task 18: one server option; nothing a user can notice. |
 
 ## Working a task
 
@@ -1653,3 +1655,84 @@ their numbers stable.
   The browser check is the test for its own URLs.
 - **Docs:** Mention `?silent=1` next to the Join sound checkbox in
   `docs/USER_EXPERIENCE.md`, and add the rule to `AGENTS.md`.
+
+## 42. Limit handles to mentionable shapes
+
+- [ ] **Review finding, joining**
+- **Source:** Review of task 17 on 2026-09-09. The server accepts any
+  trimmed handle of up to 32 characters, so `Alex K`, `Bob!`, `J.`, and
+  `@alex` are all legal names. The mention rule from task 17 reads `@` plus
+  a run of non-whitespace and strips trailing `.,;:!?)]}` before matching,
+  so none of those names can ever be colored or ring a bell, even though
+  the handle list from task 25 offers them and inserts them. A handle
+  `@alex` next to a handle `alex` makes every `@alex` in chat ring the
+  wrong person.
+- **Location:** `server/index.js`, the `/api/join` route (the `cleanHandle`
+  trim and length check); `client/src/App.tsx`, the lobby name input with
+  `maxLength={32}` and the `hasHandle` check that enables the join buttons;
+  `test-server-api.js`, "rejects missing, empty, and overlong handles";
+  `docs/PROTOCOL.md`, the `/api/join` error table; `docs/USER_EXPERIENCE.md`,
+  the Joining section.
+- **Requested behavior:** A name is one word: it must contain no whitespace
+  and no punctuation, and it must not start with `@`. Letters and digits
+  from any script (Cyrillic included), joined by `_` if wanted, are fine.
+  The lobby refuses to join with a bad name and says why in one plain
+  sentence next to the input, for example "Names are one word: letters,
+  digits and _ only". The server rejects the same names with 400 whatever
+  client sent them. The 32-character limit, trimming, and case-insensitive
+  uniqueness stay as they are. Names already in use keep working until the
+  server restarts.
+- **Implementation:** One rule, written once on each side and kept aligned
+  like `isValidChar` is: every code point is a Unicode letter, mark, or
+  digit (`\p{L}`, `\p{M}`, `\p{N}`) or `_`. Check it in `/api/join` after
+  trimming and before the length check; check it in the lobby before
+  enabling the buttons or on submit, whichever matches the existing
+  `hasHandle` flow. Emoji in names are not decided: the rule above rejects
+  them, and if that seems wrong, stop and ask Alex before choosing,
+  because it changes what the lobby accepts.
+- **Known limit:** The mention splitter and the handle list are not
+  changed by this task; they already handle every name the new rule
+  allows. Do not loosen the strip set in `client/src/links.ts` to
+  compensate for old names.
+- **Acceptance:** In the lobby, `Alex K`, `Bob!`, and `@alex` cannot join
+  and the sentence explains why; `alex_k`, `Женя`, and `bob2` join. In two
+  tabs, Bob types `@alex_k` and Enter, and alex_k sees the name colored and
+  hears the bell.
+- **Tests:** `test-server-api.js`: the rejection test gains a space, a
+  trailing `!`, a leading `@`, and an accepted `alex_k` and `Женя`.
+  A lobby test in `client/src/App.test.tsx` (or the file that holds the
+  lobby tests) that a bad name disables joining and shows the sentence,
+  and a good one joins. Add the sentence to the browser check only if the
+  lobby is driven there (task 40).
+- **Docs:** `docs/PROTOCOL.md` error table gains the new 400; the Joining
+  section of `docs/USER_EXPERIENCE.md` states the rule in one sentence;
+  the handle bullet in the AGENTS.md rule list names the shape.
+
+## 43. Cap the size of a socket frame
+
+- [ ] **Review finding, server**
+- **Source:** Review of task 18 on 2026-09-09. `new WebSocketServer` in
+  `server/index.js` uses the `ws` default `maxPayload` of 100 MiB, so a
+  client can send a frame far larger than anything the protocol needs;
+  `JSON.parse` and the `Array.from` in the private and key handlers then
+  run over it before validation rejects it.
+- **Location:** `server/index.js`, the `WebSocketServer` construction;
+  `test-server-ws.js`; `docs/PROTOCOL.md`, the WebSocket section.
+- **Requested behavior:** Nothing a user can notice. The largest legitimate
+  client frame is a private message of 200 four-byte code points, under
+  one kilobyte; keystroke frames are about 60 bytes.
+- **Implementation:** Pass `maxPayload: 4096` to `WebSocketServer`. The
+  `ws` library closes an offending socket with code 1009 on its own; no
+  handler code changes. Do not add a second length check to the handlers.
+- **Known limit:** A closed socket reconnects through the normal path and
+  replays pending keystrokes; that is the existing behavior, not something
+  to change here.
+- **Acceptance:** `npm test` passes; a raw socket sending an 8 KB frame
+  after `hello` is closed with 1009 while the other participant's socket
+  stays open.
+- **Tests:** `test-server-ws.js`: one test as in Acceptance, and one that
+  a private message of exactly 200 four-byte code points still arrives
+  (the existing emoji test covers this; keep it).
+- **Docs:** One sentence in the WebSocket section of `docs/PROTOCOL.md`
+  naming the frame cap and the 1009 close.
+
