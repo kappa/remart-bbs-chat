@@ -32,6 +32,7 @@ the order to execute them:
 | 7 | 40 — Drive the lobby in the browser check instead of ?name= | Lets the ?name= override go if nothing else needs it. |
 | 8 | 41 — Add ?silent=1 and make the browser check silent | Small client change plus the check's URLs; hover text documents it. |
 | 9 | 43 — Cap the size of a socket frame | Found reviewing task 18: one server option; nothing a user can notice. |
+| 10 | 44 — Protect the server from floods | Found reviewing task 18: per-socket and per-address rate limits; after 43. |
 
 ## Working a task
 
@@ -1735,4 +1736,73 @@ their numbers stable.
   (the existing emoji test covers this; keep it).
 - **Docs:** One sentence in the WebSocket section of `docs/PROTOCOL.md`
   naming the frame cap and the 1009 close.
+
+## 44. Protect the server from floods
+
+- [ ] **Review finding, server**
+- **Source:** Review of task 18 on 2026-09-09. The private message handler
+  has no rate limit, and neither does anything else: a raw socket can send
+  thousands of keystrokes a second, each broadcast to up to ten sockets;
+  `POST /api/rooms` with `forceNew` creates a room per call and rooms are
+  never capped; `POST /api/join` with a fresh handle each time fills rooms
+  and the global handle set. Alex decided the guard belongs on the server
+  and applies to every kind of traffic, not only private messages.
+- **Location:** `server/index.js`: the socket `message` handler (the
+  post-`hello` dispatch that calls `handleKey`, `handlePresence`, and
+  `handlePrivate`), the `hello` branch before it, `getOrCreateRoom`, the
+  `/api/rooms` and `/api/join` routes, and the constants block near
+  `HEARTBEAT_TIMEOUT_MS`; `test-server-ws.js` and `test-server-api.js`;
+  `docs/PROTOCOL.md`, the WebSocket section and the REST error tables;
+  `client/src/connection.ts`, which reconnects after `RECONNECT_DELAY_MS`.
+- **Requested behavior:** Ordinary use never notices anything. A person
+  typing at full speed, pasting 100 characters (one keystroke each, sent in
+  a burst), correcting with held-down Backspace, and switching tabs stays
+  well inside every limit. A socket that sends far more than a person can
+  is told once and closed; its client reconnects through the normal path
+  and, if it keeps flooding, is closed again. Room creation and joining
+  from one address are limited so a script cannot create rooms or handles
+  without bound. The room-of-ten rule, stale cleanup, and the transcript
+  are unchanged.
+- **Implementation:** One token bucket per socket for messages of any
+  type, refilled at `SOCKET_MESSAGES_PER_SECOND` (start at 40) with a burst
+  of `SOCKET_BURST` (start at 200, so a 100-character paste plus typing
+  fits). Count every parsed message after `hello`, including bad ones. On
+  overflow send `{type:"error", code:"too-fast"}` and close the socket
+  with code 1008; do not process the message. Do not store anything on
+  the participant; the bucket lives on the socket object so a reconnect
+  starts fresh. For REST, one bucket per client address (`req.ip`, with
+  `app.set('trust proxy', 1)` since Fly.io sits in front) shared by
+  `POST /api/rooms` and `POST /api/join`, about 10 per minute with a burst
+  of 20, answering 429 `{error:"too many requests"}`. Cap the number of
+  rooms at `MAX_ROOMS` (start at 50): when every room is full or the cap is
+  reached, `/api/rooms` and `/api/join` answer 503 `{error:"no room"}`
+  rather than creating one. Stale-swept empty rooms already free their
+  slot. All constants are exported for tests; test mode keeps them unless
+  a test sets them through `resetForTests()` or a small setter, whichever
+  is simpler. No new dependency; a bucket is a timestamp and a count.
+- **Known limit:** A person on a shared address (an office, a phone
+  network) shares the REST bucket with their neighbours; 10 joins a minute
+  per address is generous enough for that. Do not rate-limit `GET`
+  routes or the health check. The client is not changed: a closed socket
+  already reconnects and replays pending keystrokes, and a flooding client
+  is not one we ship.
+- **Acceptance:** In two tabs, pasting 100 characters, typing fast, and
+  holding Backspace never disconnects anyone. `npm run check:browser`
+  passes untouched. A raw socket that sends 1,000 keystrokes without
+  pause receives `too-fast` and is closed; the other tab keeps working.
+  Creating rooms in a loop stops at the cap with 503, and join in a loop
+  from one address gets 429 after the burst.
+- **Tests:** `test-server-ws.js`: a burst of 150 keystrokes on one socket
+  is fully echoed (under the burst); 300 without pause gets `too-fast` and
+  a close with 1008 while the second participant's socket stays open; a
+  reconnect after the close gets a snapshot. `test-server-api.js`: the
+  REST bucket answers 429 after the burst and recovers after the refill
+  time (use a small refill in the test through the setter); rooms stop at
+  `MAX_ROOMS` with 503. The browser check is the test that ordinary use
+  is unaffected.
+- **Docs:** `docs/PROTOCOL.md`: the `too-fast` error and the 1008 close in
+  the WebSocket section, the 429 and 503 rows in the REST error tables,
+  and the room cap; `docs/DESIGN.md`: one paragraph on why limits are per
+  socket and per address and why the numbers are far above human speed;
+  AGENTS.md rule list: one line naming the limits.
 
