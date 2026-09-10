@@ -463,6 +463,19 @@ describe('Commands', () => {
     done();
   });
 
+  it('a line that names an inherited object property, like constructor, is ordinary chat', async () => {
+    const { alice, a, b, done } = await roomWithTwo();
+    let seq = 0;
+    for (const ch of 'constructor') a.send(key(++seq, 'char', ch));
+    a.send(key(++seq, 'enter'));
+    const committed = await b.next((m) => m.type === 'committed' && m.line.text === 'constructor');
+    assert.equal(committed.participantId, alice.participantId);
+    await settle();
+    assert.ok(!a.messages.some((m) => m.type === 'command'), 'no command is sent');
+    assert.ok(rooms.get(alice.roomId).participants.has(alice.participantId), 'the participant stays in the room');
+    done();
+  });
+
   it('? returns a help command', async () => {
     const { a, done } = await roomWithTwo();
     a.send(key(1, 'char', '?'));

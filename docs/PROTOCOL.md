@@ -467,7 +467,8 @@ Session end: only `error unknown-participant` or `unauthorized`, the
 `command leave` reply, or the user's own leave action clears the session.
 
 Commands: Enter is a plain keystroke; the server decides. `command help`
-opens the overlay, `leave` returns to the lobby. The toolbar buttons call
+opens the overlay, `leave` returns to the lobby, and any other name is
+ignored. The toolbar buttons call
 HTTP roster/leave directly instead of typing the commands.
 
 Rendering: `computeDocumentLines` over accumulated committed lines and live

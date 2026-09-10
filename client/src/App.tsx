@@ -194,7 +194,7 @@ export function App() {
   const { room, status, send } = useRoomConnection(session, {
     onCommand: (name) => {
       if (name === "help") setShowHelp(true);
-      else endSession("");
+      else if (name === "leave") endSession("");
     },
     onSessionEnded: () => endSession("Room session ended. Join again."),
     onNewcomer: (entry) => {

@@ -250,7 +250,7 @@ function handleKey(participant, room, msg){
   if(seq > participant.nextSeq) return sendTo(participant, {type:'error', code:'seq-gap', expected:participant.nextSeq});
   participant.nextSeq++;
   if(msg.kind==='enter'){
-    const commandName = COMMANDS[participant.liveText];
+    const commandName = Object.hasOwn(COMMANDS, participant.liveText) ? COMMANDS[participant.liveText] : undefined;
     if(commandName){
       participant.liveText = '';
       participant.liveRow = null;

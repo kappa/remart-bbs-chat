@@ -151,6 +151,16 @@ describe('Rendering from server state', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
+  it('a command with an unknown name is ignored: the session and room view stay', async () => {
+    const { ws } = await renderJoined();
+    await screen.findByLabelText('Shared chat area');
+    serverSend(ws, { type: 'command', name: 'roster' } as any);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(screen.getByLabelText('Shared chat area')).toBeInTheDocument();
+    expect(screen.queryByText('ROOMS')).toBeNull();
+    expect(sessionStorage.getItem('remart-bbs-chat.session')).not.toBeNull();
+  });
+
   it('typing l and pressing Enter commits ordinary chat; help and leave commands still work', async () => {
     const user = userEvent.setup();
     const { ws } = await renderJoined();
