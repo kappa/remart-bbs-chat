@@ -66,6 +66,14 @@ name prefixes on ordinary lines because the color tells you who is who.
 - **Enter** commits your line exactly where it is. Your cursor moves to a
   fresh line below, ready for the next thought. Pressing Enter on an empty
   line commits an empty line — several in a row are fine.
+- Typing `@` opens a small list of the other people in the room next to your
+  caret. Keep typing to narrow it by the start of a name (case does not
+  matter), Up and Down move through it, Tab or Enter insert the rest of the
+  name, Escape closes it for that `@`. The list never adds a space; type your
+  own. If nothing matches the list disappears, and Backspace can bring it
+  back. If you have already typed a full name, Enter just closes the list and
+  the next Enter sends the line. `@` followed by something that is not a
+  name is ordinary text.
 - There is no line-length limit. Any language works, including Cyrillic.
 - Long lines wrap to the available transcript width and reflow when the window
   is resized. Wrapping is visual only; it does not insert line breaks into text.

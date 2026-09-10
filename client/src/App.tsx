@@ -873,6 +873,7 @@ export function App() {
               <div><dt>q</dt><dd>leave room</dd></div>
               <div><dt>Enter</dt><dd>commit your line and assign a new empty line</dd></div>
               <div><dt>Backspace</dt><dd>remove one character, visibly and in order</dd></div>
+              <div><dt>@</dt><dd>type @ and a name to pick a handle: Up/Down choose, Tab or Enter insert, Escape closes</dd></div>
             </dl>
             <p>Unicode supported, including Cyrillic. No character limit.</p>
             <p>

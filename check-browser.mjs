@@ -99,6 +99,7 @@ async function main() {
       focus: () => t.eval(`document.querySelector('.keyboard-capture')?.focus(), !!document.activeElement?.classList.contains('keyboard-capture')`),
       reload: () => cdp.send('Page.reload', {}, sessionId),
       goto: (url) => cdp.send('Page.navigate', { url }, sessionId),
+      close: () => cdp.send('Target.closeTarget', { targetId }),
     };
     return t;
   };
@@ -155,6 +156,26 @@ async function main() {
 
   await alice.focus(); await alice.type('l'); await alice.key('Enter', ENTER);
   check('"l" Enter shows "Roster refreshed"', await alice.waitFor(has('Roster refreshed')));
+
+  // Task 25: handle autocomplete. Carol joins so Bob has two candidates;
+  // "@c" filters to Carol, Enter completes without committing, Enter commits.
+  const carol1 = await tab('Carol');
+  check('Carol joins room 1', await carol1.waitFor(inRoom));
+  check('Bob sees Carol in the roster', await bob.waitFor(`${text('.roster-handle')}.includes('Carol')`));
+  await bob.focus(); await bob.type('@');
+  check('Bob "@": the handle list opens with Alice and Carol',
+    await bob.waitFor(`${text('[role="option"]')}.join('|') === '> Alice|  Carol'`), JSON.stringify(await bob.eval(text('[role="option"]'))));
+  await bob.type('c');
+  check('Bob "@c": the list narrows to Carol', await bob.waitFor(`${text('[role="option"]')}.join('|') === '> Carol'`));
+  await bob.key('Enter', ENTER);
+  check('Enter completes "@carol" in Bob\'s live line without committing',
+    await bob.waitFor(`${text('.live-line')}.includes('@carol')`) && !(await bob.eval(`${text('.committed-line')}.some((l) => l.includes('@carol'))`)),
+    JSON.stringify(await bob.eval(text('.live-line'))));
+  check('the list is closed after the pick', await bob.waitFor(`!document.querySelector('[role="listbox"]')`));
+  await bob.key('Enter', ENTER);
+  check('a second Enter commits "@carol" in both tabs',
+    await bob.waitFor(`${text('.committed-line')}.includes('@carol')`) && await alice.waitFor(`${text('.committed-line')}.includes('@carol')`));
+  await carol1.close();
 
   // A reload sends no leave: the reloaded page reconnects with the stored
   // session and keeps its participant, live text, and sequence position,

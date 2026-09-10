@@ -33,6 +33,10 @@ docs as part of the relevant change.
 - `client/src/protocol.ts`: wire message types.
 - `client/src/api.ts`: REST client for rooms, join, leave, and roster.
 - `client/src/documentLines.ts`: document row ordering and character helpers.
+- `client/src/mentions.ts`: pure mention token, candidate, and completion
+  helpers for handle autocomplete.
+- `client/src/MentionList.tsx`: the floating handle list rendered next to
+  the caret.
 - `client/src/theme.css`: terminal appearance and responsive layout.
 - `client/src/main.tsx`: React entry point and QueryClient provider.
 - `client/src/testing/`: FakeWebSocket and shared room fixtures for tests.

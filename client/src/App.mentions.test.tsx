@@ -163,3 +163,13 @@ describe('Handle autocomplete list', () => {
     expect(screen.queryByRole('listbox')).toBeNull();
   });
 });
+
+describe('Help dialog', () => {
+  it('lists the @ autocomplete keys', async () => {
+    const user = userEvent.setup();
+    await renderJoined();
+    await user.click(screen.getByRole('button', { name: 'Help' }));
+    expect(await screen.findByText('@')).toBeInTheDocument();
+    expect(screen.getByText(/Up\/Down choose, Tab or Enter insert, Escape closes/)).toBeInTheDocument();
+  });
+});
