@@ -37,7 +37,9 @@ docs as part of the relevant change.
 - `client/src/api.ts`: REST client for rooms, join, leave, and roster.
 - `client/src/documentLines.ts`: document row ordering and character helpers.
 - `client/src/mentions.ts`: pure mention token, candidate, and completion
-  helpers for handle autocomplete.
+  helpers for handle autocomplete and committed-text mention detection.
+- `client/src/notifications.ts`: typed join and mention notifications with
+  title and sound channels.
 - `client/src/MentionList.tsx`: the floating handle list rendered next to
   the caret.
 - `client/src/PrivateMessages.tsx`: the stack of private-message popups over
@@ -162,6 +164,11 @@ The following describes the current implementation and its regression baseline.
   open while keystrokes are in flight is parked until the pending count is
   zero, then resolved against the fresh echo: pick if a token with
   candidates remains, otherwise a parked Enter commits.
+- Mentions are client-side and render-time: `@handle` in a committed line
+  is colored from the current roster, and the bell and title notice fire
+  only for a first-seen `committed` message by someone else that names
+  the own handle. Notifications go through `notifications.ts`; one Sounds
+  switch gates both sounds.
 - AFK follows tab visibility: the client reports `document.hidden` after
   every snapshot and on every change, the server owns the resulting `afk`
   flag carried on roster entries and snapshot live lines, and only a changed

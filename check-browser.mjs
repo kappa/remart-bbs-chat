@@ -240,6 +240,16 @@ async function main() {
   await bob.focus(); await bob.key('Escape', ESCAPE);
   check("Escape dismisses Bob's popup", await bob.waitFor(`!document.querySelector('.private-popup')`));
 
+  // Task 17: a committed mention is colored and notifies the mentioned tab.
+  await bob.focus(); await bob.type('hi @Alice ok'); await bob.key('Enter', ENTER);
+  check('Alice sees "@Alice" as a colored mention span in Bob\'s committed line',
+    await alice.waitFor(`(() => { const m = document.querySelector('.committed-line .mention[data-handle=\"Alice\"]'); return !!m && m.textContent === '@Alice' && m.dataset.handle === 'Alice'; })()`),
+    JSON.stringify(await alice.eval(text('.committed-line'))));
+  check('the mention span has Alice\'s roster color',
+    await alice.eval(`(() => { const m = document.querySelector('.committed-line .mention[data-handle=\"Alice\"]'); const me = Array.from(document.querySelectorAll('.roster-entry')).find((e) => e.textContent.startsWith('Alice')); return !!m && !!me && getComputedStyle(m).color === getComputedStyle(me).color; })()`));
+  check('Alice\'s title rotates "mentioned you"', await alice.waitFor(`document.title.includes('mentioned you')`, 2000), await alice.eval('document.title'));
+  check('Bob\'s title does not', !(await bob.eval(`document.title.includes('mentioned you')`)));
+
   // A reload sends no leave: the reloaded page reconnects with the stored
   // session and keeps its participant, live text, and sequence position,
   // and the observer sees no leave/join lines. Same for a plain-URL load.
