@@ -28,6 +28,8 @@ docs as part of the relevant change.
   dispatch.
 - `client/src/connection.ts`: socket lifecycle and keystroke replay.
 - `client/src/roomState.ts`: server messages to room state (pure reducer).
+- `client/src/sessionLock.ts`: the per-participant Web Lock that keeps a
+  session to one tab.
 - `client/src/useRoomConnection.ts`: React binding between the connection and
   app events; also owns the `visibilitychange` listener that feeds AFK.
 - `client/src/protocol.ts`: wire message types.
@@ -84,7 +86,8 @@ npm --prefix client test -- src/App.race.test.tsx
 `npm run check:browser` runs a two-tab end-to-end check (`check-browser.mjs`)
 in a headless Chrome driven over the DevTools protocol: typing, Backspace,
 Enter, the `?` and `q` commands, handle autocomplete in a third tab, the
-AFK marker driven by real tab switches, a page reload, and a server restart.
+AFK marker driven by real tab switches, a page reload, a duplicated tab, and
+a server restart.
 It needs a built client and a `google-chrome` binary (`CHROME` overrides) and
 is not part of `npm test`. Use it for changes to the typing protocol, the
 socket connection, or the transcript rendering; a plan's end-to-end step can
@@ -146,6 +149,10 @@ The following describes the current implementation and its regression baseline.
 - Handles are unique case-insensitively across all rooms; rooms allow up to
   ten participants. Browser storage is prototype session convenience. The
   `?name=` override must not overwrite the remembered default handle.
+- One tab per session: the client claims a Web Lock per participant before
+  connecting and releases it when the session ends. A duplicated tab starts
+  in the lobby like a pasted URL; a reload resumes; the server is not
+  involved.
 - Handle autocomplete follows the echoed live line only, and a pick goes
   over the wire as ordinary `char` keystrokes. Tab or Enter with the list
   open while keystrokes are in flight is parked until the pending count is
