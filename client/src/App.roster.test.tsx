@@ -53,17 +53,16 @@ describe('Roster', () => {
     expect(await screen.findByText('CHAT COMMANDS')).toBeInTheDocument();
     const rows = Array.from(document.querySelectorAll('.help-list dt')).map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
     expect(rows).toEqual([
-      ['?', 'show this help'],
-      ['q', 'leave room'],
-      ['Enter', 'send the current line'],
-      ['Backspace', 'remove one code point before caret'],
-      ['Delete', 'remove one code point after caret'],
-      ['Left/Right', 'move caret one code point'],
-      ['Home/End', 'move caret to line start or end'],
-      ['Ctrl+Left/Ctrl+Right', 'move caret by word (Alt+Arrow on macOS)'],
-      ['@', 'type @ and a name to pick a handle: Up/Down choose, Tab or Enter insert, Escape closes'],
+      ['?', 'See this help again'],
+      ['q', 'Leave the room'],
+      ['Enter', 'Send your message'],
+      ['Backspace', 'Delete the character before the cursor'],
+      ['Delete', 'Delete the character under the cursor'],
+      ['Left / Right', 'Move the cursor one character; with Ctrl, jump one word at a time (Alt+Arrow on macOS)'],
+      ['Home / End', 'Jump to the start or end of the line'],
+      ['@', 'Mention someone. Type @ and start typing a name, then use Up/Down to choose, Tab or Enter to pick, Esc to close'],
     ]);
-    expect(screen.getByText('Unicode supported, including Cyrillic. No character limit.')).toBeInTheDocument();
+    expect(screen.queryByText(/Unicode/)).toBeNull();
     await user.keyboard('{Escape}');
     expect(screen.queryByText('CHAT COMMANDS')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Help' }));

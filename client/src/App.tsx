@@ -867,17 +867,15 @@ export function App() {
           <div className="help-dialog" role="dialog" aria-label="help" aria-modal="true">
             <div className="help-heading">CHAT COMMANDS</div>
             <dl className="help-list">
-              <div><dt>?</dt><dd>show this help</dd></div>
-              <div><dt>q</dt><dd>leave room</dd></div>
-              <div><dt>Enter</dt><dd>send the current line</dd></div>
-              <div><dt>Backspace</dt><dd>remove one code point before caret</dd></div>
-              <div><dt>Delete</dt><dd>remove one code point after caret</dd></div>
-              <div><dt>Left/Right</dt><dd>move caret one code point</dd></div>
-              <div><dt>Home/End</dt><dd>move caret to line start or end</dd></div>
-              <div><dt>Ctrl+Left/Ctrl+Right</dt><dd>move caret by word (Alt+Arrow on macOS)</dd></div>
-              <div><dt>@</dt><dd>type @ and a name to pick a handle: Up/Down choose, Tab or Enter insert, Escape closes</dd></div>
+              <div><dt>?</dt><dd>See this help again</dd></div>
+              <div><dt>q</dt><dd>Leave the room</dd></div>
+              <div><dt>Enter</dt><dd>Send your message</dd></div>
+              <div><dt>Backspace</dt><dd>Delete the character before the cursor</dd></div>
+              <div><dt>Delete</dt><dd>Delete the character under the cursor</dd></div>
+              <div><dt>Left / Right</dt><dd>Move the cursor one character; with Ctrl, jump one word at a time (Alt+Arrow on macOS)</dd></div>
+              <div><dt>Home / End</dt><dd>Jump to the start or end of the line</dd></div>
+              <div><dt>@</dt><dd>Mention someone. Type @ and start typing a name, then use Up/Down to choose, Tab or Enter to pick, Esc to close</dd></div>
             </dl>
-            <p>Unicode supported, including Cyrillic. No character limit.</p>
             <button
               type="button"
               className="help-close"

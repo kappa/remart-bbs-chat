@@ -216,6 +216,6 @@ describe('Help dialog', () => {
     await renderJoined();
     await user.click(screen.getByRole('button', { name: 'Help' }));
     expect(await screen.findByText('@')).toBeInTheDocument();
-    expect(screen.getByText(/Up\/Down choose, Tab or Enter insert, Escape closes/)).toBeInTheDocument();
+    expect(screen.getByText(/Up\/Down to choose, Tab or Enter to pick, Esc to close/)).toBeInTheDocument();
   });
 });
