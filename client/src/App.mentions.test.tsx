@@ -120,3 +120,46 @@ describe('Handle autocomplete keys', () => {
     expect(sentKeys(ws)).toEqual([[1, 'char', 'a'], [2, 'char', 'r'], [3, 'char', 'o'], [4, 'char', 'l']]);
   });
 });
+
+describe('Handle autocomplete list', () => {
+  it('opens on an echoed @ with the other participants in roster order and highlights the first', async () => {
+    const { ws } = await typingAt('@');
+    const options = await screen.findAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual(['> Bob', '  Carol']);
+    expect(options[0]).toHaveAttribute('aria-selected', 'true');
+    expect(options[1]).toHaveStyle({ color: '#f0f' });
+    echo(ws, '@c', 2);
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['> Carol']);
+    echo(ws, '@x', 3);
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+
+  it('the list sits inside the own live line after the caret', async () => {
+    await typingAt('@');
+    const listbox = await screen.findByRole('listbox');
+    expect(listbox.closest('.live-line')).not.toBeNull();
+    expect(listbox.parentElement).toHaveClass('mention-anchor');
+  });
+
+  it('Down moves the highlight', async () => {
+    const { user } = await typingAt('@');
+    await screen.findByRole('listbox');
+    await user.keyboard('{ArrowDown}');
+    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['  Bob', '> Carol']);
+  });
+
+  it('clicking an entry picks it and keeps keyboard focus', async () => {
+    const { user, ws } = await typingAt('@');
+    await user.click(await screen.findByRole('option', { name: /Carol/ }));
+    expect(sentKeys(ws)).toEqual([[1, 'char', 'C'], [2, 'char', 'a'], [3, 'char', 'r'], [4, 'char', 'o'], [5, 'char', 'l']]);
+    expect(document.activeElement).toBe(document.querySelector('.keyboard-capture'));
+  });
+
+  it('is absent for another participant\'s live line', async () => {
+    const { ws } = await renderJoined(three());
+    await screen.findByText('Carol');
+    serverSend(ws, { type: 'live', participantId: 20, row: 0, text: '@', caret: 1, seq: 1 });
+    await screen.findByText('@');
+    expect(screen.queryByRole('listbox')).toBeNull();
+  });
+});

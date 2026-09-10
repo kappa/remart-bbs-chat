@@ -11,6 +11,7 @@ import {
 import { api } from "./api";
 import { computeDocumentLines, isValidChar } from "./documentLines";
 import { splitLinks } from "./links";
+import { MentionList } from "./MentionList";
 import { mentionCandidates, mentionCompletion, mentionTokenBefore } from "./mentions";
 import type { RosterEntry } from "./protocol";
 import { sortedCommitted } from "./roomState";
@@ -730,6 +731,15 @@ export function App() {
           // a block, so the text does not shift sideways.
           const codePoints = isOwnLine ? Array.from(participant.text) : [];
           const caret = Math.min(participant.caret, codePoints.length);
+          const mentionList =
+            isOwnLine && mentionOpen && mentionHighlighted ? (
+              <MentionList
+                candidates={mentionCandidatesList}
+                highlightedId={mentionHighlighted.participantId}
+                onPick={pickMention}
+                container={chatRef.current}
+              />
+            ) : null;
           return (
             <div
               className="chat-line live-line"
@@ -742,6 +752,7 @@ export function App() {
                 <>
                   {codePoints.slice(0, caret).join("")}
                   <span className="caret-char" aria-label="Your typing position">{codePoints[caret]}</span>
+                  {mentionList}
                   {codePoints.slice(caret + 1).join("")}
                 </>
               ) : (
@@ -750,6 +761,7 @@ export function App() {
                   {isOwnLine ? (
                     <span className="caret" aria-label="Your typing position"> </span>
                   ) : null}
+                  {mentionList}
                 </>
               )}
             </div>
