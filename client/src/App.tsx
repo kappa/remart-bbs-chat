@@ -193,8 +193,7 @@ export function App() {
 
   const { room, status, send } = useRoomConnection(session, {
     onCommand: (name) => {
-      if (name === "roster") setFeedback("Roster refreshed");
-      else if (name === "help") setShowHelp(true);
+      if (name === "help") setShowHelp(true);
       else endSession("");
     },
     onSessionEnded: () => endSession("Room session ended. Join again."),
@@ -798,17 +797,16 @@ export function App() {
           <div className="help-dialog" role="dialog" aria-label="help" aria-modal="true">
             <div className="help-heading">CHAT COMMANDS</div>
             <dl className="help-list">
-              <div><dt>l</dt><dd>refresh roster and list participants</dd></div>
               <div><dt>?</dt><dd>show this help</dd></div>
               <div><dt>q</dt><dd>leave room</dd></div>
-              <div><dt>Enter</dt><dd>commit your line and assign a new empty line</dd></div>
-              <div><dt>Backspace</dt><dd>remove one character, visibly and in order</dd></div>
+              <div><dt>Enter</dt><dd>send the current line</dd></div>
+              <div><dt>Backspace</dt><dd>remove one code point before caret</dd></div>
+              <div><dt>Delete</dt><dd>remove one code point after caret</dd></div>
+              <div><dt>Left/Right</dt><dd>move caret one code point</dd></div>
+              <div><dt>Home/End</dt><dd>move caret to line start or end</dd></div>
+              <div><dt>Ctrl+Left/Ctrl+Right</dt><dd>move caret by word (Alt+Arrow on macOS)</dd></div>
             </dl>
             <p>Unicode supported, including Cyrillic. No character limit.</p>
-            <p>
-              For per-tab testing, use <code>?name=Alice</code> and <code>?name=Bob</code>.
-              Overrides do not overwrite the handle remembered in localStorage.
-            </p>
             <button
               type="button"
               className="help-close"

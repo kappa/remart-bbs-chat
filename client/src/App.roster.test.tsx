@@ -45,11 +45,31 @@ describe('Roster', () => {
     expect(screen.queryByText('[q]')).toBeNull();
   });
 
-  it('Help opens the overlay; Escape and Close dismiss it', async () => {
+  it('Help opens the overlay with corrected command descriptions and no l command', async () => {
     const user = userEvent.setup();
     await renderJoined();
     await user.click(screen.getByRole('button', { name: 'Help' }));
     expect(await screen.findByText('CHAT COMMANDS')).toBeInTheDocument();
+    // Enter sends the current line, does not assign a new empty line
+    expect(screen.getByText('send the current line')).toBeInTheDocument();
+    expect(screen.queryByText('assign a new empty line')).toBeNull();
+    // Backspace removes one code point before caret
+    expect(screen.getByText('remove one code point before caret')).toBeInTheDocument();
+    // Delete removes one code point after caret
+    expect(screen.getByText('remove one code point after caret')).toBeInTheDocument();
+    // Caret movement keys described
+    expect(screen.getByText('move caret one code point')).toBeInTheDocument();
+    expect(screen.getByText('move caret to line start or end')).toBeInTheDocument();
+    expect(screen.getByText('move caret by word (Alt+Arrow on macOS)')).toBeInTheDocument();
+    // Unicode and no-line-limit facts retained
+    expect(screen.getByText('Unicode supported, including Cyrillic. No character limit.')).toBeInTheDocument();
+    // Per-tab testing paragraph removed
+    expect(screen.queryByText('For per-tab testing')).toBeNull();
+    // l command removed: only ? and q remain as commands
+    expect(screen.queryByText('refresh roster')).toBeNull();
+    expect(screen.queryByText('leave room')).toBeInTheDocument();
+    // Only ? and q are command entries
+    expect(screen.getByText('show this help')).toBeInTheDocument();
     await user.keyboard('{Escape}');
     expect(screen.queryByText('CHAT COMMANDS')).toBeNull();
     await user.click(screen.getByRole('button', { name: 'Help' }));
