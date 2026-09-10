@@ -54,6 +54,7 @@ describe('Sending a private message', () => {
     const { user, ws, input } = await openTo('Bob');
     await user.type(input, '  lunch?  {Enter}');
     expect(privates(ws)).toEqual([{ type: 'private', to: 20, text: 'lunch?' }]);
+    expect(ws.keys()).toEqual([]);
     expect(screen.queryByLabelText('Private message to Bob')).toBeNull();
     expect(document.activeElement).toBe(document.querySelector('.keyboard-capture'));
     expect(committedTexts()).toEqual([]);
@@ -63,6 +64,7 @@ describe('Sending a private message', () => {
     const { user, ws, input } = await openTo('Bob');
     await user.type(input, 'never{Escape}');
     expect(privates(ws)).toEqual([]);
+    expect(ws.keys()).toEqual([]);
     expect(screen.queryByLabelText('Private message to Bob')).toBeNull();
     expect(document.activeElement).toBe(document.querySelector('.keyboard-capture'));
   });

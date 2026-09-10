@@ -275,9 +275,10 @@ export function App() {
     focusKeyboard();
   };
   const onPrivateKey = (event: ReactKeyboardEvent<HTMLInputElement>) => {
-    if (event.key === "Escape") { event.preventDefault(); closePrivate(); return; }
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closePrivate(); return; }
     if (event.key !== "Enter" || !privateTarget) return;
     event.preventDefault();
+    event.stopPropagation();
     const text = privateText.trim();
     if (!text) { closePrivate(); return; }
     if (Array.from(text).length > PRIVATE_MAX_CODE_POINTS) { setWarning("Private messages are limited to 200 characters"); return; }
