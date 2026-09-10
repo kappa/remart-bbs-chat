@@ -1576,8 +1576,10 @@ their numbers stable.
   asserts the box is ticked on a fresh render even when that key holds
   `off`, and keep the test that unticking suppresses the chirp. Assert that
   toggling writes nothing to `localStorage`.
-- **Docs:** Drop any mention of the remembered sound setting from
-  `docs/USER_EXPERIENCE.md` and `AGENTS.md` if present.
+- **Docs:** In `docs/USER_EXPERIENCE.md`, the roster and presence bullet
+  says the Join sound choice "is remembered in that browser"; change it to
+  say the checkbox starts on with every page load and unticking it lasts
+  for that page. Drop any similar mention from `AGENTS.md` if present.
 
 ## 38. Drop the > marker from the handle list
 
