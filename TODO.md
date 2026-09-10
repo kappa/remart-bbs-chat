@@ -1371,7 +1371,7 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 
 ## 32. Remove the sidebar Type button
 
-- [ ] **Requested UI cleanup**
+- [x] **Requested UI cleanup**
 - **Source:** [GitHub issue #20](https://github.com/kappa/remart-bbs-chat/issues/20).
 - **Location:** `client/src/App.tsx` roster footer;
   `.keyboard-button` rules in `client/src/theme.css`;
@@ -1397,7 +1397,7 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 
 ## 33. Clean up the help dialog contents
 
-- [ ] **Requested UI cleanup**
+- [x] **Requested UI cleanup**
 - **Source:** [GitHub issue #21](https://github.com/kappa/remart-bbs-chat/issues/21).
 - **Location:** Help overlay markup in `client/src/App.tsx`; help-dialog styles
   in `client/src/theme.css`; `client/src/App.roster.test.tsx` and maintained
