@@ -1385,7 +1385,7 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 
 ## 33. Remove the roster command and clean up Help
 
-- [ ] **Requested command removal and UI cleanup**
+- [x] **Requested command removal and UI cleanup**
 - **Source:** [GitHub issue #21](https://github.com/kappa/remart-bbs-chat/issues/21).
 - **Location:** Command recognition in `server/index.js`; command types in
   `client/src/protocol.ts`; command handling and Help in `client/src/App.tsx`;
