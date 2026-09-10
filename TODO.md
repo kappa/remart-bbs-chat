@@ -31,6 +31,7 @@ the order to execute them:
 | 6 | 35 — Fix the join-order race in the browser check | Small script fix; removes a flaky failure of the first checks. |
 | 7 | 36 — Delay AFK by five minutes of invisibility | Client-side timer; found while testing task 31. |
 | 8 | 37 — Stop remembering the Join sound checkbox | Small client cleanup; the box starts on every load. |
+| 9 | 38 — Drop the > marker from the handle list | Small client cleanup; the background already marks the selection. |
 
 ## Working a task
 
@@ -1454,7 +1455,7 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 ## Review issues 2026-09-09
 
 Tasks 34 and 35 come from the goblin review of the day's merges, and tasks
-36 and 37 from testing the merged build; none has a GitHub issue. Keep
+36 to 38 from testing the merged build; none has a GitHub issue. Keep
 their numbers stable.
 
 ## 34. Investigate the socket takeover between tabs that share a session
@@ -1583,3 +1584,32 @@ their numbers stable.
   toggling writes nothing to `localStorage`.
 - **Docs:** Drop any mention of the remembered sound setting from
   `docs/USER_EXPERIENCE.md` and `AGENTS.md` if present.
+
+## 38. Drop the > marker from the handle list
+
+- [ ] **Requested UI cleanup, handle autocomplete**
+- **Source:** Manual testing on 2026-09-09.
+- **Location:** The option text in `client/src/MentionList.tsx`
+  (`{highlighted ? "> " : "  "}` before the handle); `.mention-list` and
+  `.mention-option.highlighted` in `client/src/theme.css`; the option text
+  assertions in `client/src/App.mentions.test.tsx` and the two list checks
+  in `check-browser.mjs` that expect `> Alice|  Carol` and `> Carol`.
+- **Requested behavior:** The highlighted entry in the handle list is shown
+  by its background color only. No `>` prefix on the highlighted entry and
+  no two-space placeholder on the others; each option's text is the handle
+  alone.
+- **Implementation:** Remove the prefix from the option markup. The
+  `white-space:pre` on `.mention-list` existed to keep the placeholder
+  spaces; drop it if nothing else needs it, and keep the highlighted
+  background as it is. Check the list still lines up with the caret and
+  that a highlighted row is distinguishable on the dark background; adjust
+  the background shade if it is too faint without the marker.
+- **Acceptance:** With the list open, the highlighted row differs from the
+  others only by background; Up and Down move that background; the option
+  text and the accessible option names are the bare handles.
+- **Tests:** Update the option text assertions to `['Bob', 'Carol']`,
+  `['Carol']`, and the Down case, and assert `aria-selected` instead of a
+  text prefix for the highlight. Update the two browser check expectations
+  to bare handles.
+- **Docs:** None; the spec and `docs/USER_EXPERIENCE.md` do not describe the
+  marker.
