@@ -27,6 +27,7 @@ the order to execute them:
 | 2 | 33 — Clean up the help dialog | Small client content change; reflect the controls left after task 32. |
 | 3 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
 | 4 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
+| 5 | 34 — Investigate the shared-session socket takeover | Investigation only; explains the afk flicker seen with duplicated tabs. |
 
 ## Working a task
 
@@ -1446,3 +1447,39 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
   as current requirements. Keep descriptions of ordinary roster functionality.
 - **Completion:** Tick this task's checkbox in `TODO.md` once implementation
   and required validation are complete; include that update in the task commit.
+
+## Review issues 2026-09-09
+
+Task 34 comes from the goblin review of the day's merges, not from a GitHub
+issue. Keep its number stable.
+
+## 34. Investigate the socket takeover between tabs that share a session
+
+- [ ] **Investigation, connection**
+- **Source:** Review of task 31 on 2026-09-09; no GitHub issue yet.
+- **Location:** The reconnect path in `client/src/connection.ts`; the `hello`
+  handling in `server/index.js` that replaces `participant.socket` and closes
+  the old one; `client/src/useRoomConnection.ts`; session storage in
+  `client/src/App.tsx` (`readSession`, `storeSession`).
+- **Observed behavior:** Chrome's "Duplicate tab" copies `sessionStorage`, so
+  two tabs share one participant and token. Each `hello` replaces the
+  participant's socket and closes the old one; the closed tab reconnects
+  after 1.2 s and takes the socket back, and the two trade it indefinitely.
+  Since task 31 the takeover is visible to the whole room: the front tab
+  reports visible and the background one hidden, so `afk` flips and a
+  roster broadcast goes out on every cycle, and the marker beside that
+  participant flickers.
+- **Goal:** Understand and document the cycle before choosing a fix.
+  Reproduce it with two tabs, capture the message sequence on both tabs and
+  the server, and measure the cycle period and the roster traffic it
+  causes. Check whether a restored tab (Ctrl+Shift+T) or a tab reopened
+  from history behaves the same way.
+- **Candidate directions (not part of this task):** a per-tab nonce in
+  `hello` so a replaced socket stops reconnecting and shows a "this session
+  is open in another tab" notice; or letting the newest tab win and the
+  older one leave the session. Record the trade-offs in a spec if a fix is
+  chosen.
+- **Acceptance:** A written note in this task, or a spec, with the
+  reproduction, the captured sequence, and a recommendation. The afk flicker
+  is described there as a symptom and is not patched separately.
+- **Tests and docs:** None for the investigation; a fix task names its own.
