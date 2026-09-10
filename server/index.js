@@ -136,10 +136,13 @@ function broadcast(room, msg){
   }
 }
 
+// The roster fields of a participant; a live line is these plus the line.
+function rosterEntryOf(p){
+  return {participantId:p.id, handle:p.handle, color:p.color, slot:p.slot, afk:p.afk};
+}
+
 function rosterOf(room){
-  return Array.from(room.participants.values())
-    .map(p=>({participantId:p.id, handle:p.handle, color:p.color, slot:p.slot, afk:p.afk}))
-    .sort((a,b)=>a.slot-b.slot);
+  return Array.from(room.participants.values()).map(rosterEntryOf).sort((a,b)=>a.slot-b.slot);
 }
 
 function publicLine(line){
@@ -147,7 +150,7 @@ function publicLine(line){
 }
 
 function liveLineOf(p){
-  return {participantId:p.id, handle:p.handle, color:p.color, slot:p.slot, afk:p.afk, row:p.liveRow, text:p.liveText, caret:p.liveCaret};
+  return {...rosterEntryOf(p), row:p.liveRow, text:p.liveText, caret:p.liveCaret};
 }
 
 // Filter the last 100 appended lines for this participant, then sort by row.
@@ -474,7 +477,7 @@ wss.on('connection', (ws)=>{
   ws.on('close', ()=>{ if(ws.participant && ws.participant.socket===ws) ws.participant.socket = null; });
 });
 
-// Presence is the socket: pings every 12 s, pongs refresh lastSeen.
+// Liveness is the socket: pings every 12 s, pongs refresh lastSeen. AFK is separate, see handlePresence.
 function pingSockets(){
   for(const room of rooms.values()){
     for(const p of room.participants.values()){

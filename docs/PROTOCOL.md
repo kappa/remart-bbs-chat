@@ -227,7 +227,7 @@ added, the participant's socket is closed, and remaining sockets receive the
 without broadcasts.
 
 The browser sends no leave on page exit. A reload reconnects with the
-stored session and token (see [Presence and lifetime](#presence-and-lifetime));
+stored session and token (see [Liveness and lifetime](#liveness-and-lifetime));
 only explicit Leave and the `q` command end the session at once.
 
 ## WebSocket message reference
@@ -392,7 +392,7 @@ it at leave time, stale cleanup at the participant's last activity. Then a
 emptied non-lobby room is deleted without broadcasts; newly created rooms that
 never had a participant are not removed by the stale sweep.
 
-## Presence and lifetime
+## Liveness and lifetime
 
 - AFK is separate from liveness. The server owns each participant's `afk`
   flag, set only by that participant's `presence` reports and carried in

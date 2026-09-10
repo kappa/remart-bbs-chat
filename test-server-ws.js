@@ -144,7 +144,7 @@ describe('Socket handshake', () => {
   });
 });
 
-describe('Presence over the socket', () => {
+describe('Liveness over the socket', () => {
   it('a pong refreshes lastSeen', async () => {
     const roomId = await newRoom(baseUrl);
     const alice = await join(baseUrl, roomId, 'Alice');

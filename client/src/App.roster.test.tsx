@@ -9,7 +9,7 @@ vi.mock('./api', () => ({
 }));
 
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.clearAllMocks(); (api.listRooms as any).mockResolvedValue({ rooms: [] }); });
-afterEach(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); });
+afterEach(() => { delete (document as any).hidden; });
 
 const carol = { participantId: 30, handle: 'Carol', color: '#f0f', slot: 2, afk: false };
 

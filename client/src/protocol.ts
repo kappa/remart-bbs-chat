@@ -1,8 +1,9 @@
 // Wire messages between the browser and server/index.js. See docs/PROTOCOL.md.
 
-export type LiveLine = { participantId: number; handle: string; color: string; slot: number; afk: boolean; row: number | null; text: string; caret: number };
-export type CommittedLine = { id: string; row: number; text: string; handle: string; color: string; committedAt: number };
 export type RosterEntry = { participantId: number; handle: string; color: string; slot: number; afk: boolean };
+// A live line is a roster entry plus the line; roster messages are spread into it.
+export type LiveLine = RosterEntry & { row: number | null; text: string; caret: number };
+export type CommittedLine = { id: string; row: number; text: string; handle: string; color: string; committedAt: number };
 export type CommandName = 'help' | 'leave';
 export type ErrorCode = 'unauthorized' | 'unknown-participant' | 'seq-gap' | 'invalid-message';
 

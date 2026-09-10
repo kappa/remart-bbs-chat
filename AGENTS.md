@@ -22,14 +22,14 @@ docs as part of the relevant change.
 ## Code map
 
 - `server/index.js`: in-memory state, room lifecycle, REST routes for
-  rooms/join/leave/roster, socket handshake and keystroke echo, stale sweep,
-  and static serving.
+  rooms/join/leave/roster, socket handshake, keystroke echo and presence
+  dispatch, stale sweep, and static serving.
 - `client/src/App.tsx`: lobby/session UI, rendering from room state, and input
   dispatch.
 - `client/src/connection.ts`: socket lifecycle and keystroke replay.
 - `client/src/roomState.ts`: server messages to room state (pure reducer).
 - `client/src/useRoomConnection.ts`: React binding between the connection and
-  app events.
+  app events; also owns the `visibilitychange` listener that feeds AFK.
 - `client/src/protocol.ts`: wire message types.
 - `client/src/api.ts`: REST client for rooms, join, leave, and roster.
 - `client/src/documentLines.ts`: document row ordering and character helpers.
