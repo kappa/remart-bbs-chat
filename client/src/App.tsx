@@ -456,6 +456,9 @@ export function App() {
   // browser meaning (copy, paste, ...).
   const handleChatKey = (event: KeyboardEvent) => {
     if (!session || event.metaKey) return false;
+    // Keys inside an IME composition belong to the composition; the textarea
+    // input path receives the composed text when it is confirmed.
+    if (event.isComposing) return false;
 
     if (event.ctrlKey || event.altKey) {
       if (event.key === "ArrowLeft") {

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { api } from './api';
 import { renderJoined, serverSend, snapshot, alice, bob, idle } from './testing/roomFixtures';
@@ -65,6 +65,32 @@ describe('Handle autocomplete keys', () => {
     echo(ws, '@c x @', 2);
     await user.keyboard('{Tab}');
     expect(sentKeys(ws).slice(1)).toEqual([[2, 'char', 'B'], [3, 'char', 'o'], [4, 'char', 'b']]);
+  });
+
+  it('after Escape, a new @ at the same index reopens the list once the old token is gone', async () => {
+    const { user, ws } = await typingAt('@c');
+    await user.keyboard('{Escape}');
+    echo(ws, '', 2);
+    echo(ws, '@', 3);
+    await user.keyboard('{Tab}');
+    expect(sentKeys(ws)).toEqual([[1, 'char', 'B'], [2, 'char', 'o'], [3, 'char', 'b']]);
+  });
+
+  it('after Escape, a Backspace echo that shortens the same token keeps the list closed', async () => {
+    const { user, ws } = await typingAt('@ca');
+    await user.keyboard('{Escape}');
+    echo(ws, '@c', 2);
+    await user.keyboard('{Enter}');
+    expect(sentKeys(ws)).toEqual([[1, 'enter', '']]);
+  });
+
+  it('a keydown that is part of an IME composition is not a pick', async () => {
+    const { ws } = await typingAt('@c');
+    const textarea = document.querySelector('.keyboard-capture') as HTMLTextAreaElement;
+    textarea.focus();
+    fireEvent.keyDown(textarea, { key: 'Enter', isComposing: true });
+    expect(sentKeys(ws)).toEqual([]);
+    expect(screen.getByRole('listbox')).toBeInTheDocument();
   });
 
   it('Down wraps through the candidates and Up comes back', async () => {
