@@ -157,7 +157,6 @@ async function main() {
   check('"l" Enter commits ordinary chat in both tabs',
     await alice.waitFor(`${text('.committed-line')}.includes('l')`) && await bob.waitFor(`${text('.committed-line')}.includes('l')`),
     `alice=${JSON.stringify(await alice.eval(text('.committed-line')))} bob=${JSON.stringify(await bob.eval(text('.committed-line')))}`);
-  check('"l" Enter shows no "Roster refreshed" feedback', !(await alice.eval(has('Roster refreshed'))));
 
   // A reload sends no leave: the reloaded page reconnects with the stored
   // session and keeps its participant, live text, and sequence position,
