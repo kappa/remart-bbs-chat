@@ -219,27 +219,26 @@ describe('Roster', () => {
     }
   });
 
-  it('the Sounds switch gates the chirp and persists across reloads', async () => {
+  it('the Sounds switch starts checked and is not remembered across reloads', async () => {
     const spy = vi.spyOn(globalThis as any, 'AudioContext');
     try {
       localStorage.setItem('remart-bbs-chat.sound', 'off');
       const first = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
-      expect(screen.getByRole('checkbox', { name: 'Sounds' })).not.toBeChecked();
+      expect(screen.getByRole('checkbox', { name: 'Sounds' })).toBeChecked();
       serverSend(first.ws, { type: 'roster', roster: [alice, bob, carol] });
-      expect(spy).not.toHaveBeenCalled();
+      expect(spy).toHaveBeenCalledTimes(1);
       first.unmount();
-      localStorage.setItem('remart-bbs-chat.sound', 'on');
       const second = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
       expect(screen.getByRole('checkbox', { name: 'Sounds' })).toBeChecked();
       serverSend(second.ws, { type: 'roster', roster: [alice, bob, carol] });
-      expect(spy).toHaveBeenCalledTimes(1);
+      expect(spy).toHaveBeenCalledTimes(2);
       second.unmount();
     } finally {
       spy.mockRestore();
     }
   });
 
-  it('a mid-session toggle takes effect at once; the title still fires; a remount keeps it', async () => {
+  it('a mid-session toggle takes effect at once; the title still fires; a remount resets to on', async () => {
     const spy = vi.spyOn(globalThis as any, 'AudioContext');
     const user = userEvent.setup();
     try {
@@ -250,29 +249,30 @@ describe('Roster', () => {
       expect(document.title).toBe('Carol joined');
       first.unmount();
       const second = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
-      expect(screen.getByRole('checkbox', { name: 'Sounds' })).not.toBeChecked();
+      expect(screen.getByRole('checkbox', { name: 'Sounds' })).toBeChecked();
       serverSend(second.ws, { type: 'roster', roster: [alice, bob, carol] });
-      expect(spy).not.toHaveBeenCalled();
+      expect(spy).toHaveBeenCalledTimes(1);
       await user.click(screen.getByRole('checkbox', { name: 'Sounds' }));
       const dave = { participantId: 40, handle: 'Dave', color: '#0f0', slot: 3, afk: false };
       serverSend(second.ws, { type: 'roster', roster: [alice, bob, carol, dave] });
       expect(spy).toHaveBeenCalledTimes(1);
+      expect(localStorage.getItem('remart-bbs-chat.sound')).toBeNull();
     } finally {
       spy.mockRestore();
     }
   });
 
-  it('toggling the Sounds switch stores the choice', async () => {
+  it('toggling the Sounds switch does not store anything in localStorage', async () => {
     const user = userEvent.setup();
     await renderJoined();
     const box = screen.getByRole('checkbox', { name: 'Sounds' });
     expect(box).toBeChecked();
     await user.click(box);
     expect(box).not.toBeChecked();
-    expect(localStorage.getItem('remart-bbs-chat.sound')).toBe('off');
+    expect(localStorage.getItem('remart-bbs-chat.sound')).toBeNull();
     await user.click(box);
     expect(box).toBeChecked();
-    expect(localStorage.getItem('remart-bbs-chat.sound')).toBe('on');
+    expect(localStorage.getItem('remart-bbs-chat.sound')).toBeNull();
   });
 
   it('a newcomer plays the join chirp; the first snapshot does not', async () => {

@@ -55,7 +55,6 @@ type Session = {
 
 const SESSION_KEY = "remart-bbs-chat.session";
 const HANDLE_KEY = "remart-bbs-chat.handle";
-const SOUND_KEY = "remart-bbs-chat.sound";
 const BASE_TITLE = "Remart BBS Chat";
 const PRIVATE_MAX_CODE_POINTS = 200;
 
@@ -130,7 +129,7 @@ export function App() {
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [showHelp, setShowHelp] = useState(false);
-  const [soundOn, setSoundOn] = useState(() => storageGet("local", SOUND_KEY) !== "off");
+  const [soundOn, setSoundOn] = useState(true);
   // The sound channel reads the switch through a ref so one notifier serves
   // the whole session; the ref is assigned in an effect, never during render.
   const soundOnRef = useRef(soundOn);
@@ -896,9 +895,7 @@ export function App() {
               type="checkbox"
               checked={soundOn}
               onChange={(event) => {
-                const next = event.target.checked;
-                setSoundOn(next);
-                storageSet("local", SOUND_KEY, next ? "on" : "off");
+                setSoundOn(event.target.checked);
               }}
             />
             Sounds

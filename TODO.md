@@ -1527,7 +1527,7 @@ their numbers stable.
 
 ## 37. Stop remembering the Sounds checkbox
 
-- [ ] **Requested change, sidebar**
+- [x] **Requested change, sidebar** (done: checkbox starts on every load, nothing read from or written to storage)
 - **Source:** Manual testing on 2026-09-09.
 - **Location:** `SOUND_KEY`, the `soundOn` state, and the checkbox
   `onChange` in `client/src/App.tsx`; the sound tests in
