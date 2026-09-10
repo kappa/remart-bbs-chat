@@ -20,13 +20,15 @@ beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.clearAllMock
 const two = () => snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] });
 const committed = (ws: any, id: string, text: string, participantId: number | null = 20, author = bob) =>
   serverSend(ws, { type: 'committed', participantId, seq: participantId == null ? null : 1, line: line(id, 5, text, author) });
+const waitForCommitted = (text: string) => waitFor(() =>
+  expect(Array.from(document.querySelectorAll('.committed-line'), (row) => row.textContent)).toContain(text));
 
 describe('Mention bell', () => {
   it('a new committed line by someone else that mentions you notifies once', async () => {
     const { ws } = await renderJoined(two());
     await screen.findByText('Bob');
     committed(ws, 'c1', 'hi @alice');
-    await screen.findByText('hi @alice');
+    await waitForCommitted('hi @alice');
     expect(notify).toHaveBeenCalledTimes(1);
     expect(notify).toHaveBeenCalledWith({ kind: 'mention', handle: 'Bob', text: 'hi @alice' });
     committed(ws, 'c1', 'hi @alice');
@@ -35,10 +37,10 @@ describe('Mention bell', () => {
 
   it('does not notify for lines mentioning someone else, your own lines, or snapshot lines', async () => {
     const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob], committed: [line('old', 0, 'earlier @Alice', bob)] }));
-    await screen.findByText('earlier @Alice');
+    await waitForCommitted('earlier @Alice');
     committed(ws, 'c2', 'hey @Bob');
     committed(ws, 'c3', 'note to self @Alice', 10, alice);
-    await screen.findByText('note to self @Alice');
+    await waitForCommitted('note to self @Alice');
     expect(notify).not.toHaveBeenCalled();
   });
 
@@ -46,7 +48,7 @@ describe('Mention bell', () => {
     const { ws } = await renderJoined(two());
     await screen.findByText('Bob');
     committed(ws, 'c4', 'bye @Alice', null);
-    await screen.findByText('bye @Alice');
+    await waitForCommitted('bye @Alice');
     expect(notify).toHaveBeenCalledWith({ kind: 'mention', handle: 'Bob', text: 'bye @Alice' });
   });
 
