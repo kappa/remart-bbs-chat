@@ -164,5 +164,7 @@ are not a design input.
 
 - The DOS-terminal look is deliberate and complete. It is not "raw" or
   "unpolished" — those words mistake the aesthetic for an unfinished state.
-- Sound is minimal: one two-tone chirp on join, BBS-style. No notification
-  sounds for messages; the typing itself is the notification.
+- Sound is minimal: a two-tone chirp on join and a short bell when a sent
+  line names you, BBS-style. Ordinary messages make no sound; the typing
+  itself is the notification. One Sounds switch covers both, starts on with
+  every page load, and `?silent=1` in the address starts it off.
