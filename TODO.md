@@ -16,7 +16,7 @@ Describe implemented behavior there; keep future proposals in these tasks.
 ## Recommended implementation order
 
 Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 22, 23, 24, 25,
-26, 27, 28, 29, 30, 31, 32, 33, and 39 are done and tasks 8, 9, and 20 are
+26, 27, 28, 29, 30, 31, 32, 33, 35, and 39 are done and tasks 8, 9, and 20 are
 closed; see their checkboxes.
 Keep task numbers stable; the table below lists only the open tasks, in
 the order to execute them:
@@ -26,10 +26,9 @@ the order to execute them:
 | 1 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
 | 2 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
 | 3 | 34 — Investigate the shared-session socket takeover | Investigation only; explains the afk flicker seen with duplicated tabs. |
-| 4 | 35 — Fix the join-order race in the browser check | Small script fix; removes a flaky failure of the first checks. |
-| 5 | 36 — Delay AFK by five minutes of invisibility | Client-side timer; found while testing task 31. |
-| 6 | 37 — Stop remembering the Join sound checkbox | Small client cleanup; the box starts on every load. |
-| 7 | 38 — Drop the > marker from the handle list | Small client cleanup; the background already marks the selection. |
+| 4 | 36 — Delay AFK by five minutes of invisibility | Client-side timer; found while testing task 31. |
+| 5 | 37 — Stop remembering the Join sound checkbox | Small client cleanup; the box starts on every load. |
+| 6 | 38 — Drop the > marker from the handle list | Small client cleanup; the background already marks the selection. |
 
 ## Working a task
 
@@ -1489,7 +1488,7 @@ their numbers stable.
 
 ## 35. Fix the join-order race in the browser check
 
-- [ ] **Bug, check-browser.mjs**
+- [x] **Bug, check-browser.mjs** (done: the tab helper waits for the page to join before returning; ten consecutive runs passed 42/42)
 - **Source:** Seen once while running `npm run check:browser` during the
   2026-09-09 review; passed on rerun. No GitHub issue.
 - **Location:** The `tab()` helper and the opening lines of `main()` in

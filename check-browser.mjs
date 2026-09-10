@@ -80,6 +80,13 @@ async function main() {
   const cdp = new Cdp(version.webSocketDebuggerUrl);
   await cdp.ready;
 
+  // Expressions evaluated in the page.
+  const text = (sel) => `Array.from(document.querySelectorAll('${sel}')).map(e => e.textContent.replace(/\\s+$/, ''))`;
+  const has = (needle) => `document.body.innerText.includes(${JSON.stringify(needle)})`;
+  const inRoom = `document.querySelector('[aria-label="Shared chat area"]') && !${has('Connecting...')}`;
+  // A tab resolves only once its page has joined, so tabs join in the order
+  // the script creates them. Creating the next target hides and throttles
+  // this one, and an unjoined page could otherwise lose the race for slot 0.
   const tab = async (name, room = 1) => {
     const { targetId } = await cdp.send('Target.createTarget', { url: `http://localhost:${PORT}/?name=${name}&room=${room}` });
     const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
@@ -104,17 +111,14 @@ async function main() {
       close: () => cdp.send('Target.closeTarget', { targetId }),
       front: () => cdp.send('Page.bringToFront', {}, sessionId),
     };
+    t.joined = await t.waitFor(inRoom);
     return t;
   };
-  // Expressions evaluated in the page.
-  const text = (sel) => `Array.from(document.querySelectorAll('${sel}')).map(e => e.textContent.replace(/\\s+$/, ''))`;
-  const has = (needle) => `document.body.innerText.includes(${JSON.stringify(needle)})`;
-  const inRoom = `document.querySelector('[aria-label="Shared chat area"]') && !${has('Connecting...')}`;
   const participantId = `JSON.parse(sessionStorage.getItem('remart-bbs-chat.session')).participantId`;
 
   const alice = await tab('Alice');
   const bob = await tab('Bob');
-  for (const t of [alice, bob]) check(`${t.name} joins room 1 and connects`, await t.waitFor(inRoom));
+  for (const t of [alice, bob]) check(`${t.name} joins room 1 and connects`, t.joined);
   check('Alice sees "* Bob joined"; Bob sees the pre-join history (20-line window) plus his own join',
     await alice.waitFor(`${text('.committed-line')}.includes('* Bob joined')`) && await bob.waitFor(`${text('.committed-line')}.join('|') === '* Alice joined|* Bob joined'`),
     `alice=${JSON.stringify(await alice.eval(text('.committed-line')))} bob=${JSON.stringify(await bob.eval(text('.committed-line')))}`);
@@ -165,7 +169,7 @@ async function main() {
   // Task 25: handle autocomplete. Carol joins so Bob has two candidates;
   // "@c" filters to Carol, Enter completes without committing, Enter commits.
   const carol1 = await tab('Carol');
-  check('Carol joins room 1', await carol1.waitFor(inRoom));
+  check('Carol joins room 1', carol1.joined);
   check('Bob sees Carol in the roster', await bob.waitFor(`${text('.roster-handle')}.includes('Carol')`));
   await bob.focus(); await bob.type('@');
   check('Bob "@": the handle list opens with Alice and Carol',
@@ -256,12 +260,12 @@ async function main() {
   // wiped room 1.
   const room2 = await (await fetch(`http://localhost:${PORT}/api/rooms`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"forceNew":true}' })).json();
   const dave = await tab('Dave', room2.room.id);
-  check('Dave joins room 2 and connects', await dave.waitFor(inRoom));
+  check('Dave joins room 2 and connects', dave.joined);
   await dave.focus();
   for (let i = 1; i <= 25; i++) { await dave.type(String(i)); await dave.key('Enter', ENTER); }
   check('Dave committed 25 numbered lines', await dave.waitFor(`${text('.committed-line')}.includes('25')`));
   const carol = await tab('Carol', room2.room.id);
-  check('Carol joins room 2', await carol.waitFor(inRoom));
+  check('Carol joins room 2', carol.joined);
   const expected = [...Array.from({ length: 20 }, (_, i) => String(i + 6)), '* Carol joined'].join('|');
   check('Carol sees exactly the last 20 lines (6..25) plus her announcement',
     await carol.waitFor(`${text('.committed-line')}.join('|') === ${JSON.stringify(expected)}`, 8000), JSON.stringify(await carol.eval(text('.committed-line'))));
