@@ -83,7 +83,8 @@ npm --prefix client test -- src/App.race.test.tsx
 
 `npm run check:browser` runs a two-tab end-to-end check (`check-browser.mjs`)
 in a headless Chrome driven over the DevTools protocol: typing, Backspace,
-Enter, the `?` and `q` commands, a page reload, and a server restart.
+Enter, the `?` and `q` commands, handle autocomplete in a third tab, the
+AFK marker driven by real tab switches, a page reload, and a server restart.
 It needs a built client and a `google-chrome` binary (`CHROME` overrides) and
 is not part of `npm test`. Use it for changes to the typing protocol, the
 socket connection, or the transcript rendering; a plan's end-to-end step can

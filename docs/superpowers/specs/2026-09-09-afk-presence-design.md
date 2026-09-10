@@ -185,17 +185,19 @@ it does today.
 
 ### Browser check (`check-browser.mjs`)
 
-Add one probe step after two tabs are joined. The check calls
-`Page.setWebLifecycleState` with `state: "frozen"` on Bob's tab and reads
-`document.visibilityState` there.
+Add one probe step after the tabs are joined. Headless Chrome keeps the
+tabs of one window, and `Page.bringToFront` on one tab hides the others and
+fires a real `visibilitychange` in them, so the probe uses Chrome's own
+signal. (`Page.setWebLifecycleState` with `frozen` leaves
+`document.visibilityState` untouched and is not used.)
 
-- If Chrome reports `hidden`, the check asserts that Alice's roster shows
-  `afk` beside Bob within five seconds, then sets `active` and asserts the
-  marker disappears.
-- If visibility does not flip, the check prints a note that visibility
-  emulation is unavailable and skips the assertions. The commit then records
-  a manual two-tab check: open two tabs, switch one to the background, watch
-  the marker appear in the other, switch back, watch it disappear.
+- The check brings Alice to the front, waits for Bob's page to report
+  `hidden`, and asserts that Alice's roster shows `afk` beside Bob and not
+  beside herself. It then brings Bob to the front and asserts the marker
+  moves to Alice.
+- If a switch does not change `visibilityState` within the timeout, the
+  check prints a note and falls back to overriding `document.hidden` inside
+  the page, which exercises the client and server but not Chrome's signal.
 
 ## Out of scope
 

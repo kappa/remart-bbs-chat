@@ -5,9 +5,11 @@
 //   npm run check:browser
 //
 // Alice and Bob join one room. Typing, Backspace, Enter, the ? and q
-// commands, a page reload, and a server restart are exercised, then a second
-// room checks the 20-line join history window, and every observation is
-// printed as PASS or FAIL. Exit code 1 if anything failed.
+// commands, handle autocomplete (with Carol as a third tab), the afk marker
+// driven by real tab switches, a page reload, and a server restart are
+// exercised, then a second room checks the 20-line join history window, and
+// every observation is printed as PASS or FAIL. Exit code 1 if anything
+// failed.
 import { spawn } from 'node:child_process';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -100,6 +102,7 @@ async function main() {
       reload: () => cdp.send('Page.reload', {}, sessionId),
       goto: (url) => cdp.send('Page.navigate', { url }, sessionId),
       close: () => cdp.send('Target.closeTarget', { targetId }),
+      front: () => cdp.send('Page.bringToFront', {}, sessionId),
     };
     return t;
   };
@@ -178,26 +181,42 @@ async function main() {
   check('a second Enter commits "@carol" in both tabs',
     await bob.waitFor(`${text('.committed-line')}.includes('@carol')`) && await alice.waitFor(`${text('.committed-line')}.includes('@carol')`));
 
-  // Task 31: AFK follows tab visibility. Emulate the signal in Bob's page.
-  const setHidden = (t, hidden) => t.eval(`(() => {
+  // Task 31: AFK follows tab visibility. Headless Chrome keeps the tabs of
+  // one window, and Page.bringToFront on another tab hides this one and
+  // fires a real visibilitychange, so the probe uses Chrome's own signal.
+  // (Page.setWebLifecycleState leaves visibility untouched.) If a switch
+  // does not change visibilityState within the timeout, the probe says so
+  // and falls back to overriding document.hidden inside the page.
+  const visibility = (t) => t.eval(`document.visibilityState`);
+  const overrideHidden = (t, hidden) => t.eval(`(() => {
     Object.defineProperty(document, 'hidden', { configurable: true, get: () => ${hidden} });
     document.dispatchEvent(new Event('visibilitychange'));
     return document.hidden === ${hidden};
   })()`);
+  const show = async (t, others) => {
+    await t.front();
+    const real = await t.waitFor(`document.visibilityState === 'visible'`, 2000)
+      && (await Promise.all(others.map((o) => o.waitFor(`document.visibilityState === 'hidden'`, 2000)))).every(Boolean);
+    if (real) return true;
+    console.log(`NOTE: Page.bringToFront left ${t.name} ${await visibility(t)}; emulating document.hidden instead`);
+    await overrideHidden(t, false);
+    for (const o of others) await overrideHidden(o, true);
+    return false;
+  };
   const rosterAfk = `Array.from(document.querySelectorAll('.roster-entry')).filter((e) => e.querySelector('.roster-afk')).map((e) => e.querySelector('.roster-handle').textContent)`;
-  // Headless targets may begin hidden. Establish a visible baseline for all
-  // three participants before closing Carol's lingering session tab.
-  await setHidden(alice, false);
-  await setHidden(bob, false);
-  await setHidden(carol1, false);
-  check('the afk probe starts from a visible baseline', await alice.waitFor(`${rosterAfk}.length === 0`));
+  // Carol's lingering session tab is closed first so only Alice and Bob
+  // trade the front. Carol keeps whatever visibility she last reported.
   await carol1.close();
-  check("Bob's tab reports hidden", await setHidden(bob, true));
-  check('Alice sees afk beside Bob', await alice.waitFor(`${rosterAfk}.join('|') === 'Bob'`), JSON.stringify(await alice.eval(rosterAfk)));
-  check("Bob's color and roster order are unchanged",
+  check("Carol's tab is closed", await alice.waitFor(`${text('.roster-handle')}.join('|') === 'Alice|Bob|Carol'`));
+  const carolAfk = (await alice.eval(rosterAfk)).includes('Carol') ? ['Carol'] : [];
+  const expectAfk = (names) => `${rosterAfk}.join('|') === ${JSON.stringify([...names, ...carolAfk].join('|'))}`;
+  await show(alice, [bob]);
+  check('Alice in front: Alice sees afk beside Bob and not beside herself', await alice.waitFor(expectAfk(['Bob'])), JSON.stringify(await alice.eval(rosterAfk)));
+  check('Bob in the background sees his own afk marker', await bob.waitFor(expectAfk(['Bob'])));
+  check('roster order is unchanged while Bob is afk',
     await alice.eval(`${text('.roster-handle')}.join('|') === 'Alice|Bob|Carol'`));
-  check("Bob's tab reports visible", await setHidden(bob, false));
-  check('the afk marker disappears', await alice.waitFor(`${rosterAfk}.length === 0`));
+  await show(bob, [alice]);
+  check('Bob in front: the marker moves from Bob to Alice', await alice.waitFor(expectAfk(['Alice'])), JSON.stringify(await alice.eval(rosterAfk)));
 
   // A reload sends no leave: the reloaded page reconnects with the stored
   // session and keeps its participant, live text, and sequence position,
