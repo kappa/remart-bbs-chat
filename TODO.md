@@ -1455,7 +1455,7 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 ## Review issues 2026-09-09
 
 Tasks 34 and 35 come from the goblin review of the day's merges, and tasks
-36 to 38 from testing the merged build; none has a GitHub issue. Keep
+36 to 39 from testing the merged build; none has a GitHub issue. Keep
 their numbers stable.
 
 ## 34. Investigate the socket takeover between tabs that share a session
@@ -1613,3 +1613,25 @@ their numbers stable.
   to bare handles.
 - **Docs:** None; the spec and `docs/USER_EXPERIENCE.md` do not describe the
   marker.
+
+## 39. Humanize Help text
+
+- [x] **Requested UI cleanup, Help dialog** (done in commits 85a7193 and
+  680049f: rows reworded in plain language, Ctrl+Left / Ctrl+Right on its
+  own row below Left / Right, Unicode and character-limit note removed;
+  verified in the browser)
+- **Source:** Manual testing on 2026-09-09.
+- **Location:** The `help-list` rows in `client/src/App.tsx`; the Help test in
+  `client/src/App.roster.test.tsx` and the `@` row test in
+  `client/src/App.mentions.test.tsx`.
+- **Requested behavior:** The Help rows read like instructions to a person,
+  not a spec: "Send your message" rather than "send the current line",
+  "Delete the character under the cursor" rather than "remove one code point
+  after caret" (the cursor is an underline, so the character is under it).
+  Left / Right and Ctrl+Left / Ctrl+Right are separate rows, the Ctrl row
+  directly below. No note about Unicode or a character limit.
+- **Acceptance:** The dialog shows exactly these rows, in this order: `?`,
+  `q`, Enter, Backspace, Delete, Left / Right, Ctrl+Left / Ctrl+Right,
+  Home / End, `@`.
+- **Tests:** The Help test asserts the full list of rows and their text.
+- **Docs:** None; the wording lives only in the dialog.
