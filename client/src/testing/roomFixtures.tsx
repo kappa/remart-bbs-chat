@@ -5,8 +5,8 @@ import { FakeWebSocket } from './fakeWebSocket';
 import type { CommittedLine, LiveLine, RosterEntry, ServerMessage } from '../protocol';
 
 export const SESSION = { roomId: 1, roomName: 'Room 1', participantId: 10, handle: 'Alice', token: 'test-token', joinedAt: 1, historyFromRow: 0 };
-export const alice: RosterEntry = { participantId: 10, handle: 'Alice', color: '#fff', slot: 0 };
-export const bob: RosterEntry = { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1 };
+export const alice: RosterEntry = { participantId: 10, handle: 'Alice', color: '#fff', slot: 0, afk: false };
+export const bob: RosterEntry = { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1, afk: false };
 
 export function storeSession(session = SESSION) {
   sessionStorage.setItem('remart-bbs-chat.session', JSON.stringify(session));

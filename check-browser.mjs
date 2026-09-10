@@ -177,7 +177,27 @@ async function main() {
   await bob.key('Enter', ENTER);
   check('a second Enter commits "@carol" in both tabs',
     await bob.waitFor(`${text('.committed-line')}.includes('@carol')`) && await alice.waitFor(`${text('.committed-line')}.includes('@carol')`));
+
+  // Task 31: AFK follows tab visibility. Emulate the signal in Bob's page.
+  const setHidden = (t, hidden) => t.eval(`(() => {
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => ${hidden} });
+    document.dispatchEvent(new Event('visibilitychange'));
+    return document.hidden === ${hidden};
+  })()`);
+  const rosterAfk = `Array.from(document.querySelectorAll('.roster-entry')).filter((e) => e.querySelector('.roster-afk')).map((e) => e.querySelector('.roster-handle').textContent)`;
+  // Headless targets may begin hidden. Establish a visible baseline for all
+  // three participants before closing Carol's lingering session tab.
+  await setHidden(alice, false);
+  await setHidden(bob, false);
+  await setHidden(carol1, false);
+  check('the afk probe starts from a visible baseline', await alice.waitFor(`${rosterAfk}.length === 0`));
   await carol1.close();
+  check("Bob's tab reports hidden", await setHidden(bob, true));
+  check('Alice sees afk beside Bob', await alice.waitFor(`${rosterAfk}.join('|') === 'Bob'`), JSON.stringify(await alice.eval(rosterAfk)));
+  check("Bob's color and roster order are unchanged",
+    await alice.eval(`${text('.roster-handle')}.join('|') === 'Alice|Bob|Carol'`));
+  check("Bob's tab reports visible", await setHidden(bob, false));
+  check('the afk marker disappears', await alice.waitFor(`${rosterAfk}.length === 0`));
 
   // A reload sends no leave: the reloaded page reconnects with the stored
   // session and keeps its participant, live text, and sequence position,

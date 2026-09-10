@@ -16,7 +16,7 @@ Describe implemented behavior there; keep future proposals in these tasks.
 ## Recommended implementation order
 
 Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 22, 23, 24, 25,
-26, 27, 28, 29, and 30 are done and tasks 8, 9, and 20 are closed; see
+26, 27, 28, 29, 30, and 31 are done and tasks 8, 9, and 20 are closed; see
 their checkboxes.
 Keep task numbers stable; the table below lists only the open tasks, in
 the order to execute them:
@@ -25,9 +25,8 @@ the order to execute them:
 | --- | --- | --- |
 | 1 | 32 — Remove the Type button | Small, isolated client cleanup. |
 | 2 | 33 — Clean up the help dialog | Small client content change; reflect the controls left after task 32. |
-| 3 | 31 — Show AFK status | Roster protocol and lifecycle change after the isolated UI cleanups. |
-| 4 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 5 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
+| 3 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 4 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
 
 ## Working a task
 
@@ -1328,7 +1327,7 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 
 ## 31. Show AFK status for participants in background tabs
 
-- [ ] **Requested feature, presence**
+- [x] **Requested feature, presence** (done: server-owned AFK follows reported tab visibility, survives reconnect until the next report, and appears as a dim roster marker without changing liveness or participant state)
 - **Spec and plan:** [docs/superpowers/specs/2026-09-09-afk-presence-design.md](docs/superpowers/specs/2026-09-09-afk-presence-design.md),
   [docs/superpowers/plans/2026-09-09-afk-presence.md](docs/superpowers/plans/2026-09-09-afk-presence.md).
   Where the plan and this task disagree, the spec records the approved decision.

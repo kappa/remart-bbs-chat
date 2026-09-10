@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { applyServerMessage, emptyRoom, sortedCommitted } from './roomState';
 import type { CommittedLine, ServerMessage } from './protocol';
 
-const alice = { participantId: 10, handle: 'Alice', color: '#fff', slot: 0 };
-const bob = { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1 };
+const alice = { participantId: 10, handle: 'Alice', color: '#fff', slot: 0, afk: false };
+const bob = { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1, afk: false };
 const line = (id: string, row: number, text: string, committedAt = 5): CommittedLine => ({ id, row, text, handle: 'Alice', color: '#fff', committedAt });
 const snapshot = (over: Partial<Extract<ServerMessage, { type: 'snapshot' }>> = {}): ServerMessage => ({
   type: 'snapshot', roomId: 1, you: { participantId: 10, nextSeq: 1 },
@@ -45,7 +45,7 @@ describe('applyServerMessage', () => {
   it('roster removes departed participants and keeps live text of the rest', () => {
     let room = applyServerMessage(emptyRoom(), snapshot());
     room = applyServerMessage(room, { type: 'live', participantId: 10, row: 2, text: 'keep', caret: 0, seq: 1 });
-    room = applyServerMessage(room, { type: 'roster', roster: [alice, { participantId: 30, handle: 'Carol', color: '#f0f', slot: 1 }] });
+    room = applyServerMessage(room, { type: 'roster', roster: [alice, { participantId: 30, handle: 'Carol', color: '#f0f', slot: 1, afk: false }] });
     expect(room.participants.map((p) => p.handle)).toEqual(['Alice', 'Carol']);
     expect(room.participants[0]).toMatchObject({ row: 2, text: 'keep' });
     expect(room.participants[1]).toMatchObject({ row: null, text: '' });
@@ -61,6 +61,20 @@ describe('applyServerMessage', () => {
     const room = applyServerMessage(emptyRoom(), snapshot());
     expect(applyServerMessage(room, { type: 'command', name: 'help' })).toBe(room);
     expect(applyServerMessage(room, { type: 'error', code: 'seq-gap', expected: 4 })).toBe(room);
+  });
+
+  it('snapshot live lines carry afk into participants', () => {
+    const room = applyServerMessage(emptyRoom(), snapshot({
+      liveLines: [{ ...bob, afk: true, row: null, text: '', caret: 0 }, { ...alice, row: null, text: '', caret: 0 }],
+    }));
+    expect(room.participants.map((p) => [p.handle, p.afk])).toEqual([['Alice', false], ['Bob', true]]);
+  });
+
+  it('a roster message that changes only afk keeps row, text, and caret', () => {
+    let room = applyServerMessage(emptyRoom(), snapshot());
+    room = applyServerMessage(room, { type: 'live', participantId: 20, row: 2, text: 'hi', caret: 1, seq: 1 });
+    room = applyServerMessage(room, { type: 'roster', roster: [{ ...bob, afk: true }, alice] });
+    expect(room.participants.find((p) => p.participantId === 20)).toMatchObject({ afk: true, row: 2, text: 'hi', caret: 1 });
   });
 });
 

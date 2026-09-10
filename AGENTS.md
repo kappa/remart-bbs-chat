@@ -150,6 +150,12 @@ The following describes the current implementation and its regression baseline.
   open while keystrokes are in flight is parked until the pending count is
   zero, then resolved against the fresh echo: pick if a token with
   candidates remains, otherwise a parked Enter commits.
+- AFK follows tab visibility: the client reports `document.hidden` after
+  every snapshot and on every change, the server owns the resulting `afk`
+  flag carried on roster entries and snapshot live lines, and only a changed
+  value broadcasts a roster. It is separate from stale detection: pongs never
+  clear it, and a reconnecting socket keeps the stored value until it
+  reports.
 - Commands `?` and `q` are recognized by the server on Enter against the
   exact live line (surrounding whitespace makes it chat); a line containing
   only `l` is ordinary chat. Unicode input

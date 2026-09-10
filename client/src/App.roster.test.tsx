@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { api } from './api';
 import { renderJoined, serverSend, snapshot, alice, bob, idle, typing } from './testing/roomFixtures';
@@ -9,8 +9,9 @@ vi.mock('./api', () => ({
 }));
 
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.clearAllMocks(); (api.listRooms as any).mockResolvedValue({ rooms: [] }); });
+afterEach(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); });
 
-const carol = { participantId: 30, handle: 'Carol', color: '#f0f', slot: 2 };
+const carol = { participantId: 30, handle: 'Carol', color: '#f0f', slot: 2, afk: false };
 
 describe('Roster', () => {
   it('lists participants by slot with color dots', async () => {
@@ -135,7 +136,7 @@ describe('Roster', () => {
   });
 
   it('a later join replaces the current title notice', async () => {
-    const dave = { participantId: 40, handle: 'Dave', color: '#0f0', slot: 3 };
+    const dave = { participantId: 40, handle: 'Dave', color: '#0f0', slot: 3, afk: false };
     const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
     vi.useFakeTimers();
     try {
@@ -169,7 +170,7 @@ describe('Roster', () => {
   });
 
   it('rotates an emoji handle by code point without splitting surrogates', async () => {
-    const emoji = { participantId: 50, handle: 'Bo😀b', color: '#ff0', slot: 4 };
+    const emoji = { participantId: 50, handle: 'Bo😀b', color: '#ff0', slot: 4, afk: false };
     const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
     vi.useFakeTimers();
     try {
@@ -252,7 +253,7 @@ describe('Roster', () => {
       serverSend(second.ws, { type: 'roster', roster: [alice, bob, carol] });
       expect(spy).not.toHaveBeenCalled();
       await user.click(screen.getByRole('checkbox', { name: 'Join sound' }));
-      const dave = { participantId: 40, handle: 'Dave', color: '#0f0', slot: 3 };
+      const dave = { participantId: 40, handle: 'Dave', color: '#0f0', slot: 3, afk: false };
       serverSend(second.ws, { type: 'roster', roster: [alice, bob, carol, dave] });
       expect(spy).toHaveBeenCalledTimes(1);
     } finally {
@@ -280,5 +281,44 @@ describe('Roster', () => {
     serverSend(ws, { type: 'roster', roster: [alice, bob, carol] });
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
+  });
+
+  it('shows a dim afk marker beside a hidden participant and removes it when they return', async () => {
+    const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+    await screen.findByText('Bob');
+    expect(screen.queryByText('afk')).toBeNull();
+    serverSend(ws, { type: 'roster', roster: [alice, { ...bob, afk: true }] });
+    const marker = await screen.findByText('afk');
+    expect(marker).toHaveClass('roster-afk');
+    expect(marker).toHaveAttribute('title', 'In a background tab');
+    expect(marker.closest('.roster-entry')).toHaveStyle({ color: '#0ff' });
+    expect(marker.closest('.roster-entry')?.querySelector('.roster-handle')?.textContent).toBe('Bob');
+    serverSend(ws, { type: 'roster', roster: [alice, bob] });
+    await waitFor(() => expect(screen.queryByText('afk')).toBeNull());
+  });
+
+  it('a status-only roster message is not a newcomer: no chirp and no title rotation', async () => {
+    const spy = vi.spyOn(globalThis as any, 'AudioContext');
+    try {
+      const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+      await screen.findByText('Bob');
+      serverSend(ws, { type: 'roster', roster: [alice, { ...bob, afk: true }] });
+      await screen.findByText('afk');
+      expect(spy).not.toHaveBeenCalled();
+      expect(document.title).not.toMatch(/joined/);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('reports the tab visibility after the snapshot and on every change', async () => {
+    const { ws } = await renderJoined();
+    await waitFor(() => expect(ws.sent.filter((m: any) => m.type === 'presence')).toEqual([{ type: 'presence', hidden: false }]));
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(ws.sent.filter((m: any) => m.type === 'presence')).toEqual([{ type: 'presence', hidden: false }, { type: 'presence', hidden: true }]);
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(ws.sent.filter((m: any) => m.type === 'presence').length).toBe(3);
   });
 });

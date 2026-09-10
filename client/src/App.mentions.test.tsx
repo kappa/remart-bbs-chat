@@ -11,7 +11,7 @@ vi.mock('./api', () => ({
 
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.clearAllMocks(); (api.listRooms as any).mockResolvedValue({ rooms: [] }); });
 
-const carol: RosterEntry = { participantId: 30, handle: 'Carol', color: '#f0f', slot: 2 };
+const carol: RosterEntry = { participantId: 30, handle: 'Carol', color: '#f0f', slot: 2, afk: false };
 const three = () => snapshot({ liveLines: [idle(alice), idle(bob), idle(carol)], roster: [alice, bob, carol] });
 
 // The server echoes Alice's live line; the list follows the echo only.

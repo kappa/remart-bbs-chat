@@ -245,9 +245,13 @@ All messages are JSON text frames. Unknown fields are ignored.
 { type: "key", seq: number, kind: "word-left" | "word-right" }
 { type: "key", seq: number, kind: "home" | "end" }
 { type: "key", seq: number, kind: "delete" }
+{ type: "presence", hidden: boolean }
 ```
 
 `hello` must be the first message on a socket. `key` carries one keystroke.
+`presence` reports the tab's visibility (`document.hidden`). The client
+sends it once after every snapshot and again whenever visibility changes.
+It is not numbered and does not enter the keystroke sequence.
 Paste is a burst of `char` keystrokes, capped at 100 code points on the
 client. `char` must satisfy the character rule described under
 [Edge cases](#edge-cases-1). The movement and delete kinds operate on the
@@ -259,10 +263,10 @@ server-owned caret, also described there.
 { type: "snapshot", roomId: number,
   you: { participantId: number, nextSeq: number },
   liveLines: Array<{ participantId: number, handle: string, color: string,
-                     slot: number, row: number | null, text: string, caret: number }>,
+                     slot: number, afk: boolean, row: number | null, text: string, caret: number }>,
   committed: Array<{ id: string, row: number, text: string, handle: string,
                      color: string, committedAt: number }>,
-  roster: Array<{ participantId: number, handle: string, color: string, slot: number }> }
+  roster: Array<{ participantId: number, handle: string, color: string, slot: number, afk: boolean }> }
 { type: "command", name: "help" | "leave" }
 { type: "error", code: "unauthorized" | "unknown-participant" | "seq-gap" | "invalid-message",
   expected?: number }
@@ -287,7 +291,7 @@ by slot; idle ones have `row: null` and `text: ""`.
 { type: "live", participantId: number, row: number | null, text: string, caret: number, seq: number }
 { type: "committed", participantId: number | null, seq: number | null,
   line: { id: string, row: number, text: string, handle: string, color: string, committedAt: number } }
-{ type: "roster", roster: Array<{ participantId: number, handle: string, color: string, slot: number }> }
+{ type: "roster", roster: Array<{ participantId: number, handle: string, color: string, slot: number, afk: boolean }> }
 ```
 
 `live` replaces the named participant's live line entirely. `row: null` with
@@ -296,7 +300,9 @@ index into `text`; the author's client renders it and other clients ignore it. `
 server also sends `live` with `row: null` for that participant. `seq` is the
 keystroke that caused the message; server-initiated changes (leave
 preservation, announcements) use `participantId: null` and `seq: null`.
-`roster` follows any join or leave. Every room message reaches all open
+`roster` follows any join or leave. It also follows a `presence` report that
+changes the participant's `afk` value; a report that changes nothing sends
+nothing. Every room message reaches all open
 participant sockets in the room, the author's included.
 
 ### Sequence rules
@@ -353,6 +359,8 @@ so `" q"` is committed as text.
 - Malformed JSON or an unknown `type` after `hello`: `error invalid-message`,
   connection stays open. A `key` without a numeric `seq` or with an unknown
   `kind` is also `invalid-message` and is not applied.
+- A `presence` message whose `hidden` is not a boolean: `error
+  invalid-message`, nothing changes.
 - A `char` keystroke whose character fails validation is applied as a no-op:
   it advances the sequence number and echoes `live` unchanged. An unexpected
   character can therefore never wedge the stream. The client validates before
@@ -370,6 +378,7 @@ so `" q"` is committed as text.
 | Command (`?`) | `live` (cleared), then `command` to the sender only |
 | Command (`q`) | `live` (cleared), `command` to the sender, then the leave messages below; the sender's socket closes |
 | Join | `committed` (announcement), then `roster` to existing sockets; the newcomer receives the snapshot on `hello` |
+| `presence` with a new value | `roster` to everyone; nothing when the value is unchanged |
 | Leave or stale cleanup with survivors | `committed` per preserved live line, `committed` (announcement), `roster` |
 | Last participant removed | Nothing; the room is deleted |
 
@@ -385,6 +394,13 @@ never had a participant are not removed by the stale sweep.
 
 ## Presence and lifetime
 
+- AFK is separate from liveness. The server owns each participant's `afk`
+  flag, set only by that participant's `presence` reports and carried in
+  snapshots and roster broadcasts. Pongs and keystrokes refresh `lastSeen`
+  and never change `afk`. A reconnecting socket keeps the stored value until
+  its post-snapshot report replaces it, so a hidden tab that reconnects never
+  flashes active. Stale cleanup removes the participant and the flag with
+  them.
 - Every socket message and every WebSocket pong refreshes the participant's
   `lastSeen`. The server pings all sockets every 12 seconds (WebSocket control
   frames; browsers answer automatically).

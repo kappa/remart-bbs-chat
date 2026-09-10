@@ -129,6 +129,60 @@ describe('openRoomConnection', () => {
     ws.serverSend({ type: 'command', name: 'help' });
     expect(messages.map((m) => m.type)).toEqual(['snapshot', 'command']);
   });
+
+  it('setHidden before the first snapshot sends presence right after it, after replayed keystrokes', () => {
+    const { connection } = open();
+    connection.setHidden(true);
+    connection.send({ kind: 'char', char: 'A' });
+    vi.runOnlyPendingTimers();
+    const ws = FakeWebSocket.latest();
+    expect(ws.sent.filter((m) => m.type === 'presence')).toEqual([]);
+    ws.serverSend(snapshot(1));
+    expect(ws.sent.slice(1)).toEqual([
+      { type: 'key', seq: 1, kind: 'char', char: 'A' },
+      { type: 'presence', hidden: true },
+    ]);
+  });
+
+  it('setHidden while open transmits at once and does not consume a sequence number', () => {
+    const { connection } = open();
+    vi.runOnlyPendingTimers();
+    const ws = FakeWebSocket.latest();
+    ws.serverSend(snapshot(1));
+    connection.setHidden(true);
+    connection.setHidden(false);
+    connection.send({ kind: 'enter' });
+    expect(ws.sent.slice(1)).toEqual([
+      { type: 'presence', hidden: true },
+      { type: 'presence', hidden: false },
+      { type: 'key', seq: 1, kind: 'enter' },
+    ]);
+  });
+
+  it('setHidden while reconnecting is remembered and sent after the next snapshot', () => {
+    const { connection } = open();
+    vi.runOnlyPendingTimers();
+    const first = FakeWebSocket.latest();
+    first.serverSend(snapshot(1));
+    first.serverClose();
+    connection.setHidden(true);
+    vi.runOnlyPendingTimers();
+    vi.runOnlyPendingTimers();
+    const second = FakeWebSocket.latest();
+    expect(second).not.toBe(first);
+    expect(second.sent).toEqual([{ type: 'hello', ...creds }]);
+    second.serverSend(snapshot(1));
+    expect(second.sent).toEqual([{ type: 'hello', ...creds }, { type: 'presence', hidden: true }]);
+  });
+
+  it('nothing is sent until setHidden has been called', () => {
+    open();
+    vi.runOnlyPendingTimers();
+    const ws = FakeWebSocket.latest();
+    ws.serverSend(snapshot(1));
+    expect(ws.sent.filter((m) => m.type === 'presence')).toEqual([]);
+  });
+
   it('pendingCount counts keystrokes not yet acked by an echo', () => {
     const { connection } = open();
     vi.runOnlyPendingTimers();
@@ -144,7 +198,6 @@ describe('openRoomConnection', () => {
     expect(connection.pendingCount()).toBe(0);
   });
 });
-
 
 describe('socketUrl', () => {
   it('uses ws for http and wss for https, at /ws on the page host', () => {
