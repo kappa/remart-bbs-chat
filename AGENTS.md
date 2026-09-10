@@ -168,7 +168,8 @@ The following describes the current implementation and its regression baseline.
   is colored from the current roster, and the bell and title notice fire
   only for a first-seen `committed` message by someone else that names
   the own handle. Notifications go through `notifications.ts`; one Sounds
-  switch gates both sounds.
+  switch gates both sounds; it starts on with every page load, is never
+  remembered, and `?silent=1` in the address starts it off.
 - AFK follows tab visibility: the client reports `document.hidden` after
   every snapshot and on every change, the server owns the resulting `afk`
   flag carried on roster entries and snapshot live lines, and only a changed

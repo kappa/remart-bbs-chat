@@ -129,7 +129,8 @@ automatically; no command refreshes it.
   separating space so the end never glues to the start) for five
   seconds before returning to normal. A Sounds checkbox in the
   sidebar turns the chirp off; the checkbox starts on with every page
-  load and unticking it lasts for that page.
+  load and unticking it lasts for that page. Opening the page with
+  `?silent=1` in the address starts with sounds off.
   Browsers only allow sound after you have clicked or typed in the page,
   so a tab you have just opened or reloaded stays silent until your first
   keystroke or click; the title still rotates.

@@ -112,6 +112,11 @@ function hasNameOverride() {
   return new URLSearchParams(window.location.search).has("name");
 }
 
+// `?silent=1` starts the page with sounds off; the switch itself is never stored.
+function startsSilent() {
+  return new URLSearchParams(window.location.search).get("silent") === "1";
+}
+
 function initialHandle() {
   const params = new URLSearchParams(window.location.search);
   return params.has("name")
@@ -129,7 +134,7 @@ export function App() {
   const [error, setError] = useState("");
   const [warning, setWarning] = useState("");
   const [showHelp, setShowHelp] = useState(false);
-  const [soundOn, setSoundOn] = useState(true);
+  const [soundOn, setSoundOn] = useState(() => !startsSilent());
   // The sound channel reads the switch through a ref so one notifier serves
   // the whole session; the ref is assigned in an effect, never during render.
   const soundOnRef = useRef(soundOn);
@@ -890,7 +895,10 @@ export function App() {
           <button type="button" className="leave-button" onClick={() => leave()}>
             Leave
           </button>
-          <label className="sound-toggle">
+          <label
+            className="sound-toggle"
+            title="Add ?silent=1 to the address to start with sounds off."
+          >
             <input
               type="checkbox"
               checked={soundOn}

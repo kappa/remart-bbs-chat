@@ -233,6 +233,12 @@ describe('Roster', () => {
       serverSend(second.ws, { type: 'roster', roster: [alice, bob, carol] });
       expect(spy).toHaveBeenCalledTimes(2);
       second.unmount();
+      localStorage.setItem('remart-bbs-chat.sound', 'on');
+      const third = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+      expect(screen.getByRole('checkbox', { name: 'Sounds' })).toBeChecked();
+      serverSend(third.ws, { type: 'roster', roster: [alice, bob, carol] });
+      expect(spy).toHaveBeenCalledTimes(3);
+      third.unmount();
     } finally {
       spy.mockRestore();
     }
@@ -273,6 +279,25 @@ describe('Roster', () => {
     await user.click(box);
     expect(box).toBeChecked();
     expect(localStorage.getItem('remart-bbs-chat.sound')).toBeNull();
+  });
+
+  it('?silent=1 starts with the checkbox off and a newcomer plays no chirp', async () => {
+    const spy = vi.spyOn(globalThis as any, 'AudioContext');
+    try {
+      history.pushState({}, '', '/?silent=1');
+      const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+      expect(screen.getByRole('checkbox', { name: 'Sounds' })).not.toBeChecked();
+      serverSend(ws, { type: 'roster', roster: [alice, bob, carol] });
+      expect(spy).not.toHaveBeenCalled();
+    } finally {
+      history.pushState({}, '', '/');
+      spy.mockRestore();
+    }
+  });
+
+  it('the Sounds label carries the ?silent=1 hint', async () => {
+    await renderJoined();
+    expect(screen.getByRole('checkbox', { name: 'Sounds' }).closest('label')).toHaveAttribute('title', expect.stringContaining('?silent=1'));
   });
 
   it('a newcomer plays the join chirp; the first snapshot does not', async () => {

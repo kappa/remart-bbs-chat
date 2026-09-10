@@ -87,7 +87,7 @@ async function main() {
   // A tab resolves only once its page has joined, so tabs join in the order
   // the script creates them. Creating the next target hides and throttles
   // this one, and an unjoined page could otherwise lose the race for slot 0.
-  const tab = async (name, room = 1, { url = `http://localhost:${PORT}/?name=${name}&room=${room}`, join = true } = {}) => {
+  const tab = async (name, room = 1, { url = `http://localhost:${PORT}/?name=${name}&room=${room}&silent=1`, join = true } = {}) => {
     const { targetId } = await cdp.send('Target.createTarget', { url });
     const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
     await cdp.send('Runtime.enable', {}, sessionId);
@@ -274,9 +274,9 @@ async function main() {
   // lobby, while the original tab keeps its socket and participant.
   const aliceSession = await alice.eval(`sessionStorage.getItem('remart-bbs-chat.session')`);
   const aliceIdBefore = await alice.eval(participantId);
-  const dup = await tab('Alice', 1, { url: `http://localhost:${PORT}/`, join: false });
+  const dup = await tab('Alice', 1, { url: `http://localhost:${PORT}/?silent=1`, join: false });
   await dup.eval(`sessionStorage.setItem('remart-bbs-chat.session', ${JSON.stringify(aliceSession)}), true`);
-  await dup.goto(`http://localhost:${PORT}/?name=Alice&room=1`);
+  await dup.goto(`http://localhost:${PORT}/?name=Alice&room=1&silent=1`);
   check('a duplicated tab shows the lobby instead of resuming the session', await dup.waitFor(has('ROOMS')));
   check('the duplicated tab dropped its copy of the session', await dup.waitFor(`sessionStorage.getItem('remart-bbs-chat.session') === null`));
   await sleep(1500);
@@ -284,7 +284,7 @@ async function main() {
     await alice.eval(inRoom) && await alice.eval(`${participantId} === ${aliceIdBefore}`) && !(await alice.eval(has('Reconnecting'))));
   check('the room still lists one Alice', await alice.eval(`${text('.roster-handle')}.filter((h) => h === 'Alice').length === 1`));
   await dup.close();
-  await bob.goto(`http://localhost:${PORT}/`);
+  await bob.goto(`http://localhost:${PORT}/?silent=1`);
   check('Bob plain-URL load: same participant ID',
     await bob.waitFor(inRoom, 8000) && (await bob.eval(participantId)) === bobIdBefore, `after=${await bob.eval(participantId)}`);
   check('Bob plain-URL load: live "xx" restored; Alice transcript still unchanged',

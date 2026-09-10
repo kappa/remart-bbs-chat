@@ -1626,7 +1626,7 @@ their numbers stable.
 
 ## 41. Add `?silent=1` and make the browser check silent
 
-- [ ] **Requested feature, sidebar and tooling**
+- [x] **Requested feature, sidebar and tooling** (done: `?silent=1` starts with sound off, label carries the hint, browser check tabs all use it)
 - **Source:** Running `npm run check:browser` on 2026-09-09 produced join
   chirps from the headless tabs.
 - **Location:** The `soundOn` state and the Sounds checkbox in
