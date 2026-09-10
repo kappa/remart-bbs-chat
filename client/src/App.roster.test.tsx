@@ -60,6 +60,7 @@ describe('Roster', () => {
       ['Left/Right', 'move caret one code point'],
       ['Home/End', 'move caret to line start or end'],
       ['Ctrl+Left/Ctrl+Right', 'move caret by word (Alt+Arrow on macOS)'],
+      ['@', 'type @ and a name to pick a handle: Up/Down choose, Tab or Enter insert, Escape closes'],
     ]);
     expect(screen.getByText('Unicode supported, including Cyrillic. No character limit.')).toBeInTheDocument();
     await user.keyboard('{Escape}');
