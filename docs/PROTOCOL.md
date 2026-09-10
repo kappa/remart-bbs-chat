@@ -246,12 +246,17 @@ All messages are JSON text frames. Unknown fields are ignored.
 { type: "key", seq: number, kind: "home" | "end" }
 { type: "key", seq: number, kind: "delete" }
 { type: "presence", hidden: boolean }
+{ type: "private", to: number, text: string }
 ```
 
 `hello` must be the first message on a socket. `key` carries one keystroke.
 `presence` reports the tab's visibility (`document.hidden`). The client
 sends it once after every snapshot and again whenever visibility changes.
 It is not numbered and does not enter the keystroke sequence.
+`private` sends one line to one participant in the same room. `text` is
+trimmed at both ends and must then be 1 to 200 code points, each passing
+the character rule under [Edge cases](#edge-cases-1). It is not numbered
+and does not enter the keystroke sequence.
 Paste is a burst of `char` keystrokes, capped at 100 code points on the
 client. `char` must satisfy the character rule described under
 [Edge cases](#edge-cases-1). The movement and delete kinds operate on the
@@ -268,8 +273,9 @@ server-owned caret, also described there.
                      color: string, committedAt: number }>,
   roster: Array<{ participantId: number, handle: string, color: string, slot: number, afk: boolean }> }
 { type: "command", name: "help" | "leave" }
-{ type: "error", code: "unauthorized" | "unknown-participant" | "seq-gap" | "invalid-message",
-  expected?: number }
+{ type: "private-sent", to: number, handle: string }
+{ type: "error", code: "unauthorized" | "unknown-participant" | "seq-gap" | "invalid-message" | "unknown-recipient",
+  expected?: number, to?: number }
 ```
 
 `snapshot.committed` starts with the last 100 appended committed lines,
@@ -284,6 +290,20 @@ commit later. Reconnect uses the original join boundaries, never a new window.
 The client retains previously seen lines beyond the snapshot cap.
 `you.nextSeq` is the sequence number the server expects next from this participant. `liveLines` lists every participant, sorted
 by slot; idle ones have `row: null` and `text: ""`.
+
+### Server to one recipient
+
+```ts
+{ type: "private", from: number, handle: string, color: string, text: string }
+```
+
+Sent only to the participant named by `to` in the sender's `private`
+message. Nothing is stored: private messages never appear in snapshots and
+are never replayed on reconnect. The sender receives `private-sent` on
+delivery, or `error unknown-recipient` (with `to`) when the recipient is
+not in the sender's room, is the sender, or has no open socket at that
+moment; a `to` that is not a number or a `text` that fails the rule above
+is `error invalid-message`. The socket stays open in every case.
 
 ### Server to everyone in the room
 
@@ -379,6 +399,7 @@ so `" q"` is committed as text.
 | Command (`q`) | `live` (cleared), `command` to the sender, then the leave messages below; the sender's socket closes |
 | Join | `committed` (announcement), then `roster` to existing sockets; the newcomer receives the snapshot on `hello` |
 | `presence` with a new value | `roster` to everyone; nothing when the value is unchanged |
+| `private` | `private` to the recipient, then `private-sent` to the sender; or `error unknown-recipient` to the sender |
 | Leave or stale cleanup with survivors | `committed` per preserved live line, `committed` (announcement), `roster` |
 | Last participant removed | Nothing; the room is deleted |
 
