@@ -762,13 +762,6 @@ export function App() {
           ) : null}
           <button
             type="button"
-            className="keyboard-button"
-            onClick={focusKeyboard}
-          >
-            Type
-          </button>
-          <button
-            type="button"
             className="help-button"
             onClick={() => setShowHelp(true)}
           >
