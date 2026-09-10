@@ -33,41 +33,11 @@ the order to execute them:
 
 ## Working a task
 
-These rules apply to every task below and are written for an agent that has
-only this file, `AGENTS.md`, and the repository.
-
-- Read `AGENTS.md` first, then the task. The task's **Location** names the
-  code to read; read it before changing anything. If the code disagrees with
-  the task, the code is right about the present and the task is right about
-  the goal: say so in the commit message and do the goal.
-- Work test-first: write the failing test, watch it fail, make it pass, then
-  refactor. A test that passes before the change proves nothing.
-- One task per branch and per commit series; never mix tasks. Commit messages
-  say what changed and why, in plain sentences, with no trailers, links to
-  chat sessions, or tool names.
-- Update the docs named in the task in the same commit as the code:
-  `docs/PROTOCOL.md` for anything on the wire, `docs/USER_EXPERIENCE.md` for
-  anything a user notices, `docs/DESIGN.md` for a changed rationale, and the
-  "Behavior to preserve" list in `AGENTS.md` for a changed rule.
-- Before claiming done, run all of these and paste the results into the
-  commit message or the report:
-
-  ```sh
-  npm test
-  npm --prefix client test
-  npm --prefix client run typecheck
-  npm --prefix client run build
-  npm run check:browser
-  ```
-
-  The browser check needs a built client and a `google-chrome` binary. If it
-  cannot run, say so; do not skip it silently.
-- When the task names a decision it does not settle, and the choice would
-  change what the user sees or what goes over the wire, stop and report
-  instead of guessing. Everything else is yours to decide; write the decision
-  down in the commit message.
-- Close the GitHub issue named in **Source** when the task is merged, with a
-  one-line comment naming the commit.
+The rules for working a task (read `AGENTS.md` first, TDD, one task per
+`task-NN` branch and worktree, docs in the same commit, the validation list,
+when to stop and ask, and closing the source issue) live in `AGENTS.md` under
+"Working a task from TODO.md" and "Branches, worktrees, and landing". Every
+task below assumes them.
 
 ## 1. Require participant authorization for mutations
 
