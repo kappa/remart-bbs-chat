@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { openRoomConnection, type ConnectionStatus } from './connection';
-import type { CommandName, KeyInput, ServerMessage } from './protocol';
+import type { CommandName, CommittedLine, KeyInput, ServerMessage } from './protocol';
 import { applyServerMessage, emptyRoom, type RoomState } from './roomState';
 
 export type RoomSession = { roomId: number; participantId: number; token: string; joinedAt: number; historyFromRow: number };
@@ -10,6 +10,7 @@ export type RoomEvents = {
   onCommand: (name: CommandName) => void;
   onSessionEnded: () => void;
   onNewcomer: (entry: { handle: string }) => void;
+  onNewCommittedLine: (line: CommittedLine) => void;
   onNotice: (text: string) => void;
   onPrivate: (message: PrivateIncoming) => void;
   onPrivateResult: (result: PrivateResult) => void;
@@ -37,6 +38,7 @@ export function useRoomConnection(session: RoomSession | null, events: RoomEvent
     if (roomId == null || participantId == null || token == null || joinedAt == null || historyFromRow == null) return;
     setRoom(emptyRoom());
     const knownIds = new Set<number>();
+    const knownLineIds = new Set<string>();
     let seeded = false;
     const connection = openRoomConnection({ roomId, participantId, token }, {
       onStatus: setStatus,
@@ -60,6 +62,11 @@ export function useRoomConnection(session: RoomSession | null, events: RoomEvent
           for (const e of entries) knownIds.add(e.participantId);
           seeded = true;
           if (newcomer) eventsRef.current.onNewcomer({ handle: newcomer.handle });
+        }
+        if (msg.type === 'snapshot') for (const line of msg.committed) knownLineIds.add(line.id);
+        if (msg.type === 'committed' && !knownLineIds.has(msg.line.id)) {
+          knownLineIds.add(msg.line.id);
+          if (msg.participantId !== participantId) eventsRef.current.onNewCommittedLine(msg.line);
         }
         setRoom((prev) => applyServerMessage(prev, msg));
         setPending(pendingRef.current());

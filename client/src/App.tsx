@@ -15,7 +15,7 @@ import { api } from "./api";
 import { computeDocumentLines, isValidChar } from "./documentLines";
 import { splitLinks } from "./links";
 import { MentionList } from "./MentionList";
-import { mentionCandidates, mentionCompletion, mentionTokenBefore } from "./mentions";
+import { mentionCandidates, mentionCompletion, mentionTokenBefore, mentionsHandle } from "./mentions";
 import { createNotifier, soundChannel, titleChannel, type Notifier } from "./notifications";
 import { PRIVATE_STACK_MAX, PrivateMessages, type PrivatePopup } from "./PrivateMessages";
 import type { RosterEntry } from "./protocol";
@@ -182,6 +182,11 @@ export function App() {
     },
     onSessionEnded: () => endSession("Room session ended. Join again."),
     onNewcomer: (entry) => notifier.notify({ kind: "join", handle: entry.handle }),
+    onNewCommittedLine: (line) => {
+      if (session && mentionsHandle(line.text, session.handle)) {
+        notifier.notify({ kind: "mention", handle: line.handle, text: line.text });
+      }
+    },
     onNotice: setWarning,
     onPrivate: (message) => {
       const id = ++privateIdRef.current;
