@@ -81,6 +81,9 @@ name prefixes on ordinary lines because the color tells you who is who.
   what you actually typed, or sends the line if no name is being typed any
   more. `@` followed by something that is not a
   name is ordinary text.
+- Once a line is sent, `@` followed by the name of someone in the room is
+  shown in that person's color, for everyone. A comma or full stop right
+  after the name is fine. Names of people who have left stay plain.
 - There is no line-length limit. Any language works, including Cyrillic.
 - Long lines wrap to the available transcript width and reflow when the window
   is resized. Wrapping is visual only; it does not insert line breaks into text.
@@ -124,11 +127,19 @@ automatically; no command refreshes it.
 - When someone new joins, you hear a short two-tone chirp, and the
   browser-tab title rotates their name as `<handle> joined` (with a
   separating space so the end never glues to the start) for five
-  seconds before returning to normal. A Join sound checkbox in the
+  seconds before returning to normal. A Sounds checkbox in the
   sidebar turns the chirp off; the choice is remembered in that browser.
   Browsers only allow sound after you have clicked or typed in the page,
   so a tab you have just opened or reloaded stays silent until your first
   keystroke or click; the title still rotates.
+- When someone sends a line with `@yourname` in it, you hear a short
+  bell, distinct from the join chirp, and the tab title rotates
+  `<name> mentioned you` for five seconds. The Sounds checkbox silences
+  the bell as well as the chirp; the title still rotates. Lines from
+  before you joined and your own lines never ring, and neither does
+  anything that arrives with the fresh copy of the room after a
+  reconnect, even a mention sent while you were away; the name is still
+  colored.
 - If your connection drops in the middle of a line, your unsent text is kept,
   not thrown away.
 - A status line reads "Connecting..." or "Reconnecting..." while the room is

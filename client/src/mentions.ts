@@ -1,5 +1,6 @@
 // Mention tokens for handle autocomplete. Everything here works on the
 // server-echoed live text and caret; nothing predicts local keystrokes.
+import { stripTrailingPunctuation } from './links';
 import type { RosterEntry } from './protocol';
 
 export type MentionToken = { start: number; prefix: string };
@@ -34,4 +35,43 @@ export function mentionCandidates(prefix: string, roster: RosterEntry[], ownPart
 // The handle's code points after the prefix: what a pick sends as keystrokes.
 export function mentionCompletion(handle: string, prefix: string): string[] {
   return Array.from(handle).slice(Array.from(prefix).length);
+}
+
+export type MentionSegment =
+  | { kind: 'text'; text: string }
+  | { kind: 'mention'; text: string; handle: string; color: string };
+
+const MENTION_PATTERN = /(^|\s)(@\S+)/gu;
+
+function findMentions(text: string): { start: number; end: number; name: string }[] {
+  const found: { start: number; end: number; name: string }[] = [];
+  for (const match of text.matchAll(MENTION_PATTERN)) {
+    const token = stripTrailingPunctuation(match[2]);
+    if (token.length < 2) continue;
+    const start = match.index + match[1].length;
+    found.push({ start, end: start + token.length, name: token.slice(1) });
+  }
+  return found;
+}
+
+// Splits committed text into plain runs and exact mentions of current roster
+// members. Indices are used only to slice the same UTF-16 string.
+export function splitMentions(text: string, roster: RosterEntry[]): MentionSegment[] {
+  const segments: MentionSegment[] = [];
+  let pos = 0;
+  for (const { start, end, name } of findMentions(text)) {
+    const wanted = name.toLowerCase();
+    const entry = roster.find((candidate) => candidate.handle.toLowerCase() === wanted);
+    if (!entry) continue;
+    if (start > pos) segments.push({ kind: 'text', text: text.slice(pos, start) });
+    segments.push({ kind: 'mention', text: text.slice(start, end), handle: entry.handle, color: entry.color });
+    pos = end;
+  }
+  if (pos < text.length || segments.length === 0) segments.push({ kind: 'text', text: text.slice(pos) });
+  return segments;
+}
+
+export function mentionsHandle(text: string, handle: string): boolean {
+  const wanted = handle.toLowerCase();
+  return findMentions(text).some((mention) => mention.name.toLowerCase() === wanted);
 }

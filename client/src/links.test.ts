@@ -54,4 +54,10 @@ describe('splitLinks', () => {
       { kind: 'text', text: ' мир' },
     ]);
   });
+  it('handles a long punctuation run after an address in linear time', () => {
+    const text = 'https://example.com/' + '.'.repeat(20000) + 'x';
+    const started = performance.now();
+    expect(splitLinks(text)).toEqual([{ kind: 'link', text, href: text }]);
+    expect(performance.now() - started).toBeLessThan(100);
+  });
 });

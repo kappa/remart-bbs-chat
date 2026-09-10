@@ -360,4 +360,41 @@ describe('Editing keys (task 14)', () => {
     expect(other.textContent).toBe('xy');
     expect(other.querySelector('.caret-char')).toBeNull();
   });
+
+  it('a mention of a roster member is colored with that member\'s color; the rest keeps the author\'s', async () => {
+    await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob], committed: [line('h1', 0, 'hi @alice, ok', bob)] }));
+    const mention = await screen.findByText('@alice');
+    expect(mention).toHaveClass('mention');
+    expect(mention).toHaveAttribute('data-handle', 'Alice');
+    expect(mention).toHaveStyle({ color: '#fff' });
+    const row = mention.closest('.committed-line');
+    expect(row).toHaveStyle({ color: '#0ff' });
+    expect(row?.textContent).toBe('hi @alice, ok');
+  });
+
+  it('a mention of someone not in the roster stays plain', async () => {
+    await renderJoined(snapshot({ committed: [line('h1', 0, 'hi @Bob', alice)] }));
+    await screen.findByText('hi @Bob');
+    expect(document.querySelector('.mention')).toBeNull();
+  });
+
+  it('a mention turns plain when that member leaves', async () => {
+    const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob], committed: [line('h1', 0, 'hi @Bob', alice)] }));
+    await screen.findByText('@Bob');
+    serverSend(ws, { type: 'roster', roster: [alice] });
+    await waitFor(() => expect(document.querySelector('.mention')).toBeNull());
+  });
+
+  it('an address containing @ stays a link and colors nothing', async () => {
+    await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob], committed: [line('h1', 0, 'see https://example.com/@alice now', bob)] }));
+    await screen.findByRole('link', { name: 'https://example.com/@alice' });
+    expect(document.querySelector('.mention')).toBeNull();
+  });
+
+  it('live lines are never colored for mentions', async () => {
+    await renderJoined(snapshot({ liveLines: [idle(alice), typing(bob, 0, 'hi @Alice')], roster: [alice, bob] }));
+    await screen.findByText('hi @Alice');
+    expect(document.querySelector('.mention')).toBeNull();
+  });
+
 });

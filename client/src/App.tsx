@@ -15,12 +15,33 @@ import { api } from "./api";
 import { computeDocumentLines, isValidChar } from "./documentLines";
 import { splitLinks } from "./links";
 import { MentionList } from "./MentionList";
-import { mentionCandidates, mentionCompletion, mentionTokenBefore } from "./mentions";
+import { mentionCandidates, mentionCompletion, mentionTokenBefore, mentionsHandle, splitMentions } from "./mentions";
+import { createNotifier, soundChannel, titleChannel, type Notifier } from "./notifications";
 import { PRIVATE_STACK_MAX, PrivateMessages, type PrivatePopup } from "./PrivateMessages";
 import type { RosterEntry } from "./protocol";
 import { sortedCommitted } from "./roomState";
 import { claimSession, type ReleaseSession } from "./sessionLock";
 import { useRoomConnection } from "./useRoomConnection";
+
+function renderCommittedText(text: string, roster: RosterEntry[]) {
+  return splitLinks(text).flatMap((segment, index) =>
+    segment.kind === "link"
+      ? [
+          <a key={`link-${index}`} href={segment.href} target="_blank" rel="noopener noreferrer">
+            {segment.text}
+          </a>,
+        ]
+      : splitMentions(segment.text, roster).map((part, partIndex) =>
+          part.kind === "mention" ? (
+            <span key={`mention-${index}-${partIndex}`} className="mention" data-handle={part.handle} style={{ color: part.color }}>
+              {part.text}
+            </span>
+          ) : (
+            part.text
+          ),
+        ),
+  );
+}
 
 type Session = {
   roomId: number;
@@ -36,45 +57,10 @@ const SESSION_KEY = "remart-bbs-chat.session";
 const HANDLE_KEY = "remart-bbs-chat.handle";
 const SOUND_KEY = "remart-bbs-chat.sound";
 const BASE_TITLE = "Remart BBS Chat";
-const TITLE_NOTICE_MS = 5000;
-const TITLE_TICK_MS = 400;
 const PRIVATE_MAX_CODE_POINTS = 200;
 
 // Arrow and position keys map one-to-one onto server caret keystrokes.
 const MOVEMENT_KINDS = { ArrowLeft: "left", ArrowRight: "right", Home: "home", End: "end" } as const;
-
-function playJoinSound() {
-  try {
-    const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
-    if (!AudioCtx) return;
-    const ctx = new AudioCtx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.type = "square";
-    osc.frequency.value = 880;
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    gain.gain.setValueAtTime(0, ctx.currentTime);
-    gain.gain.linearRampToValueAtTime(0.18, ctx.currentTime + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.28);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.3);
-    const osc2 = ctx.createOscillator();
-    const gain2 = ctx.createGain();
-    osc2.type = "square";
-    osc2.frequency.value = 1320;
-    osc2.connect(gain2);
-    gain2.connect(ctx.destination);
-    gain2.gain.setValueAtTime(0, ctx.currentTime + 0.12);
-    gain2.gain.linearRampToValueAtTime(0.12, ctx.currentTime + 0.13);
-    gain2.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.38);
-    osc2.start(ctx.currentTime + 0.12);
-    osc2.stop(ctx.currentTime + 0.4);
-    setTimeout(() => { try { ctx.close(); } catch {} }, 600);
-  } catch {
-    // Audio blocked or unavailable — silent fail, chat remains usable
-  }
-}
 
 /*
  * Desktop hosts may load the artifact in a third-party or privacy-restricted
@@ -145,6 +131,13 @@ export function App() {
   const [warning, setWarning] = useState("");
   const [showHelp, setShowHelp] = useState(false);
   const [soundOn, setSoundOn] = useState(() => storageGet("local", SOUND_KEY) !== "off");
+  // The sound channel reads the switch through a ref so one notifier serves
+  // the whole session; the ref is assigned in an effect, never during render.
+  const soundOnRef = useRef(soundOn);
+  useEffect(() => { soundOnRef.current = soundOn; }, [soundOn]);
+  const [notifier] = useState<Notifier>(() =>
+    createNotifier([titleChannel(document, BASE_TITLE), soundChannel(() => soundOnRef.current)]),
+  );
   const [mentionSelection, setMentionSelection] = useState<number | null>(null);
   const [mentionDismissedAt, setMentionDismissedAt] = useState<number | null>(null);
   const [parkedKey, setParkedKey] = useState<"enter" | "tab" | null>(null);
@@ -153,10 +146,6 @@ export function App() {
   const [privateMessages, setPrivateMessages] = useState<PrivatePopup[]>([]);
   const privateIdRef = useRef(0);
   const handleChatKeyRef = useRef<(event: KeyboardEvent) => boolean>(() => false);
-  const titleTimers = useRef<{ timeout: number | undefined; interval: number | undefined }>({
-    timeout: undefined,
-    interval: undefined,
-  });
   const chatRef = useRef<HTMLElement>(null);
   const containerRef = useRef<HTMLElement>(null);
   const keyboardRef = useRef<HTMLTextAreaElement>(null);
@@ -171,35 +160,6 @@ export function App() {
     retry: false,
   });
 
-  // A join notice rotates "<handle> joined" through the tab title for a
-  // few seconds, then restores the base title. It runs on its own timers
-  // so muted or blocked audio never suppresses it; a later join replaces
-  // the current notice cleanly.
-  const clearTitleNotice = () => {
-    window.clearTimeout(titleTimers.current.timeout);
-    window.clearInterval(titleTimers.current.interval);
-    titleTimers.current.timeout = undefined;
-    titleTimers.current.interval = undefined;
-  };
-  const stopTitleNotice = () => {
-    clearTitleNotice();
-    document.title = BASE_TITLE;
-  };
-  const startTitleNotice = (handle: string) => {
-    clearTitleNotice();
-    // The trailing space separates the end from the start as the text
-    // rotates, so "joined" is never glued to the handle.
-    let rotated = `${handle} joined `;
-    document.title = rotated;
-    titleTimers.current.interval = window.setInterval(() => {
-      // Rotate by code point so an emoji handle never splits a surrogate.
-      const points = Array.from(rotated);
-      rotated = points.slice(1).join("") + points[0];
-      document.title = rotated;
-    }, TITLE_TICK_MS);
-    titleTimers.current.timeout = window.setTimeout(stopTitleNotice, TITLE_NOTICE_MS);
-  };
-
   const endSession = (message: string) => {
     storageRemove("session", SESSION_KEY);
     releaseSessionRef.current?.();
@@ -211,7 +171,7 @@ export function App() {
     setPrivateDraft(null);
     setPrivateMessages([]);
     setError(message);
-    stopTitleNotice();
+    notifier.stop();
   };
 
   useEffect(() => {
@@ -241,9 +201,11 @@ export function App() {
       else if (name === "leave") endSession("");
     },
     onSessionEnded: () => endSession("Room session ended. Join again."),
-    onNewcomer: (entry) => {
-      if (soundOn) playJoinSound();
-      startTitleNotice(entry.handle);
+    onNewcomer: (entry) => notifier.notify({ kind: "join", handle: entry.handle }),
+    onNewCommittedLine: (line) => {
+      if (session && mentionsHandle(line.text, session.handle)) {
+        notifier.notify({ kind: "mention", handle: line.handle, text: line.text });
+      }
     },
     onNotice: setWarning,
     onPrivate: (message) => {
@@ -259,10 +221,7 @@ export function App() {
     },
   });
 
-  useEffect(() => () => {
-    stopTitleNotice();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  useEffect(() => () => notifier.stop(), [notifier]);
 
   const participants = room.participants;
   const dismissPrivate = useCallback((id: number) => setPrivateMessages((list) => list.filter((message) => message.id !== id)), []);
@@ -815,22 +774,7 @@ export function App() {
                   color: line.color,
                 }}
               >
-                {line.text
-                  ? splitLinks(line.text).map((segment, index) =>
-                      segment.kind === "link" ? (
-                        <a
-                          key={index}
-                          href={segment.href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          {segment.text}
-                        </a>
-                      ) : (
-                        segment.text
-                      ),
-                    )
-                  : " "}
+                {line.text ? renderCommittedText(line.text, participants) : " "}
               </div>
             );
           }
@@ -957,7 +901,7 @@ export function App() {
                 storageSet("local", SOUND_KEY, next ? "on" : "off");
               }}
             />
-            Join sound
+            Sounds
           </label>
           <a
             className="report-link"
