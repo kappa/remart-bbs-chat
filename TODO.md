@@ -28,6 +28,7 @@ the order to execute them:
 | 3 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
 | 4 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
 | 5 | 34 — Investigate the shared-session socket takeover | Investigation only; explains the afk flicker seen with duplicated tabs. |
+| 6 | 35 — Fix the join-order race in the browser check | Small script fix; removes a flaky failure of the first checks. |
 
 ## Working a task
 
@@ -1450,8 +1451,8 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 
 ## Review issues 2026-09-09
 
-Task 34 comes from the goblin review of the day's merges, not from a GitHub
-issue. Keep its number stable.
+Tasks 34 and 35 come from the goblin review of the day's merges, not from
+GitHub issues. Keep their numbers stable.
 
 ## 34. Investigate the socket takeover between tabs that share a session
 
@@ -1483,3 +1484,30 @@ issue. Keep its number stable.
   reproduction, the captured sequence, and a recommendation. The afk flicker
   is described there as a symptom and is not patched separately.
 - **Tests and docs:** None for the investigation; a fix task names its own.
+
+## 35. Fix the join-order race in the browser check
+
+- [ ] **Bug, check-browser.mjs**
+- **Source:** Seen once while running `npm run check:browser` during the
+  2026-09-09 review; passed on rerun. No GitHub issue.
+- **Location:** The `tab()` helper and the opening lines of `main()` in
+  `check-browser.mjs`, where `await tab('Alice')` is followed by
+  `await tab('Bob')` and the first checks wait for both to be in the room.
+- **Observed behavior:** `tab()` resolves as soon as the target is created and
+  attached, not when the page has joined. The page joins through
+  `/api/join` only after the client boots, and creating Bob's target takes
+  the front, which leaves Alice's page in a hidden, throttled tab. When
+  Bob's join reaches the server first, Bob gets slot 0, the roster reads
+  `Bob|Alice|...`, and every check that asserts join order or roster order
+  fails: the "* Bob joined" history check and, later, both `Alice|Bob|Carol`
+  order checks in the afk probe.
+- **Fix:** Make `tab()` (or a small `join()` wrapper used by the script) wait
+  until the page reports it is in the room before returning, so tabs join in
+  the order the script creates them. Keep the wait on the existing `inRoom`
+  expression rather than a fixed sleep.
+- **Acceptance:** Ten consecutive runs of `npm run check:browser` pass with no
+  failed check, and the script still creates Carol and the second-room tabs
+  in the same way.
+- **Tests:** The browser check is the test; there is no unit test for the
+  script. Note the ten-run result in the commit message.
+- **Docs:** None; `AGENTS.md` already describes the check.
