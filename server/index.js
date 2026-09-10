@@ -301,7 +301,7 @@ function removeParticipant(room, participant, preservedAt){
   return participant;
 }
 
-const COMMANDS = { l:'roster', '?':'help', q:'leave' };
+const COMMANDS = { '?':'help', q:'leave' };
 
 const app = express();
 app.use(cors());

@@ -151,10 +151,24 @@ describe('Rendering from server state', () => {
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   });
 
-  it('a roster command shows feedback; a leave command returns to the lobby', async () => {
+  it('typing l and pressing Enter commits ordinary chat; help and leave commands still work', async () => {
+    const user = userEvent.setup();
     const { ws } = await renderJoined();
-    serverSend(ws, { type: 'command', name: 'roster' });
-    expect(await screen.findByText('Roster refreshed')).toBeInTheDocument();
+    await user.click(await screen.findByLabelText('Shared chat area'));
+    await user.keyboard('l{Enter}');
+    // l + Enter should be sent as chat, not as a command
+    expect(ws.keys().map((k) => [k.kind, k.char ?? ''])).toEqual([['char', 'l'], ['enter', '']]);
+    // Server echoes the committed line
+    serverSend(ws, { type: 'committed', participantId: 10, seq: 1, line: { row: 0, text: 'l', color: '#fff', slot: 0 } });
+    expect(await screen.findByText('l')).toBeInTheDocument();
+    // Help command still works
+    await user.click(await screen.findByLabelText('Shared chat area'));
+    await user.keyboard('?{Enter}');
+    expect(ws.keys().map((k) => [k.kind, k.char ?? ''])).toEqual([['char', 'l'], ['enter', ''], ['char', '?'], ['enter', '']]);
+    serverSend(ws, { type: 'command', name: 'help' });
+    expect(await screen.findByRole('dialog', { name: /help/i })).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: /close/i }));
+    // Leave command still works
     serverSend(ws, { type: 'command', name: 'leave' });
     expect(await screen.findByText('ROOMS')).toBeInTheDocument();
     expect(sessionStorage.getItem('remart-bbs-chat.session')).toBeNull();
