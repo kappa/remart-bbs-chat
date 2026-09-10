@@ -109,6 +109,10 @@ as `?`, and a Leave button leaves the room like `q`.
 - A pinned roster lists everyone in the room, each in their color. It fits
   roughly ten participants. A Report a problem link at its foot opens the
   issue form in a new tab.
+- When someone's tab is in the background, a small dim `afk` appears beside
+  their name in the roster, and disappears when their tab is visible again.
+  Nothing else changes: they keep their color, their unfinished line, and
+  their place, and nobody is told they left or joined.
 - When someone new joins, you hear a short two-tone chirp, and the
   browser-tab title rotates their name as `<handle> joined` (with a
   separating space so the end never glues to the start) for five

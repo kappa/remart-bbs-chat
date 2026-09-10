@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { api } from './api';
 import { renderJoined, serverSend, snapshot, alice, bob, idle, typing } from './testing/roomFixtures';
@@ -9,6 +9,7 @@ vi.mock('./api', () => ({
 }));
 
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.clearAllMocks(); (api.listRooms as any).mockResolvedValue({ rooms: [] }); });
+afterEach(() => { Object.defineProperty(document, 'hidden', { configurable: true, get: () => false }); });
 
 const carol = { participantId: 30, handle: 'Carol', color: '#f0f', slot: 2, afk: false };
 
@@ -267,5 +268,44 @@ describe('Roster', () => {
     serverSend(ws, { type: 'roster', roster: [alice, bob, carol] });
     expect(spy).toHaveBeenCalledTimes(1);
     spy.mockRestore();
+  });
+
+  it('shows a dim afk marker beside a hidden participant and removes it when they return', async () => {
+    const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+    await screen.findByText('Bob');
+    expect(screen.queryByText('afk')).toBeNull();
+    serverSend(ws, { type: 'roster', roster: [alice, { ...bob, afk: true }] });
+    const marker = await screen.findByText('afk');
+    expect(marker).toHaveClass('roster-afk');
+    expect(marker).toHaveAttribute('title', 'In a background tab');
+    expect(marker.closest('.roster-entry')).toHaveStyle({ color: '#0ff' });
+    expect(marker.closest('.roster-entry')?.querySelector('.roster-handle')?.textContent).toBe('Bob');
+    serverSend(ws, { type: 'roster', roster: [alice, bob] });
+    await waitFor(() => expect(screen.queryByText('afk')).toBeNull());
+  });
+
+  it('a status-only roster message is not a newcomer: no chirp and no title rotation', async () => {
+    const spy = vi.spyOn(globalThis as any, 'AudioContext');
+    try {
+      const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
+      await screen.findByText('Bob');
+      serverSend(ws, { type: 'roster', roster: [alice, { ...bob, afk: true }] });
+      await screen.findByText('afk');
+      expect(spy).not.toHaveBeenCalled();
+      expect(document.title).not.toMatch(/joined/);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('reports the tab visibility after the snapshot and on every change', async () => {
+    const { ws } = await renderJoined();
+    await waitFor(() => expect(ws.sent.filter((m: any) => m.type === 'presence')).toEqual([{ type: 'presence', hidden: false }]));
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => true });
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(ws.sent.filter((m: any) => m.type === 'presence')).toEqual([{ type: 'presence', hidden: false }, { type: 'presence', hidden: true }]);
+    Object.defineProperty(document, 'hidden', { configurable: true, get: () => false });
+    act(() => { document.dispatchEvent(new Event('visibilitychange')); });
+    expect(ws.sent.filter((m: any) => m.type === 'presence').length).toBe(3);
   });
 });

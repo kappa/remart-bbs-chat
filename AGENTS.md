@@ -145,6 +145,12 @@ The following describes the current implementation and its regression baseline.
 - Handles are unique case-insensitively across all rooms; rooms allow up to
   ten participants. Browser storage is prototype session convenience. The
   `?name=` override must not overwrite the remembered default handle.
+- AFK follows tab visibility: the client reports `document.hidden` after
+  every snapshot and on every change, the server owns the resulting `afk`
+  flag carried on roster entries and snapshot live lines, and only a changed
+  value broadcasts a roster. It is separate from stale detection: pongs never
+  clear it, and a reconnecting socket keeps the stored value until it
+  reports.
 - Commands `l`, `?`, and `q` are recognized by the server on Enter against the
   exact live line (surrounding whitespace makes it chat). Unicode input
   passes through, paste is capped at 100 characters with a warning, and

@@ -52,7 +52,16 @@ export function useRoomConnection(session: RoomSession | null, events: RoomEvent
       },
     });
     sendRef.current = connection.send;
-    return () => { connection.close(); sendRef.current = () => false; };
+    // Browser visibility is the AFK signal. The connection remembers it and
+    // sends it after this snapshot and after subsequent reconnect snapshots.
+    connection.setHidden(document.hidden);
+    const onVisibility = () => connection.setHidden(document.hidden);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      document.removeEventListener('visibilitychange', onVisibility);
+      connection.close();
+      sendRef.current = () => false;
+    };
   }, [roomId, participantId, token, joinedAt, historyFromRow]);
 
   const send = (key: KeyInput) => {

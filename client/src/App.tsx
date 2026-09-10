@@ -812,6 +812,9 @@ export function App() {
                 aria-hidden="true"
               />
               <span className="roster-handle">{participant.handle}</span>
+              {participant.afk ? (
+                <span className="roster-afk" title="In a background tab">afk</span>
+              ) : null}
             </div>
           ))
         ) : (
