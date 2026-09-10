@@ -51,10 +51,9 @@ html, body, #root { width:100%; height:100%; min-height:0; margin:0; overflow:hi
 .sound-toggle input { accent-color:var(--accent); }
 .report-link:hover { color:var(--text); }
 .report-link:focus-visible { color:var(--text); outline:1px solid var(--accent); outline-offset:2px; }
-.help-button, .keyboard-button, .help-close { min-height:2rem; border:1px solid var(--border); border-radius:0; background:var(--surface); color:var(--dim); cursor:pointer; font:inherit; }
-.keyboard-button { width:100%; border-color:var(--accent); color:var(--accent); }
+.help-button, .help-close { min-height:2rem; border:1px solid var(--border); border-radius:0; background:var(--surface); color:var(--dim); cursor:pointer; font:inherit; }
 .help-button { width:100%; }
-.help-button:focus-visible, .help-button:hover, .keyboard-button:focus-visible, .keyboard-button:hover, .help-close:focus-visible, .help-close:hover { border-color:var(--accent); color:var(--text); outline:none; }
+.help-button:focus-visible, .help-button:hover, .help-close:focus-visible, .help-close:hover { border-color:var(--accent); color:var(--text); outline:none; }
 .help-overlay { position:fixed; inset:0; z-index:10; display:flex; align-items:center; justify-content:center; padding:1rem; background:rgb(0 0 0 / 80%); }
 .help-dialog { width:min(420px,100%); max-height:calc(var(--app-height, 100dvh) - 2rem); overflow-y:auto; border:1px solid #555; padding:16px; background:#111; color:var(--text); font-family:var(--mono); line-height:1.45; }
 .help-heading { margin-bottom:0.75rem; color:var(--accent); }

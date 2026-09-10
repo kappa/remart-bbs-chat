@@ -63,7 +63,7 @@ describe('Rendering from server state', () => {
     const user = userEvent.setup();
     await renderJoined(snapshot({ committed: [line('h1', 0, 'see https://example.com/x')] }));
     const anchor = await screen.findByRole('link', { name: 'https://example.com/x' });
-    await user.click(screen.getByRole('button', { name: 'Type' }));
+    await user.click(await screen.findByLabelText('Shared chat area'));
     expect(document.activeElement).toBe(document.querySelector('.keyboard-capture'));
     await user.click(anchor);
     expect(document.activeElement).not.toBe(document.querySelector('.keyboard-capture'));

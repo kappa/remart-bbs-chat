@@ -35,9 +35,9 @@ describe('Roster', () => {
     expect(screen.queryByText(/chars/)).toBeNull();
   });
 
-  it('the sidebar offers Type, Help, and Leave with no single-key command buttons', async () => {
+  it('the sidebar offers Help and Leave with no Type or single-key command buttons', async () => {
     await renderJoined();
-    expect(screen.getByRole('button', { name: 'Type' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Type' })).toBeNull();
     expect(screen.getByRole('button', { name: 'Help' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Leave' })).toBeInTheDocument();
     expect(screen.queryByText('[l]')).toBeNull();
@@ -75,7 +75,7 @@ describe('Roster', () => {
     expect(link).toHaveAttribute('href', 'https://github.com/kappa/remart-bbs-chat/issues/new');
     expect(link).toHaveAttribute('target', '_blank');
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
-    await user.click(screen.getByRole('button', { name: 'Type' }));
+    await user.click(await screen.findByLabelText('Shared chat area'));
     expect(document.activeElement).toBe(document.querySelector('.keyboard-capture'));
     await user.click(link);
     expect(document.activeElement).not.toBe(document.querySelector('.keyboard-capture'));
