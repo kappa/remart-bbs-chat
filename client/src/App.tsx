@@ -14,6 +14,7 @@ import { computeDocumentLines, isValidChar } from "./documentLines";
 import { splitLinks } from "./links";
 import { MentionList } from "./MentionList";
 import { mentionCandidates, mentionCompletion, mentionTokenBefore } from "./mentions";
+import { PrivateMessages, type PrivateMessage } from "./PrivateMessages";
 import type { RosterEntry } from "./protocol";
 import { sortedCommitted } from "./roomState";
 import { claimSession, type ReleaseSession } from "./sessionLock";
@@ -147,6 +148,8 @@ export function App() {
   const [parkedKey, setParkedKey] = useState<"enter" | "tab" | null>(null);
   const [privateTarget, setPrivateTarget] = useState<{ participantId: number; handle: string } | null>(null);
   const [privateText, setPrivateText] = useState("");
+  const [privateMessages, setPrivateMessages] = useState<PrivateMessage[]>([]);
+  const privateIdRef = useRef(0);
   const handleChatKeyRef = useRef<(event: KeyboardEvent) => boolean>(() => false);
   const titleTimers = useRef<{ timeout: number | undefined; interval: number | undefined }>({
     timeout: undefined,
@@ -205,6 +208,7 @@ export function App() {
     setWarning("");
     setPrivateTarget(null);
     setPrivateText("");
+    setPrivateMessages([]);
     setError(message);
     stopTitleNotice();
   };
@@ -241,7 +245,10 @@ export function App() {
       startTitleNotice(entry.handle);
     },
     onNotice: setWarning,
-    onPrivate: () => {},
+    onPrivate: (message) => {
+      const id = ++privateIdRef.current;
+      setPrivateMessages((list) => [...list, { id, ...message, receivedAt: Date.now() }]);
+    },
     onPrivateResult: (result) => {
       if (result.ok) setFeedback(`sent to ${result.handle}`);
       else {
@@ -257,6 +264,7 @@ export function App() {
   }, []);
 
   const participants = room.participants;
+  const dismissPrivate = (id: number) => setPrivateMessages((list) => list.filter((message) => message.id !== id));
   const openPrivate = (participant: RosterEntry) => {
     if (participant.participantId === session?.participantId) return;
     setPrivateTarget({ participantId: participant.participantId, handle: participant.handle });
@@ -559,6 +567,12 @@ export function App() {
         dismissMention();
         return true;
       }
+    }
+
+    if (event.key === "Escape" && privateMessages.length) {
+      event.preventDefault();
+      dismissPrivate(privateMessages[0].id);
+      return true;
     }
 
     if (event.key === "Backspace") {
@@ -936,6 +950,8 @@ export function App() {
           </a>
         </div>
       </aside>
+
+      <PrivateMessages messages={privateMessages} onDismiss={dismissPrivate} />
 
       {showHelp ? (
         <div className="help-overlay">

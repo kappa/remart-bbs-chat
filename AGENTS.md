@@ -166,6 +166,9 @@ The following describes the current implementation and its regression baseline.
   value broadcasts a roster. It is separate from stale detection: pongs never
   clear it, and a reconnecting socket keeps the stored value until it
   reports.
+- Private messages are delivered once over the socket to one recipient and
+  are never stored, replayed, or rendered as transcript rows; the client
+  keeps them in their own list outside room state.
 - Commands `?` and `q` are recognized by the server on Enter against the
   exact live line (surrounding whitespace makes it chat); a line containing
   only `l` is ordinary chat. Unicode input

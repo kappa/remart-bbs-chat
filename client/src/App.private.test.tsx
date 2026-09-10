@@ -115,3 +115,59 @@ describe('Sender feedback', () => {
     expect(screen.getByLabelText('Shared chat area')).toBeInTheDocument();
   });
 });
+
+describe('Receiving a private message', () => {
+  const incoming = (text: string, handle = 'Bob', color = '#0ff', from = 20) =>
+    ({ type: 'private' as const, from, handle, color, text });
+
+  it('renders a popup outside the chat area with the sender in color; the transcript is unchanged', async () => {
+    const { ws } = await renderJoined(three());
+    await screen.findByText('Carol');
+    serverSend(ws, incoming('lunch?'));
+    const text = await screen.findByText('lunch?');
+    const popup = text.closest('.private-popup');
+    expect(popup).not.toBeNull();
+    expect(popup?.closest('#chat-area')).toBeNull();
+    expect(popup?.querySelector('.private-from')).toHaveTextContent('Bob');
+    expect(popup?.querySelector('.private-from')).toHaveStyle({ color: '#0ff' });
+    expect(committedTexts()).toEqual([]);
+    expect(document.querySelectorAll('.chat-line').length).toBe(document.querySelectorAll('#chat-area .chat-line').length);
+  });
+
+  it('two messages stack in arrival order; click removes one, Escape removes the oldest', async () => {
+    const user = userEvent.setup();
+    const { ws } = await renderJoined(three());
+    await screen.findByText('Carol');
+    serverSend(ws, incoming('first'));
+    serverSend(ws, incoming('second', 'Carol', '#f0f', 30));
+    await screen.findByText('second');
+    expect(Array.from(document.querySelectorAll('.private-text')).map((e) => e.textContent)).toEqual(['first', 'second']);
+    await user.click(screen.getByText('second'));
+    await waitFor(() => expect(screen.queryByText('second')).toBeNull());
+    serverSend(ws, incoming('third', 'Carol', '#f0f', 30));
+    await screen.findByText('third');
+    await user.click(screen.getByLabelText('Shared chat area'));
+    await user.keyboard('{Escape}');
+    await waitFor(() => expect(screen.queryByText('first')).toBeNull());
+    expect(screen.getByText('third')).toBeInTheDocument();
+    expect(ws.keys()).toEqual([]);
+  });
+
+  it('a sender who left still shows with the handle and color from the message', async () => {
+    const { ws } = await renderJoined(three());
+    await screen.findByText('Carol');
+    serverSend(ws, { type: 'roster', roster: [alice, carol] });
+    serverSend(ws, incoming('bye'));
+    const popup = (await screen.findByText('bye')).closest('.private-popup');
+    expect(popup?.querySelector('.private-from')).toHaveTextContent('Bob');
+  });
+
+  it('ending the session clears the popups', async () => {
+    const { ws } = await renderJoined(three());
+    await screen.findByText('Carol');
+    serverSend(ws, incoming('lunch?'));
+    await screen.findByText('lunch?');
+    serverSend(ws, { type: 'error', code: 'unknown-participant' });
+    await waitFor(() => expect(screen.queryByText('lunch?')).toBeNull());
+  });
+});
