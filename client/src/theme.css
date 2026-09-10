@@ -48,7 +48,7 @@ button.roster-entry:focus-visible { outline:1px solid var(--accent); outline-off
 .caret { display:inline-block; width:0.62em; height:2px; overflow:hidden; vertical-align:-0.12em; background:#ccc; animation:blink 1s step-start infinite; }
 .caret-char { border-bottom:2px solid #ccc; animation:blink-underline 1s step-start infinite; }
 .mention-anchor { position:relative; display:inline-block; width:0; height:0; overflow:visible; vertical-align:baseline; }
-.mention-list { position:absolute; top:0.45em; left:0; z-index:5; display:block; min-width:8ch; max-height:12.4em; overflow-y:auto; border:1px solid #555; background:#000; white-space:pre; font-family:var(--mono); line-height:1.55em; }
+.mention-list { position:absolute; top:0.45em; left:0; z-index:5; display:block; min-width:8ch; max-height:12.4em; overflow-y:auto; border:1px solid #555; background:#000; white-space:nowrap; font-family:var(--mono); line-height:1.55em; }
 .mention-option { display:block; padding:0 0.5ch; cursor:pointer; }
 .mention-option.highlighted { background:#222; }
 /* overflow != visible makes the inline-block's baseline its bottom margin edge,
