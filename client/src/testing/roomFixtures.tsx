@@ -30,8 +30,11 @@ export function queryClient() { return new QueryClient({ defaultOptions: { queri
 // with `snap`. Returns the fake socket for sending more server messages.
 export async function renderJoined(snap: Snapshot = snapshot(), session = SESSION) {
   storeSession(session);
+  const before = FakeWebSocket.instances.length;
   const view = render(<QueryClientProvider client={queryClient()}><App /></QueryClientProvider>);
+  // The socket opens once the session lock is claimed, a tick after render.
   const ws = await waitFor(() => {
+    if (FakeWebSocket.instances.length <= before) throw new Error('no socket yet');
     const socket = FakeWebSocket.latest();
     if (!socket.sent.some((m) => m.type === 'hello')) throw new Error('no hello yet');
     return socket;

@@ -482,6 +482,13 @@ some input was lost".
 Session end: only `error unknown-participant` or `unauthorized`, the
 `command leave` reply, or the user's own leave action clears the session.
 
+Session resume: before opening the socket for a stored session the client
+claims a Web Lock named `remart-bbs-chat.session.<participantId>` with
+`ifAvailable`, and holds it until the session ends or the page unloads. A
+duplicated tab (which copies `sessionStorage`) finds the lock taken, drops
+its copy, and shows the lobby; a reload gets the lock because the old
+document released it. Without Web Locks the claim always succeeds.
+
 Commands: Enter is a plain keystroke; the server decides. `command help`
 opens the overlay, `leave` returns to the lobby, and any other name is
 ignored. The Leave button calls HTTP leave directly instead of typing `q`.

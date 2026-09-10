@@ -199,6 +199,41 @@ describe('Rendering from server state', () => {
     expect(await screen.findByText('Room session ended. Join again.')).toBeInTheDocument();
   });
 
+  it('a stored session that another tab holds is not resumed: the lobby appears as in a fresh tab and the copy is cleared', async () => {
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: (_n: string, _o: unknown, cb: (l: null) => unknown) => Promise.resolve(cb(null)) } });
+    try {
+      storeSession();
+      render(<QueryClientProvider client={queryClient()}><App /></QueryClientProvider>);
+      expect(await screen.findByText('ROOMS')).toBeInTheDocument();
+      expect(screen.queryByRole('alert')).toBeNull();
+      expect(sessionStorage.getItem('remart-bbs-chat.session')).toBeNull();
+      expect(FakeWebSocket.instances.length).toBe(0);
+    } finally {
+      delete (navigator as any).locks;
+    }
+  });
+
+  it('a stored session whose lock is free is resumed, and leaving releases the lock', async () => {
+    const names: string[] = [];
+    const held: Promise<unknown>[] = [];
+    Object.defineProperty(navigator, 'locks', { configurable: true, value: { request: (n: string, _o: unknown, cb: (l: object) => unknown) => { names.push(n); const h = cb({}); held.push(h as Promise<unknown>); return Promise.resolve(h); } } });
+    try {
+      const user = userEvent.setup();
+      await renderJoined();
+      expect(names).toEqual(['remart-bbs-chat.session.10']);
+      let released = false;
+      held[0].then(() => { released = true; });
+      await Promise.resolve();
+      expect(released).toBe(false);
+      (api.leaveRoom as any).mockResolvedValue({});
+      await user.click(screen.getByRole('button', { name: 'Leave' }));
+      await screen.findByText('ROOMS');
+      await waitFor(() => expect(released).toBe(true));
+    } finally {
+      delete (navigator as any).locks;
+    }
+  });
+
   it('the caret follows the live row and the local preview appears when idle', async () => {
     const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), typing(bob, 0, 'b')] }));
     expect(await screen.findByText('b')).toBeInTheDocument();

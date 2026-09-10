@@ -16,7 +16,7 @@ Describe implemented behavior there; keep future proposals in these tasks.
 ## Recommended implementation order
 
 Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 22, 23, 24, 25,
-26, 27, 28, 29, 30, 31, 32, 33, 35, and 39 are done and tasks 8, 9, and 20 are
+26, 27, 28, 29, 30, 31, 32, 33, 34, 35, and 39 are done and tasks 8, 9, and 20 are
 closed; see their checkboxes.
 Keep task numbers stable; the table below lists only the open tasks, in
 the order to execute them:
@@ -25,10 +25,10 @@ the order to execute them:
 | --- | --- | --- |
 | 1 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
 | 2 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
-| 3 | 34 — Investigate the shared-session socket takeover | Investigation only; explains the afk flicker seen with duplicated tabs. |
-| 4 | 36 — Delay AFK by five minutes of invisibility | Client-side timer; found while testing task 31. |
-| 5 | 37 — Stop remembering the Join sound checkbox | Small client cleanup; the box starts on every load. |
-| 6 | 38 — Drop the > marker from the handle list | Small client cleanup; the background already marks the selection. |
+| 3 | 36 — Delay AFK by five minutes of invisibility | Client-side timer; found while testing task 31. |
+| 4 | 37 — Stop remembering the Join sound checkbox | Small client cleanup; the box starts on every load. |
+| 5 | 38 — Drop the > marker from the handle list | Small client cleanup; the background already marks the selection. |
+| 6 | 40 — Drive the lobby in the browser check instead of ?name= | Lets the ?name= override go if nothing else needs it. |
 
 ## Working a task
 
@@ -1452,39 +1452,35 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 ## Review issues 2026-09-09
 
 Tasks 34 and 35 come from the goblin review of the day's merges, and tasks
-36 to 39 from testing the merged build; none has a GitHub issue. Keep
+36 to 40 from testing the merged build; none has a GitHub issue. Keep
 their numbers stable.
 
 ## 34. Investigate the socket takeover between tabs that share a session
 
-- [ ] **Investigation, connection**
-- **Source:** Review of task 31 on 2026-09-09; no GitHub issue yet.
-- **Location:** The reconnect path in `client/src/connection.ts`; the `hello`
-  handling in `server/index.js` that replaces `participant.socket` and closes
-  the old one; `client/src/useRoomConnection.ts`; session storage in
-  `client/src/App.tsx` (`readSession`, `storeSession`).
-- **Observed behavior:** Chrome's "Duplicate tab" copies `sessionStorage`, so
-  two tabs share one participant and token. Each `hello` replaces the
-  participant's socket and closes the old one; the closed tab reconnects
-  after 1.2 s and takes the socket back, and the two trade it indefinitely.
-  Since task 31 the takeover is visible to the whole room: the front tab
-  reports visible and the background one hidden, so `afk` flips and a
-  roster broadcast goes out on every cycle, and the marker beside that
-  participant flickers.
-- **Goal:** Understand and document the cycle before choosing a fix.
-  Reproduce it with two tabs, capture the message sequence on both tabs and
-  the server, and measure the cycle period and the roster traffic it
-  causes. Check whether a restored tab (Ctrl+Shift+T) or a tab reopened
-  from history behaves the same way.
-- **Candidate directions (not part of this task):** a per-tab nonce in
-  `hello` so a replaced socket stops reconnecting and shows a "this session
-  is open in another tab" notice; or letting the newest tab win and the
-  older one leave the session. Record the trade-offs in a spec if a fix is
-  chosen.
-- **Acceptance:** A written note in this task, or a spec, with the
-  reproduction, the captured sequence, and a recommendation. The afk flicker
-  is described there as a symptom and is not patched separately.
-- **Tests and docs:** None for the investigation; a fix task names its own.
+- [x] **Investigation and fix, connection** (done: a per-participant Web
+  Lock keeps a session to one tab; a duplicated tab starts in the lobby, a
+  reload resumes; browser check probe added)
+- **Source:** Review of task 31 on 2026-09-09.
+- **Finding:** Chrome's "Duplicate tab" copies `sessionStorage`, so the copy
+  connected as the same participant. The server allows one socket per
+  participant and closed the older one with a plain close, which the older
+  tab could not tell from a network drop; it reconnected after 1.2 s and
+  took the socket back, and the two traded it indefinitely. Since task 31
+  each takeover also flipped `afk` and broadcast a roster, so the marker
+  flickered for the whole room. A first fix (server close code 4001, older
+  tab dropped) was rejected: a duplicated tab should behave like a pasted
+  URL and let the user join as someone else.
+- **Fix:** `client/src/sessionLock.ts` claims a Web Lock named after the
+  participant with `ifAvailable` before the socket opens and releases it
+  when the session ends or the page unloads. The copy finds it taken, drops
+  its stored session, and shows the lobby with no notice. A reload resumes
+  because the old document released the lock first. The server is
+  unchanged.
+- **Tests:** `client/src/sessionLock.test.ts`; two App tests (refused claim
+  shows the lobby and clears the copy; leaving releases the lock); a
+  browser check probe that copies Alice's session into a new tab.
+- **Docs:** `docs/PROTOCOL.md` session resume, `docs/USER_EXPERIENCE.md`,
+  `AGENTS.md`.
 
 ## 35. Fix the join-order race in the browser check
 
@@ -1632,3 +1628,24 @@ their numbers stable.
   Home / End, `@`.
 - **Tests:** The Help test asserts the full list of rows and their text.
 - **Docs:** None; the wording lives only in the dialog.
+
+## 40. Drive the lobby in the browser check instead of `?name=`
+
+- [ ] **Tooling cleanup, check-browser.mjs**
+- **Source:** Question while testing on 2026-09-09: the `?name=` override has
+  never been used by hand; it exists for the browser check.
+- **Location:** The `tab()` helper in `check-browser.mjs` builds every tab URL
+  as `/?name=<handle>&room=<id>`; `hasNameOverride` and `initialHandle` in
+  `client/src/App.tsx`; the override is described in `docs/USER_EXPERIENCE.md`,
+  `docs/PROTOCOL.md`, and `AGENTS.md`. No unit test uses it.
+- **Requested behavior:** The browser check joins each participant by driving
+  the lobby: open `/`, type the handle into the name field, pick the room,
+  press Join. Once nothing depends on the override, remove `?name=` handling
+  from the client and its three doc mentions, so the URL carries at most the
+  room.
+- **Acceptance:** `npm run check:browser` passes 46/46 (or the then-current
+  count) without any `?name=` URL; the remembered-handle rule in `AGENTS.md`
+  no longer needs the override clause.
+- **Tests:** The browser check itself; delete the override branch from the
+  handle initialiser and any test that exercised it.
+- **Docs:** Remove the override from the three docs in the same change.

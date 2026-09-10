@@ -87,8 +87,8 @@ async function main() {
   // A tab resolves only once its page has joined, so tabs join in the order
   // the script creates them. Creating the next target hides and throttles
   // this one, and an unjoined page could otherwise lose the race for slot 0.
-  const tab = async (name, room = 1) => {
-    const { targetId } = await cdp.send('Target.createTarget', { url: `http://localhost:${PORT}/?name=${name}&room=${room}` });
+  const tab = async (name, room = 1, { url = `http://localhost:${PORT}/?name=${name}&room=${room}`, join = true } = {}) => {
+    const { targetId } = await cdp.send('Target.createTarget', { url });
     const { sessionId } = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
     await cdp.send('Runtime.enable', {}, sessionId);
     await cdp.send('Page.enable', {}, sessionId);
@@ -111,7 +111,7 @@ async function main() {
       close: () => cdp.send('Target.closeTarget', { targetId }),
       front: () => cdp.send('Page.bringToFront', {}, sessionId),
     };
-    t.joined = await t.waitFor(inRoom);
+    t.joined = join ? await t.waitFor(inRoom) : false;
     return t;
   };
   const participantId = `JSON.parse(sessionStorage.getItem('remart-bbs-chat.session')).participantId`;
@@ -237,6 +237,22 @@ async function main() {
     await bob.waitFor(`${text('.live-line')}.includes('xx')`, 8000) && await alice.waitFor(`${text('.live-line')}.includes('xx')`, 8000));
   check('Bob ?room reload: Alice transcript gains no leave/join lines',
     JSON.stringify(await alice.eval(text('.committed-line'))) === aliceCommittedBefore, JSON.stringify(await alice.eval(text('.committed-line'))));
+
+  // Task 34: a duplicated tab copies sessionStorage. The page must not resume
+  // the session another tab holds: it behaves like a pasted URL and shows the
+  // lobby, while the original tab keeps its socket and participant.
+  const aliceSession = await alice.eval(`sessionStorage.getItem('remart-bbs-chat.session')`);
+  const aliceIdBefore = await alice.eval(participantId);
+  const dup = await tab('Alice', 1, { url: `http://localhost:${PORT}/`, join: false });
+  await dup.eval(`sessionStorage.setItem('remart-bbs-chat.session', ${JSON.stringify(aliceSession)}), true`);
+  await dup.goto(`http://localhost:${PORT}/?name=Alice&room=1`);
+  check('a duplicated tab shows the lobby instead of resuming the session', await dup.waitFor(has('ROOMS')));
+  check('the duplicated tab dropped its copy of the session', await dup.waitFor(`sessionStorage.getItem('remart-bbs-chat.session') === null`));
+  await sleep(1500);
+  check("Alice's own tab keeps its participant and never reconnects",
+    await alice.eval(inRoom) && await alice.eval(`${participantId} === ${aliceIdBefore}`) && !(await alice.eval(has('Reconnecting'))));
+  check('the room still lists one Alice', await alice.eval(`${text('.roster-handle')}.filter((h) => h === 'Alice').length === 1`));
+  await dup.close();
   await bob.goto(`http://localhost:${PORT}/`);
   check('Bob plain-URL load: same participant ID',
     await bob.waitFor(inRoom, 8000) && (await bob.eval(participantId)) === bobIdBefore, `after=${await bob.eval(participantId)}`);

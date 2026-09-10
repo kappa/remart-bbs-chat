@@ -15,6 +15,7 @@ import { MentionList } from "./MentionList";
 import { mentionCandidates, mentionCompletion, mentionTokenBefore } from "./mentions";
 import type { RosterEntry } from "./protocol";
 import { sortedCommitted } from "./roomState";
+import { claimSession, type ReleaseSession } from "./sessionLock";
 import { useRoomConnection } from "./useRoomConnection";
 
 type Session = {
@@ -130,6 +131,9 @@ function initialHandle() {
 
 export function App() {
   const [session, setSession] = useState<Session | null>(() => readSession());
+  // The session this tab holds the lock for; the socket opens only then.
+  const [claimedId, setClaimedId] = useState<number | null>(null);
+  const releaseSessionRef = useRef<ReleaseSession | null>(null);
   const [handle, setHandle] = useState(initialHandle);
   const [joining, setJoining] = useState(false);
   const [error, setError] = useState("");
@@ -189,6 +193,9 @@ export function App() {
 
   const endSession = (message: string) => {
     storageRemove("session", SESSION_KEY);
+    releaseSessionRef.current?.();
+    releaseSessionRef.current = null;
+    setClaimedId(null);
     setSession(null);
     setShowHelp(false);
     setWarning("");
@@ -196,7 +203,28 @@ export function App() {
     stopTitleNotice();
   };
 
-  const { room, status, send, pending } = useRoomConnection(session, {
+  useEffect(() => {
+    if (!session || claimedId === session.participantId) return;
+    let cancelled = false;
+    claimSession(session.participantId).then((release) => {
+      if (cancelled) { release?.(); return; }
+      if (release) {
+        releaseSessionRef.current = release;
+        setClaimedId(session.participantId);
+      } else {
+        // Another tab holds this session (a duplicated tab): behave like a
+        // fresh tab and show the lobby.
+        storageRemove("session", SESSION_KEY);
+        setSession(null);
+      }
+    });
+    return () => { cancelled = true; };
+  }, [session, claimedId]);
+
+  useEffect(() => () => { releaseSessionRef.current?.(); releaseSessionRef.current = null; }, []);
+
+  const liveSession = session && claimedId === session.participantId ? session : null;
+  const { room, status, send, pending } = useRoomConnection(liveSession, {
     onCommand: (name) => {
       if (name === "help") setShowHelp(true);
       else if (name === "leave") endSession("");

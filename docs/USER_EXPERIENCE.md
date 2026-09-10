@@ -19,6 +19,10 @@ name prefixes on ordinary lines because the color tells you who is who.
   you go straight in.
 - Opening the app in a second tab with `?name=Alice` in the URL joins that tab
   as Alice without touching your remembered default name.
+- A tab is one participant. Duplicating a room tab does not carry the session
+  into the copy: the copy starts in the lobby, exactly as if you had pasted
+  the address into a new tab, and you pick a name there. Reloading a tab
+  keeps its session.
 - Two people cannot use the same name in a room (case-insensitive). There is no
   way to take someone's name while they hold it.
 - You are in one room at a time.
