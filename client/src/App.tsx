@@ -138,6 +138,7 @@ export function App() {
   const [soundOn, setSoundOn] = useState(() => storageGet("local", SOUND_KEY) !== "off");
   const [mentionSelection, setMentionSelection] = useState<number | null>(null);
   const [mentionDismissedAt, setMentionDismissedAt] = useState<number | null>(null);
+  const [parkedKey, setParkedKey] = useState<"enter" | "tab" | null>(null);
   const handleChatKeyRef = useRef<(event: KeyboardEvent) => boolean>(() => false);
   const titleTimers = useRef<{ timeout: number | undefined; interval: number | undefined }>({
     timeout: undefined,
@@ -195,7 +196,7 @@ export function App() {
     stopTitleNotice();
   };
 
-  const { room, status, send } = useRoomConnection(session, {
+  const { room, status, send, pending } = useRoomConnection(session, {
     onCommand: (name) => {
       if (name === "help") setShowHelp(true);
       else if (name === "leave") endSession("");
@@ -434,7 +435,20 @@ export function App() {
     setMentionDismissedAt(mentionToken.start);
   };
   const dismissMention = () => { if (mentionToken) setMentionDismissedAt(mentionToken.start); };
-  const onEnter = () => { if (mentionOpen) pickMention(); else submitActiveLine(); };
+  // The list follows the echo, so a pick made while keystrokes are still in
+  // flight would complete a token the server no longer has. Such a key is
+  // parked and resolved below once every keystroke has echoed. A pick only
+  // ever runs on an empty queue, so a whole handle always fits in it.
+  const pickOrPark = (key: "enter" | "tab") => { if (pending > 0) setParkedKey(key); else pickMention(); };
+  const onEnter = () => { if (mentionOpen) pickOrPark("enter"); else submitActiveLine(); };
+
+  useEffect(() => {
+    if (parkedKey == null || pending > 0) return;
+    setParkedKey(null);
+    if (mentionOpen) pickMention();
+    else if (parkedKey === "enter") submitActiveLine();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [parkedKey, pending, mentionOpen]);
 
   // Key-to-keystroke mapping for the document-level listener: sends the
   // matching chat keystroke and reports whether the key was chat input.
@@ -465,7 +479,7 @@ export function App() {
       }
       if (event.key === "Tab") {
         event.preventDefault();
-        pickMention();
+        pickOrPark("tab");
         return true;
       }
       if (event.key === "Escape") {

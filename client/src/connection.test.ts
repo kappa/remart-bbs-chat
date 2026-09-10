@@ -129,7 +129,22 @@ describe('openRoomConnection', () => {
     ws.serverSend({ type: 'command', name: 'help' });
     expect(messages.map((m) => m.type)).toEqual(['snapshot', 'command']);
   });
+  it('pendingCount counts keystrokes not yet acked by an echo', () => {
+    const { connection } = open();
+    vi.runOnlyPendingTimers();
+    const ws = FakeWebSocket.latest();
+    ws.serverSend(snapshot(1));
+    expect(connection.pendingCount()).toBe(0);
+    connection.send({ kind: 'char', char: 'a' });
+    connection.send({ kind: 'char', char: 'b' });
+    expect(connection.pendingCount()).toBe(2);
+    ws.serverSend({ type: 'live', participantId: 10, row: 0, text: 'a', caret: 1, seq: 1 });
+    expect(connection.pendingCount()).toBe(1);
+    ws.serverSend({ type: 'live', participantId: 10, row: 0, text: 'ab', caret: 2, seq: 2 });
+    expect(connection.pendingCount()).toBe(0);
+  });
 });
+
 
 describe('socketUrl', () => {
   it('uses ws for http and wss for https, at /ws on the page host', () => {

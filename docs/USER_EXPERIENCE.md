@@ -72,7 +72,10 @@ name prefixes on ordinary lines because the color tells you who is who.
   name, Escape closes it for that `@`. The list never adds a space; type your
   own. If nothing matches the list disappears, and Backspace can bring it
   back. If you have already typed a full name, Enter just closes the list and
-  the next Enter sends the line. `@` followed by something that is not a
+  the next Enter sends the line. Tab or Enter pressed while your last
+  keystrokes are still on their way waits for them to land, then completes
+  what you actually typed, or sends the line if no name is being typed any
+  more. `@` followed by something that is not a
   name is ordinary text.
 - There is no line-length limit. Any language works, including Cyrillic.
 - Long lines wrap to the available transcript width and reflow when the window

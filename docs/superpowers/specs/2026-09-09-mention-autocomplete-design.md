@@ -103,7 +103,13 @@ no-op in chat, and the help dialog's own Escape handler is unchanged.
 ### Delayed echo
 
 Everything derives from echoed state. Between a keystroke and its echo the
-list reflects the previous text and caret. After a pick the token is
+list reflects the previous text and caret, so a pick made then would
+complete a token the server no longer has (`@bob` plus a fast Enter would
+become `@bobb`). Tab or Enter pressed with the list open while keystrokes
+are in flight is therefore parked: nothing is sent until the connection's
+pending count reaches zero, then the key is resolved against the fresh echo.
+If a token with candidates is there the highlighted one is picked; if not, a
+parked Enter commits and a parked Tab does nothing. After a pick the token is
 dismissed locally at once, so a second Enter pressed before the echo arrives
 commits the line. This is the intended "Enter, Enter" flow: complete, then
 send.

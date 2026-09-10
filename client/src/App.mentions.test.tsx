@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, screen } from '@testing-library/react';
+import { act, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { api } from './api';
 import { renderJoined, serverSend, snapshot, alice, bob, idle } from './testing/roomFixtures';
@@ -88,11 +88,31 @@ describe('Handle autocomplete keys', () => {
     expect(sentKeys(ws)[0]).toEqual([1, 'char', 'C']);
   });
 
-  it('a keystroke with no echo yet leaves the list unchanged until the echo arrives', async () => {
+  it('Tab pressed while a keystroke is in flight waits for its echo, then completes the echoed token', async () => {
     const { user, ws } = await typingAt('@');
     await user.keyboard('c');
     await user.keyboard('{Tab}');
-    expect(sentKeys(ws)).toEqual([[1, 'char', 'c'], [2, 'char', 'B'], [3, 'char', 'o'], [4, 'char', 'b']]);
+    expect(sentKeys(ws)).toEqual([[1, 'char', 'c']]);
+    echo(ws, '@c', 1);
+    await waitFor(() => expect(sentKeys(ws)).toEqual([[1, 'char', 'c'], [2, 'char', 'a'], [3, 'char', 'r'], [4, 'char', 'o'], [5, 'char', 'l']]));
+  });
+
+  it('Enter pressed while a keystroke is in flight picks once the echoed token has a match', async () => {
+    const { user, ws } = await typingAt('@');
+    await user.keyboard('c');
+    await user.keyboard('{Enter}');
+    expect(sentKeys(ws)).toEqual([[1, 'char', 'c']]);
+    echo(ws, '@c', 1);
+    await waitFor(() => expect(sentKeys(ws)).toEqual([[1, 'char', 'c'], [2, 'char', 'a'], [3, 'char', 'r'], [4, 'char', 'o'], [5, 'char', 'l']]));
+  });
+
+  it('Enter pressed while a keystroke is in flight commits when the echoed line has no token left', async () => {
+    const { user, ws } = await typingAt('@bob');
+    await user.keyboard(' ');
+    await user.keyboard('{Enter}');
+    expect(sentKeys(ws)).toEqual([[1, 'char', ' ']]);
+    echo(ws, '@bob ', 1);
+    await waitFor(() => expect(sentKeys(ws)).toEqual([[1, 'char', ' '], [2, 'enter', '']]));
   });
 
   it('Backspace echo that restores a match reopens the list', async () => {

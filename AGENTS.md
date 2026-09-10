@@ -145,6 +145,11 @@ The following describes the current implementation and its regression baseline.
 - Handles are unique case-insensitively across all rooms; rooms allow up to
   ten participants. Browser storage is prototype session convenience. The
   `?name=` override must not overwrite the remembered default handle.
+- Handle autocomplete follows the echoed live line only, and a pick goes
+  over the wire as ordinary `char` keystrokes. Tab or Enter with the list
+  open while keystrokes are in flight is parked until the pending count is
+  zero, then resolved against the fresh echo: pick if a token with
+  candidates remains, otherwise a parked Enter commits.
 - Commands `?` and `q` are recognized by the server on Enter against the
   exact live line (surrounding whitespace makes it chat); a line containing
   only `l` is ordinary chat. Unicode input

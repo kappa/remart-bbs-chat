@@ -11,6 +11,8 @@ export type ConnectionOptions = { url?: string; reconnectDelayMs?: number; maxPe
 export type RoomConnection = {
   // Numbers and queues a keystroke; false means the queue is full and it was dropped.
   send: (key: KeyInput) => boolean;
+  // Keystrokes sent or queued that no echo has acknowledged yet.
+  pendingCount: () => number;
   close: () => void;
 };
 
@@ -104,6 +106,9 @@ export function openRoomConnection(credentials: ConnectionCredentials, handlers:
       pending.push({ key: msg, sent: ready });
       if (ready) transmit(msg);
       return true;
+    },
+    pendingCount() {
+      return pending.length;
     },
     close() {
       closed = true;

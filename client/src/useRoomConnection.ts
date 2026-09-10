@@ -18,9 +18,13 @@ export type RoomEvents = {
 export function useRoomConnection(session: RoomSession | null, events: RoomEvents) {
   const [room, setRoom] = useState<RoomState>(emptyRoom);
   const [status, setStatus] = useState<ConnectionStatus>('connecting');
+  // Keystrokes in flight: typed here but not yet echoed. Zero means the
+  // rendered live line is what the server has.
+  const [pending, setPending] = useState(0);
   const eventsRef = useRef(events);
   eventsRef.current = events;
   const sendRef = useRef<(key: KeyInput) => boolean>(() => false);
+  const pendingRef = useRef<() => number>(() => 0);
 
   const roomId = session?.roomId, participantId = session?.participantId, token = session?.token, joinedAt = session?.joinedAt, historyFromRow = session?.historyFromRow;
 
@@ -49,15 +53,18 @@ export function useRoomConnection(session: RoomSession | null, events: RoomEvent
           if (newcomer) eventsRef.current.onNewcomer({ handle: newcomer.handle });
         }
         setRoom((prev) => applyServerMessage(prev, msg));
+        setPending(pendingRef.current());
       },
     });
     sendRef.current = connection.send;
-    return () => { connection.close(); sendRef.current = () => false; };
+    pendingRef.current = connection.pendingCount;
+    return () => { connection.close(); sendRef.current = () => false; pendingRef.current = () => 0; };
   }, [roomId, participantId, token, joinedAt, historyFromRow]);
 
   const send = (key: KeyInput) => {
     if (!sendRef.current(key)) eventsRef.current.onNotice('Not connected, input paused');
+    setPending(pendingRef.current());
   };
 
-  return { room, status, send };
+  return { room, status, send, pending };
 }
