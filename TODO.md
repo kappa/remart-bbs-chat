@@ -29,6 +29,7 @@ the order to execute them:
 | 4 | 37 — Stop remembering the Join sound checkbox | Small client cleanup; the box starts on every load. |
 | 5 | 38 — Drop the > marker from the handle list | Small client cleanup; the background already marks the selection. |
 | 6 | 40 — Drive the lobby in the browser check instead of ?name= | Lets the ?name= override go if nothing else needs it. |
+| 7 | 41 — Add ?silent=1 and make the browser check silent | Small client change plus the check's URLs; hover text documents it. |
 
 ## Working a task
 
@@ -1452,7 +1453,7 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 ## Review issues 2026-09-09
 
 Tasks 34 and 35 come from the goblin review of the day's merges, and tasks
-36 to 40 from testing the merged build; none has a GitHub issue. Keep
+36 to 41 from testing the merged build; none has a GitHub issue. Keep
 their numbers stable.
 
 ## 34. Investigate the socket takeover between tabs that share a session
@@ -1649,3 +1650,34 @@ their numbers stable.
 - **Tests:** The browser check itself; delete the override branch from the
   handle initialiser and any test that exercised it.
 - **Docs:** Remove the override from the three docs in the same change.
+
+## 41. Add `?silent=1` and make the browser check silent
+
+- [ ] **Requested feature, sidebar and tooling**
+- **Source:** Running `npm run check:browser` on 2026-09-09 produced join
+  chirps from the headless tabs.
+- **Location:** The `soundOn` state and the Join sound checkbox in
+  `client/src/App.tsx`; the tab URLs built in `check-browser.mjs`; the sound
+  bullet in `docs/USER_EXPERIENCE.md`; the sound tests in
+  `client/src/App.roster.test.tsx`.
+- **Requested behavior:** A page opened with `?silent=1` in the URL starts
+  with the Join sound checkbox off. The user can still tick it. Hovering the
+  checkbox label shows a short hint that `?silent=1` in the address starts
+  the app with sound off, for people who want silence by default. The
+  browser check opens every tab with `silent=1` so its runs make no sound.
+- **Implementation:** Initialise `soundOn` to `false` when the query string
+  has `silent=1`, otherwise to the current default. Put the hint in the
+  label's `title`. Add `silent=1` to every URL the check builds. With task
+  37 done, `?silent=1` is the only way to start quiet; until then it takes
+  precedence over the remembered preference for that load. If task 40 has
+  changed the check to drive the lobby, its lobby URL carries `?silent=1`
+  instead.
+- **Acceptance:** Opening `/?silent=1` shows the checkbox unticked and a
+  join in that tab plays nothing until it is ticked; the hover hint names
+  the parameter; a full browser check run is silent.
+- **Tests:** A roster test that renders with `?silent=1` in
+  `window.location.search` and asserts the checkbox is unticked and the
+  chirp is not played on a newcomer; a test that the label carries the hint.
+  The browser check is the test for its own URLs.
+- **Docs:** Mention `?silent=1` next to the Join sound checkbox in
+  `docs/USER_EXPERIENCE.md`, and add the rule to `AGENTS.md`.
