@@ -6,6 +6,7 @@ import {
   useState,
   type ClipboardEvent,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type UIEvent,
 } from "react";
 import { api } from "./api";
@@ -34,6 +35,7 @@ const SOUND_KEY = "remart-bbs-chat.sound";
 const BASE_TITLE = "Remart BBS Chat";
 const TITLE_NOTICE_MS = 5000;
 const TITLE_TICK_MS = 400;
+const PRIVATE_MAX_CODE_POINTS = 200;
 
 // Arrow and position keys map one-to-one onto server caret keystrokes.
 const MOVEMENT_KINDS = { ArrowLeft: "left", ArrowRight: "right", Home: "home", End: "end" } as const;
@@ -143,6 +145,8 @@ export function App() {
   const [mentionSelection, setMentionSelection] = useState<number | null>(null);
   const [mentionDismissedAt, setMentionDismissedAt] = useState<number | null>(null);
   const [parkedKey, setParkedKey] = useState<"enter" | "tab" | null>(null);
+  const [privateTarget, setPrivateTarget] = useState<{ participantId: number; handle: string } | null>(null);
+  const [privateText, setPrivateText] = useState("");
   const handleChatKeyRef = useRef<(event: KeyboardEvent) => boolean>(() => false);
   const titleTimers = useRef<{ timeout: number | undefined; interval: number | undefined }>({
     timeout: undefined,
@@ -199,6 +203,8 @@ export function App() {
     setSession(null);
     setShowHelp(false);
     setWarning("");
+    setPrivateTarget(null);
+    setPrivateText("");
     setError(message);
     stopTitleNotice();
   };
@@ -236,7 +242,13 @@ export function App() {
     },
     onNotice: setWarning,
     onPrivate: () => {},
-    onPrivateResult: () => {},
+    onPrivateResult: (result) => {
+      if (result.ok) setFeedback(`sent to ${result.handle}`);
+      else {
+        const target = room.participants.find((p) => p.participantId === result.to);
+        setFeedback(target ? `${target.handle} is not reachable` : "not delivered");
+      }
+    },
   });
 
   useEffect(() => () => {
@@ -245,6 +257,33 @@ export function App() {
   }, []);
 
   const participants = room.participants;
+  const openPrivate = (participant: RosterEntry) => {
+    if (participant.participantId === session?.participantId) return;
+    setPrivateTarget({ participantId: participant.participantId, handle: participant.handle });
+  };
+  const closePrivate = () => {
+    setPrivateTarget(null);
+    setPrivateText("");
+    focusKeyboard();
+  };
+  const onPrivateKey = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") { event.preventDefault(); closePrivate(); return; }
+    if (event.key !== "Enter" || !privateTarget) return;
+    event.preventDefault();
+    const text = privateText.trim();
+    if (!text) { closePrivate(); return; }
+    if (Array.from(text).length > PRIVATE_MAX_CODE_POINTS) { setWarning("Private messages are limited to 200 characters"); return; }
+    if (!sendPrivate(privateTarget.participantId, text)) { setWarning("Not connected, try again"); return; }
+    closePrivate();
+  };
+
+  useEffect(() => {
+    if (!privateTarget || participants.some((p) => p.participantId === privateTarget.participantId)) return;
+    setWarning(`${privateTarget.handle} is not reachable`);
+    setPrivateTarget(null);
+    setPrivateText("");
+  }, [participants, privateTarget]);
+
   const ownParticipant = participants.find((p) => p.participantId === session?.participantId);
   const mentionToken = ownParticipant ? mentionTokenBefore(ownParticipant.text, ownParticipant.caret) : null;
   const mentionCandidatesList: RosterEntry[] =
@@ -834,19 +873,25 @@ export function App() {
         <div className="roster-heading">PARTICIPANTS</div>
         {participants.length ? (
           participants.map((participant) => (
-            <div
-              className="roster-entry"
-              key={participant.participantId}
-              style={{ color: participant.color }}
-            >
-              <span
-                className="roster-color-dot"
-                style={{ backgroundColor: participant.color }}
-                aria-hidden="true"
-              />
-              <span className="roster-handle">{participant.handle}</span>
-              {participant.afk ? (
-                <span className="roster-afk" title="In a background tab">afk</span>
+            <div className="roster-entry-block" key={participant.participantId}>
+              {participant.participantId === session.participantId ? (
+                <div className="roster-entry" style={{ color: participant.color }}>
+                  <span className="roster-color-dot" style={{ backgroundColor: participant.color }} aria-hidden="true" />
+                  <span className="roster-handle">{participant.handle}</span>
+                  {participant.afk ? <span className="roster-afk" title="In a background tab">afk</span> : null}
+                </div>
+              ) : (
+                <button type="button" className="roster-entry" style={{ color: participant.color }} aria-label={`Message ${participant.handle}`} onClick={() => openPrivate(participant)}>
+                  <span className="roster-color-dot" style={{ backgroundColor: participant.color }} aria-hidden="true" />
+                  <span className="roster-handle">{participant.handle}</span>
+                  {participant.afk ? <span className="roster-afk" title="In a background tab">afk</span> : null}
+                </button>
+              )}
+              {privateTarget?.participantId === participant.participantId ? (
+                <div className="roster-private">
+                  <span className="roster-private-label">to</span>
+                  <input aria-label={`Private message to ${participant.handle}`} value={privateText} onChange={(event) => setPrivateText(event.target.value)} onKeyDown={onPrivateKey} autoComplete="off" spellCheck={false} autoFocus />
+                </div>
               ) : null}
             </div>
           ))
