@@ -138,7 +138,7 @@ function broadcast(room, msg){
 
 function rosterOf(room){
   return Array.from(room.participants.values())
-    .map(p=>({participantId:p.id, handle:p.handle, color:p.color, slot:p.slot}))
+    .map(p=>({participantId:p.id, handle:p.handle, color:p.color, slot:p.slot, afk:p.afk}))
     .sort((a,b)=>a.slot-b.slot);
 }
 
@@ -147,7 +147,7 @@ function publicLine(line){
 }
 
 function liveLineOf(p){
-  return {participantId:p.id, handle:p.handle, color:p.color, slot:p.slot, row:p.liveRow, text:p.liveText, caret:p.liveCaret};
+  return {participantId:p.id, handle:p.handle, color:p.color, slot:p.slot, afk:p.afk, row:p.liveRow, text:p.liveText, caret:p.liveCaret};
 }
 
 // Filter the last 100 appended lines for this participant, then sort by row.
@@ -279,6 +279,16 @@ function rosterMessage(room){
   return {type:'roster', roster:rosterOf(room)};
 }
 
+// AFK is the client's tab visibility, stored here so everyone sees the
+// same value. It is separate from liveness: pongs never touch it, and a
+// reconnecting socket keeps the old value until it reports.
+function handlePresence(participant, room, msg){
+  if(typeof msg.hidden !== 'boolean') return sendTo(participant, {type:'error', code:'invalid-message'});
+  if(participant.afk === msg.hidden) return;
+  participant.afk = msg.hidden;
+  broadcast(room, rosterMessage(room));
+}
+
 // The single exit path for HTTP leave, the q command, and stale cleanup.
 // Nonempty live text is preserved as a committed line stamped `preservedAt`:
 // leave time for a deliberate leave, last activity for stale cleanup.
@@ -382,6 +392,7 @@ app.post('/api/join', (req,res)=>{
     joinedLineCount: room.lines.length,
     lastSeen: now,
     nextSeq: 1,
+    afk: false,
     socket: null
   };
   room.participants.set(participant.id, participant);
@@ -453,8 +464,11 @@ wss.on('connection', (ws)=>{
     const participant = ws.participant;
     if(participant.socket!==ws || !ws.room.participants.has(participant.id)) return;
     participant.lastSeen = new Date();
-    if(msg && msg.type==='key') return handleKey(participant, ws.room, msg);
-    sendWs(ws, {type:'error', code:'invalid-message'});
+    switch(msg && msg.type){
+      case 'key': return handleKey(participant, ws.room, msg);
+      case 'presence': return handlePresence(participant, ws.room, msg);
+      default: return sendWs(ws, {type:'error', code:'invalid-message'});
+    }
   });
   ws.on('pong', ()=>{ if(ws.participant) ws.participant.lastSeen = new Date(); });
   ws.on('close', ()=>{ if(ws.participant && ws.participant.socket===ws) ws.participant.socket = null; });
@@ -505,6 +519,7 @@ export {
   cleanupStaleInRoom,
   globalHandleExists,
   handleKey,
+  handlePresence,
   editLive,
   commitLive,
   liveMessage,

@@ -19,8 +19,8 @@ describe('Socket handshake', () => {
     const snap = client.snapshot;
     assert.equal(snap.roomId, roomId);
     assert.deepEqual(snap.you, { participantId: alice.participantId, nextSeq: 1 });
-    assert.deepEqual(snap.roster, [{ participantId: alice.participantId, handle: 'Alice', color: alice.color, slot: 0 }]);
-    assert.deepEqual(snap.liveLines, [{ participantId: alice.participantId, handle: 'Alice', color: alice.color, slot: 0, row: null, text: '', caret: 0 }]);
+    assert.deepEqual(snap.roster, [{ participantId: alice.participantId, handle: 'Alice', color: alice.color, slot: 0, afk: false }]);
+    assert.deepEqual(snap.liveLines, [{ participantId: alice.participantId, handle: 'Alice', color: alice.color, slot: 0, afk: false, row: null, text: '', caret: 0 }]);
     assert.equal(snap.committed.length, 1);
     const announcement = snap.committed[0];
     assert.equal(announcement.text, '* Alice joined');
@@ -166,6 +166,118 @@ describe('Presence over the socket', () => {
     serverModule.cleanupStaleInRoom(room);
     assert.ok(!room.participants.has(alice.participantId));
     assert.ok(room.participants.has(keeper.participantId));
+  });
+});
+
+describe('AFK presence (task 31)', () => {
+  it('presence before hello is unauthorized and the socket closes', async () => {
+    const client = openSocket(wsUrl);
+    await client.opened;
+    client.send({ type: 'presence', hidden: true });
+    const err = await client.next((m) => m.type === 'error');
+    assert.equal(err.code, 'unauthorized');
+    await client.closed;
+  });
+
+  it('a hidden report broadcasts a roster with afk to everyone; a repeat broadcasts nothing', async () => {
+    const { alice, bob, a, b, done } = await roomWithTwo();
+    assert.deepEqual(a.snapshot.roster.map((r) => r.afk), [false, false]);
+    assert.deepEqual(a.snapshot.liveLines.map((l) => l.afk), [false, false]);
+    a.send({ type: 'presence', hidden: true });
+    const seenByBob = await b.next((m) => m.type === 'roster');
+    const seenByAlice = await a.next((m) => m.type === 'roster');
+    for (const roster of [seenByBob.roster, seenByAlice.roster]) {
+      assert.deepEqual(roster.map((r) => [r.participantId, r.afk]), [[alice.participantId, true], [bob.participantId, false]]);
+    }
+    b.cursor = b.messages.length;
+    a.send({ type: 'presence', hidden: true });
+    await settle(100);
+    assert.deepEqual(b.messages.slice(b.cursor), []);
+    done();
+  });
+
+  it('a visible report clears afk and broadcasts once', async () => {
+    const { alice, a, b, done } = await roomWithTwo();
+    a.send({ type: 'presence', hidden: true });
+    await b.next((m) => m.type === 'roster');
+    a.send({ type: 'presence', hidden: false });
+    const roster = await b.next((m) => m.type === 'roster');
+    assert.equal(roster.roster.find((r) => r.participantId === alice.participantId).afk, false);
+    done();
+  });
+
+  it('a non-boolean or missing hidden is invalid-message and changes nothing', async () => {
+    const { alice, a, b, done } = await roomWithTwo();
+    a.send({ type: 'presence', hidden: 'yes' });
+    assert.equal((await a.next((m) => m.type === 'error')).code, 'invalid-message');
+    a.send({ type: 'presence' });
+    assert.equal((await a.next((m) => m.type === 'error')).code, 'invalid-message');
+    await settle(50);
+    assert.equal(rooms.get(alice.roomId).participants.get(alice.participantId).afk, false);
+    assert.equal(b.messages.filter((m) => m.type === 'roster').length, 0);
+    done();
+  });
+
+  it("a newcomer's snapshot carries the current afk on live lines and roster", async () => {
+    const { alice, a, done } = await roomWithTwo();
+    a.send({ type: 'presence', hidden: true });
+    await a.next((m) => m.type === 'roster');
+    const carol = await join(baseUrl, alice.roomId, 'Carol');
+    const c = await connect(wsUrl, carol);
+    assert.equal(c.snapshot.roster.find((r) => r.participantId === alice.participantId).afk, true);
+    assert.equal(c.snapshot.liveLines.find((l) => l.participantId === alice.participantId).afk, true);
+    assert.equal(c.snapshot.roster.find((r) => r.participantId === carol.participantId).afk, false);
+    c.ws.close();
+    done();
+  });
+
+  it('a reconnect keeps afk until the new socket reports, then one roster follows', async () => {
+    const { alice, a, b, done } = await roomWithTwo();
+    a.send({ type: 'presence', hidden: true });
+    await b.next((m) => m.type === 'roster');
+    a.ws.close();
+    await a.closed;
+    const again = await connect(wsUrl, alice);
+    assert.equal(again.snapshot.roster.find((r) => r.participantId === alice.participantId).afk, true);
+    b.cursor = b.messages.length;
+    again.send({ type: 'presence', hidden: true });
+    await settle(50);
+    assert.deepEqual(b.messages.slice(b.cursor), []);
+    again.send({ type: 'presence', hidden: false });
+    const roster = await b.next((m) => m.type === 'roster');
+    assert.equal(roster.roster.find((r) => r.participantId === alice.participantId).afk, false);
+    again.ws.close();
+    done();
+  });
+
+  it('live text, caret, row, and roster order survive hidden and visible reports', async () => {
+    const { alice, bob, a, b, done } = await roomWithTwo();
+    a.send(key(1, 'char', 'h'));
+    a.send(key(2, 'char', 'i'));
+    a.send(key(3, 'left'));
+    await b.next((m) => m.type === 'live' && m.seq === 3);
+    a.send({ type: 'presence', hidden: true });
+    const hidden = await b.next((m) => m.type === 'roster');
+    assert.deepEqual(hidden.roster.map((r) => r.participantId), [alice.participantId, bob.participantId]);
+    a.send({ type: 'presence', hidden: false });
+    await b.next((m) => m.type === 'roster');
+    const p = rooms.get(alice.roomId).participants.get(alice.participantId);
+    assert.deepEqual([p.liveText, p.liveCaret, p.liveRow !== null], ['hi', 1, true]);
+    assert.equal(b.messages.filter((m) => m.type === 'committed').length, 0);
+    done();
+  });
+
+  it('a pong never clears afk', async () => {
+    const { alice, a, b, done } = await roomWithTwo();
+    a.send({ type: 'presence', hidden: true });
+    await b.next((m) => m.type === 'roster');
+    const p = rooms.get(alice.roomId).participants.get(alice.participantId);
+    p.lastSeen = new Date(Date.now() - 30000);
+    serverModule.pingSockets();
+    await settle();
+    assert.ok(Date.now() - p.lastSeen.getTime() < 1000, 'pong refreshes lastSeen');
+    assert.equal(p.afk, true);
+    done();
   });
 });
 
@@ -423,7 +535,7 @@ describe('Caret editing (task 14)', () => {
     await a.next((m) => m.type === 'live' && m.seq === 3);
     const fresh = await connect(wsUrl, alice);
     const live = fresh.snapshot.liveLines.find((l) => l.participantId === alice.participantId);
-    assert.deepEqual(live, { participantId: alice.participantId, handle: 'Alice', color: alice.color, slot: 0, row: 2, text: 'ab', caret: 1 });
+    assert.deepEqual(live, { participantId: alice.participantId, handle: 'Alice', color: alice.color, slot: 0, afk: false, row: 2, text: 'ab', caret: 1 });
     fresh.ws.close();
     done();
   });
