@@ -647,6 +647,9 @@ Close the GitHub issue when the task is done.
 ## 17. Ring a bell and highlight `@nickname` mentions
 
 - [ ] **Requested feature**
+- **Spec and plan:** [docs/superpowers/specs/2026-09-09-mentions-design.md](docs/superpowers/specs/2026-09-09-mentions-design.md),
+  [docs/superpowers/plans/2026-09-09-mentions.md](docs/superpowers/plans/2026-09-09-mentions.md).
+  Where the plan and this task disagree, the spec records the approved decision.
 - **Source:** [GitHub issue #6](https://github.com/kappa/remart-bbs-chat/issues/6).
 - **Location:** `client/src/App.tsx` transcript row rendering;
   `client/src/useRoomConnection.ts`, where `committed` messages arrive and
@@ -675,6 +678,9 @@ Close the GitHub issue when the task is done.
 ## 18. Private messages from the roster
 
 - [ ] **Requested feature**
+- **Spec and plan:** [docs/superpowers/specs/2026-09-09-private-messages-design.md](docs/superpowers/specs/2026-09-09-private-messages-design.md),
+  [docs/superpowers/plans/2026-09-09-private-messages.md](docs/superpowers/plans/2026-09-09-private-messages.md).
+  Where the plan and this task disagree, the spec records the approved decision.
 - **Source:** [GitHub issue #7](https://github.com/kappa/remart-bbs-chat/issues/7).
 - **Location:** `client/src/App.tsx` roster and session view;
   `server/index.js` socket message handling; `docs/PROTOCOL.md`.
@@ -1095,6 +1101,9 @@ GitHub issue numbers and these task numbers stable.
 ## 25. Autocomplete participant handles after `@`
 
 - [ ] **Requested feature**
+- **Spec and plan:** [docs/superpowers/specs/2026-09-09-mention-autocomplete-design.md](docs/superpowers/specs/2026-09-09-mention-autocomplete-design.md),
+  [docs/superpowers/plans/2026-09-09-mention-autocomplete.md](docs/superpowers/plans/2026-09-09-mention-autocomplete.md).
+  Where the plan and this task disagree, the spec records the approved decision.
 - **Source:** [GitHub issue #13](https://github.com/kappa/remart-bbs-chat/issues/13).
 - **Location:** `client/src/App.tsx` echoed own-line rendering and shared key
   handling; roster state from `client/src/roomState.ts`; a small pure mention
@@ -1321,6 +1330,9 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 ## 31. Show AFK status for participants in background tabs
 
 - [ ] **Requested feature, presence**
+- **Spec and plan:** [docs/superpowers/specs/2026-09-09-afk-presence-design.md](docs/superpowers/specs/2026-09-09-afk-presence-design.md),
+  [docs/superpowers/plans/2026-09-09-afk-presence.md](docs/superpowers/plans/2026-09-09-afk-presence.md).
+  Where the plan and this task disagree, the spec records the approved decision.
 - **Source:** [GitHub issue #19](https://github.com/kappa/remart-bbs-chat/issues/19).
 - **Location:** `server/index.js` participant state, socket handshake and
   roster broadcasts; `client/src/connection.ts` and
