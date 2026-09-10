@@ -15,13 +15,33 @@ import { api } from "./api";
 import { computeDocumentLines, isValidChar } from "./documentLines";
 import { splitLinks } from "./links";
 import { MentionList } from "./MentionList";
-import { mentionCandidates, mentionCompletion, mentionTokenBefore, mentionsHandle } from "./mentions";
+import { mentionCandidates, mentionCompletion, mentionTokenBefore, mentionsHandle, splitMentions } from "./mentions";
 import { createNotifier, soundChannel, titleChannel, type Notifier } from "./notifications";
 import { PRIVATE_STACK_MAX, PrivateMessages, type PrivatePopup } from "./PrivateMessages";
 import type { RosterEntry } from "./protocol";
 import { sortedCommitted } from "./roomState";
 import { claimSession, type ReleaseSession } from "./sessionLock";
 import { useRoomConnection } from "./useRoomConnection";
+
+function renderCommittedText(text: string, roster: RosterEntry[]) {
+  return splitLinks(text).flatMap((segment, index) =>
+    segment.kind === "link"
+      ? [
+          <a key={`link-${index}`} href={segment.href} target="_blank" rel="noopener noreferrer">
+            {segment.text}
+          </a>,
+        ]
+      : splitMentions(segment.text, roster).map((part, partIndex) =>
+          part.kind === "mention" ? (
+            <span key={`mention-${index}-${partIndex}`} className="mention" data-handle={part.handle} style={{ color: part.color }}>
+              {part.text}
+            </span>
+          ) : (
+            part.text
+          ),
+        ),
+  );
+}
 
 type Session = {
   roomId: number;
@@ -754,22 +774,7 @@ export function App() {
                   color: line.color,
                 }}
               >
-                {line.text
-                  ? splitLinks(line.text).map((segment, index) =>
-                      segment.kind === "link" ? (
-                        <a
-                          key={index}
-                          href={segment.href}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          {segment.text}
-                        </a>
-                      ) : (
-                        segment.text
-                      ),
-                    )
-                  : " "}
+                {line.text ? renderCommittedText(line.text, participants) : " "}
               </div>
             );
           }
