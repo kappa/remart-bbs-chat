@@ -23,9 +23,12 @@ the order to execute them:
 
 | Order | Task | Reason |
 | --- | --- | --- |
-| 1 | 25 — Mention-handle autocomplete | Client input UI; land before mention styling so both share token rules. |
-| 2 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 3 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
+| 1 | 32 — Remove the Type button | Small, isolated client cleanup. |
+| 2 | 33 — Clean up the help dialog | Small client content change; reflect the controls left after task 32. |
+| 3 | 25 — Mention-handle autocomplete | Client input UI; land before mention styling so both share token rules. |
+| 4 | 31 — Show AFK status | Roster protocol and lifecycle change after the isolated UI cleanups. |
+| 5 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 6 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
 
 ## Working a task
 
@@ -1309,3 +1312,100 @@ GitHub issue numbers and these task numbers stable.
   `docs/PROTOCOL.md` with the hybrid palette and first-unused assignment
   policy; update other stale palette references and fixtures. Keep the wire
   color representation and the ten-person capacity unchanged.
+
+## New product issues imported 2026-09-09
+
+Tasks 31 to 33 come from the repository's GitHub issues opened since the
+previous import. Keep the GitHub issue numbers and these task numbers stable.
+
+## 31. Show AFK status for participants in background tabs
+
+- [ ] **Requested feature, presence**
+- **Source:** [GitHub issue #19](https://github.com/kappa/remart-bbs-chat/issues/19).
+- **Location:** `server/index.js` participant state, socket handshake and
+  roster broadcasts; `client/src/connection.ts` and
+  `client/src/useRoomConnection.ts` socket messages; `client/src/protocol.ts`;
+  `client/src/roomState.ts`; roster rendering in `client/src/App.tsx` and
+  `client/src/theme.css`.
+- **Requested behavior:** Mark a participant AFK while their browser tab is in
+  the background, and clear the mark when it becomes visible again. Keep the
+  participant in the room with their live line and assigned color intact.
+- **Presence rule:** Use the Page Visibility API as the signal described by the
+  issue: `document.hidden` means AFK and a visible document means active. This
+  is distinct from stale-socket detection; WebSocket pongs continue to prove
+  that the participant is connected and must not clear AFK. Send the current
+  visibility after socket authentication and each time it changes. The server
+  owns the shared status and includes it in snapshots and roster broadcasts.
+  Reconnect must replace any previous status with the newly reported current
+  visibility rather than preserving a stale AFK value.
+- **Display:** Add a compact, text-readable AFK marker beside the handle in the
+  roster. Do not dim participant colors enough to weaken author identification,
+  and do not add AFK annotations to ordinary transcript rows.
+- **Acceptance:** Other participants see the marker appear when a tab becomes
+  hidden and disappear when it becomes visible, without a join/leave notice or
+  roster reordering. Backgrounding does not discard live text, disconnect the
+  participant, or change stale cleanup. A newly joined or reconnected viewer
+  receives the current status in its snapshot.
+- **Tests:** Write server tests first for authenticated presence updates,
+  invalid messages, snapshot state, broadcasts, reconnect replacement, and
+  preservation of live text. Add reducer and component tests for marker
+  rendering and roster updates, plus connection tests for initial and changed
+  visibility. Extend the two-tab browser check if its Chrome harness can
+  reliably emulate visibility; otherwise record a focused manual two-tab check.
+- **Docs:** Update `docs/PROTOCOL.md` with the presence message, roster field,
+  ownership, and reconnect behavior. Document the AFK marker and its
+  background-tab rule in `docs/USER_EXPERIENCE.md`, and add the rule to
+  `AGENTS.md` once implemented.
+
+## 32. Remove the sidebar Type button
+
+- [ ] **Requested UI cleanup**
+- **Source:** [GitHub issue #20](https://github.com/kappa/remart-bbs-chat/issues/20).
+- **Location:** `client/src/App.tsx` roster footer;
+  `.keyboard-button` rules in `client/src/theme.css`;
+  `client/src/App.roster.test.tsx`, `client/src/App.rendering.test.tsx`, and
+  `check-browser.mjs`.
+- **Requested behavior:** Remove the `Type` button from the participant
+  sidebar. The chat remains directly typeable through the existing hidden
+  capture textarea and document-level keyboard handling.
+- **Implementation:** Remove the button and its now-unused CSS. Keep the
+  internal `focusKeyboard` helper where it is still needed for transcript
+  clicks, help dismissal, and input handling. Do not replace the button with a
+  differently labeled focus control.
+- **Acceptance:** The sidebar offers Help and Leave but no Type control.
+  Keyboard input still works after joining, after selecting transcript text,
+  after closing Help, and after clicking the transcript; mobile input remains
+  accessible through the existing chat surface behavior.
+- **Tests:** Update the focused roster and rendering tests to assert the Type
+  button is absent while preserving the observable focus-and-type scenarios.
+  Run the browser check on desktop and manually confirm that tapping the mobile
+  chat surface still opens the on-screen keyboard.
+- **Docs:** Remove the Type button from the sidebar description in
+  `docs/USER_EXPERIENCE.md`. No protocol change is required.
+
+## 33. Clean up the help dialog contents
+
+- [ ] **Requested UI cleanup**
+- **Source:** [GitHub issue #21](https://github.com/kappa/remart-bbs-chat/issues/21).
+- **Location:** Help overlay markup in `client/src/App.tsx`; help-dialog styles
+  in `client/src/theme.css`; `client/src/App.roster.test.tsx` and maintained
+  behavior in `docs/USER_EXPERIENCE.md`.
+- **Current problems:** The dialog says Enter assigns a new empty line even
+  though an idle participant has no shared row; describes `l` as refreshing a
+  roster that already updates live; omits supported line-editing keys; and
+  exposes the `?name=` testing convenience as user help.
+- **Requested behavior:** Keep the dialog concise and user-facing. Describe the
+  three typed commands accurately, explain that Enter sends the current line,
+  summarize Backspace/Delete and caret movement, and retain the useful Unicode
+  and no-line-limit facts. Remove the per-tab testing paragraph. Reflect task
+  25's autocomplete keys if that task has landed when this one is implemented;
+  do not describe unimplemented behavior.
+- **Acceptance:** Every statement in Help matches current behavior and the
+  maintained user-experience document. The dialog remains readable without
+  horizontal scrolling on narrow mobile screens, dismisses with Escape and its
+  Close button, and returns keyboard focus to chat.
+- **Tests:** Update the Help component assertions to cover the corrected
+  command and editing descriptions and the absence of testing-only text. Keep
+  opening, Escape, Close, focus restoration, and narrow-layout browser coverage.
+- **Docs:** Make matching wording corrections in `docs/USER_EXPERIENCE.md` if
+  its command or typing descriptions are stale. No protocol change is required.
