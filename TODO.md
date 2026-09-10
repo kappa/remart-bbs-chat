@@ -1382,6 +1382,8 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
   chat surface still opens the on-screen keyboard.
 - **Docs:** Remove the Type button from the sidebar description in
   `docs/USER_EXPERIENCE.md`. No protocol change is required.
+- **Completion:** Tick this task's checkbox in `TODO.md` once implementation
+  and required validation are complete; include that update in the task commit.
 
 ## 33. Clean up the help dialog contents
 
