@@ -1,11 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import {
+  Fragment,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
   type ClipboardEvent,
   type FormEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
   type UIEvent,
 } from "react";
 import { api } from "./api";
@@ -13,6 +16,7 @@ import { computeDocumentLines, isValidChar } from "./documentLines";
 import { splitLinks } from "./links";
 import { MentionList } from "./MentionList";
 import { mentionCandidates, mentionCompletion, mentionTokenBefore } from "./mentions";
+import { PRIVATE_STACK_MAX, PrivateMessages, type PrivatePopup } from "./PrivateMessages";
 import type { RosterEntry } from "./protocol";
 import { sortedCommitted } from "./roomState";
 import { claimSession, type ReleaseSession } from "./sessionLock";
@@ -34,6 +38,7 @@ const SOUND_KEY = "remart-bbs-chat.sound";
 const BASE_TITLE = "Remart BBS Chat";
 const TITLE_NOTICE_MS = 5000;
 const TITLE_TICK_MS = 400;
+const PRIVATE_MAX_CODE_POINTS = 200;
 
 // Arrow and position keys map one-to-one onto server caret keystrokes.
 const MOVEMENT_KINDS = { ArrowLeft: "left", ArrowRight: "right", Home: "home", End: "end" } as const;
@@ -143,6 +148,10 @@ export function App() {
   const [mentionSelection, setMentionSelection] = useState<number | null>(null);
   const [mentionDismissedAt, setMentionDismissedAt] = useState<number | null>(null);
   const [parkedKey, setParkedKey] = useState<"enter" | "tab" | null>(null);
+  // The one-line private input: who it is addressed to and what has been typed.
+  const [privateDraft, setPrivateDraft] = useState<{ participantId: number; handle: string; text: string } | null>(null);
+  const [privateMessages, setPrivateMessages] = useState<PrivatePopup[]>([]);
+  const privateIdRef = useRef(0);
   const handleChatKeyRef = useRef<(event: KeyboardEvent) => boolean>(() => false);
   const titleTimers = useRef<{ timeout: number | undefined; interval: number | undefined }>({
     timeout: undefined,
@@ -199,6 +208,8 @@ export function App() {
     setSession(null);
     setShowHelp(false);
     setWarning("");
+    setPrivateDraft(null);
+    setPrivateMessages([]);
     setError(message);
     stopTitleNotice();
   };
@@ -224,7 +235,7 @@ export function App() {
   useEffect(() => () => { releaseSessionRef.current?.(); releaseSessionRef.current = null; }, []);
 
   const liveSession = session && claimedId === session.participantId ? session : null;
-  const { room, status, send, pending } = useRoomConnection(liveSession, {
+  const { room, status, send, sendPrivate, pending } = useRoomConnection(liveSession, {
     onCommand: (name) => {
       if (name === "help") setShowHelp(true);
       else if (name === "leave") endSession("");
@@ -235,6 +246,17 @@ export function App() {
       startTitleNotice(entry.handle);
     },
     onNotice: setWarning,
+    onPrivate: (message) => {
+      const id = ++privateIdRef.current;
+      setPrivateMessages((list) => [...list, { id, ...message, receivedAt: performance.now() }].slice(-PRIVATE_STACK_MAX));
+    },
+    onPrivateResult: (result) => {
+      if (result.ok) setWarning(`sent to ${result.handle}`);
+      else {
+        const target = room.participants.find((p) => p.participantId === result.to);
+        setWarning(target ? `${target.handle} is not reachable` : "not delivered");
+      }
+    },
   });
 
   useEffect(() => () => {
@@ -243,6 +265,53 @@ export function App() {
   }, []);
 
   const participants = room.participants;
+  const dismissPrivate = useCallback((id: number) => setPrivateMessages((list) => list.filter((message) => message.id !== id)), []);
+  // Only other people's entries are buttons, so this never sees the own id.
+  const openPrivate = (participant: RosterEntry) =>
+    setPrivateDraft((draft) => ({ participantId: participant.participantId, handle: participant.handle, text: draft?.text ?? "" }));
+  const closePrivate = () => {
+    setPrivateDraft(null);
+    focusKeyboard();
+  };
+  const onPrivateKey = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.nativeEvent.isComposing) return;
+    if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); closePrivate(); return; }
+    if (event.key !== "Enter" || !privateDraft) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const text = privateDraft.text.trim();
+    if (!text) { closePrivate(); return; }
+    const points = Array.from(text);
+    if (points.length > PRIVATE_MAX_CODE_POINTS) { setWarning(`Private messages are limited to ${PRIVATE_MAX_CODE_POINTS} characters`); return; }
+    if (!points.every(isValidChar)) { setWarning("That message has a character that cannot be sent"); return; }
+    if (!sendPrivate(privateDraft.participantId, text)) { setWarning("Not connected, try again"); return; }
+    closePrivate();
+  };
+
+  // When the addressee leaves, the input stays open with its text so nothing
+  // typed for them lands on the shared line; Enter then gets the server's
+  // "not reachable" answer. The notice shows once, when they go.
+  const privateTargetGone = privateDraft != null && !participants.some((p) => p.participantId === privateDraft.participantId);
+  useEffect(() => {
+    if (privateTargetGone && privateDraft) setWarning(`${privateDraft.handle} is not reachable`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [privateTargetGone]);
+
+  const privateInput = privateDraft ? (
+    <div className="roster-private">
+      <span className="roster-private-label">to</span>
+      <input
+        aria-label={`Private message to ${privateDraft.handle}`}
+        value={privateDraft.text}
+        onChange={(event) => { const text = event.target.value; setPrivateDraft((draft) => draft && { ...draft, text }); }}
+        onKeyDown={onPrivateKey}
+        autoComplete="off"
+        spellCheck={false}
+        autoFocus
+      />
+    </div>
+  ) : null;
+
   const ownParticipant = participants.find((p) => p.participantId === session?.participantId);
   const mentionToken = ownParticipant ? mentionTokenBefore(ownParticipant.text, ownParticipant.caret) : null;
   const mentionCandidatesList: RosterEntry[] =
@@ -518,6 +587,12 @@ export function App() {
         dismissMention();
         return true;
       }
+    }
+
+    if (event.key === "Escape" && privateMessages.length && !showHelp) {
+      event.preventDefault();
+      dismissPrivate(privateMessages[0].id);
+      return true;
     }
 
     if (event.key === "Backspace") {
@@ -831,26 +906,31 @@ export function App() {
       <aside id="roster" aria-label="Participants">
         <div className="roster-heading">PARTICIPANTS</div>
         {participants.length ? (
-          participants.map((participant) => (
-            <div
-              className="roster-entry"
-              key={participant.participantId}
-              style={{ color: participant.color }}
-            >
-              <span
-                className="roster-color-dot"
-                style={{ backgroundColor: participant.color }}
-                aria-hidden="true"
-              />
-              <span className="roster-handle">{participant.handle}</span>
-              {participant.afk ? (
-                <span className="roster-afk" title="In a background tab">afk</span>
-              ) : null}
-            </div>
-          ))
+          participants.map((participant) => {
+            const name = (
+              <>
+                <span className="roster-color-dot" style={{ backgroundColor: participant.color }} aria-hidden="true" />
+                <span className="roster-handle">{participant.handle}</span>
+                {participant.afk ? <span className="roster-afk" title="In a background tab">afk</span> : null}
+              </>
+            );
+            return (
+              <Fragment key={participant.participantId}>
+                {participant.participantId === session.participantId ? (
+                  <div className="roster-entry" style={{ color: participant.color }}>{name}</div>
+                ) : (
+                  <button type="button" className="roster-entry" style={{ color: participant.color }} title={`Send ${participant.handle} a private message`} onClick={() => openPrivate(participant)}>
+                    {name}
+                  </button>
+                )}
+                {privateDraft?.participantId === participant.participantId ? privateInput : null}
+              </Fragment>
+            );
+          })
         ) : (
           <div className="roster-empty">No callers</div>
         )}
+        {privateTargetGone ? privateInput : null}
         <div className="roster-footer">
           {warning ? (
             <div className="paste-warning" role="status">
@@ -890,6 +970,8 @@ export function App() {
         </div>
       </aside>
 
+      <PrivateMessages messages={privateMessages} onDismiss={dismissPrivate} />
+
       {showHelp ? (
         <div className="help-overlay">
           <div className="help-dialog" role="dialog" aria-label="help" aria-modal="true">
@@ -904,6 +986,7 @@ export function App() {
               <div><dt>Ctrl+Left / Ctrl+Right</dt><dd>Jump one word at a time (Alt+Arrow on macOS)</dd></div>
               <div><dt>Home / End</dt><dd>Jump to the start or end of the line</dd></div>
               <div><dt>@</dt><dd>Mention someone. Type @ and start typing a name, then use Up/Down to choose, Tab or Enter to pick, Esc to close</dd></div>
+              <div><dt>Click a name</dt><dd>Send that person a private message. Enter sends it, Esc closes the box</dd></div>
             </dl>
             <button
               type="button"

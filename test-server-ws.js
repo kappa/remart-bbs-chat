@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import WebSocket from 'ws';
 import { serverModule, startServer, closeAllSockets, post, newRoom, join, openSocket, connect, settle } from './test-support.js';
 
-const { resetForTests, rooms } = serverModule;
+const { resetForTests, rooms, PRIVATE_MAX_CODE_POINTS } = serverModule;
 let baseUrl, wsUrl, closeServer;
 
 before(async () => { ({ baseUrl, wsUrl, close: closeServer } = await startServer()); });
@@ -277,6 +277,115 @@ describe('AFK presence (task 31)', () => {
     await settle();
     assert.ok(Date.now() - p.lastSeen.getTime() < 1000, 'pong refreshes lastSeen');
     assert.equal(p.afk, true);
+    done();
+  });
+});
+
+describe('Private messages (task 18)', () => {
+  async function roomWithThree() {
+    const two = await roomWithTwo();
+    const carol = await join(baseUrl, two.roomId, 'Carol');
+    const c = await connect(wsUrl, carol);
+    await two.a.next((m) => m.type === 'roster');
+    await two.b.next((m) => m.type === 'roster');
+    return { ...two, carol, c, done: () => { two.done(); c.ws.close(); } };
+  }
+
+  it('delivers to the recipient only and confirms to the sender', async () => {
+    const { alice, bob, a, b, c, done } = await roomWithThree();
+    a.send({ type: 'private', to: bob.participantId, text: '  lunch?  ' });
+    const delivered = await b.next((m) => m.type === 'private');
+    assert.deepEqual(delivered, { type: 'private', from: alice.participantId, handle: 'Alice', color: alice.color, text: 'lunch?' });
+    const sent = await a.next((m) => m.type === 'private-sent');
+    assert.deepEqual(sent, { type: 'private-sent', to: bob.participantId, handle: 'Bob' });
+    await settle(50);
+    assert.equal(c.messages.filter((m) => m.type === 'private').length, 0);
+    assert.equal(a.messages.filter((m) => m.type === 'private').length, 0);
+    done();
+  });
+
+  it('private before hello is unauthorized and the socket closes', async () => {
+    const client = openSocket(wsUrl);
+    await client.opened;
+    client.send({ type: 'private', to: 1, text: 'hi' });
+    assert.equal((await client.next((m) => m.type === 'error')).code, 'unauthorized');
+    await client.closed;
+  });
+
+  it('unknown, self, other-room, and socketless recipients are unknown-recipient', async () => {
+    const { alice, bob, a, b, done } = await roomWithTwo();
+    const otherRoom = await newRoom(baseUrl);
+    const dave = await join(baseUrl, otherRoom, 'Dave');
+    const d = await connect(wsUrl, dave);
+    for (const to of [999, alice.participantId, dave.participantId]) {
+      a.send({ type: 'private', to, text: 'hi' });
+      const err = await a.next((m) => m.type === 'error');
+      assert.deepEqual(err, { type: 'error', code: 'unknown-recipient', to });
+    }
+    b.ws.close();
+    await b.closed;
+    await settle(20);
+    a.send({ type: 'private', to: bob.participantId, text: 'hi' });
+    assert.deepEqual(await a.next((m) => m.type === 'error'), { type: 'error', code: 'unknown-recipient', to: bob.participantId });
+    assert.equal(d.messages.filter((m) => m.type === 'private').length, 0);
+    d.ws.close();
+    done();
+  });
+
+  it('a participant who left is unknown-recipient', async () => {
+    const { alice, carol, a, c, done } = await roomWithThree();
+    await post(baseUrl, '/api/leave', { roomId: alice.roomId, participantId: carol.participantId, token: carol.token });
+    await c.closed;
+    await a.next((m) => m.type === 'roster');
+    a.send({ type: 'private', to: carol.participantId, text: 'still there?' });
+    assert.deepEqual(await a.next((m) => m.type === 'error'), { type: 'error', code: 'unknown-recipient', to: carol.participantId });
+    done();
+  });
+
+  it('bad shape and bad text are invalid-message and deliver nothing', async () => {
+    const { bob, a, b, done } = await roomWithTwo();
+    const bad = [
+      { type: 'private', to: 'bob', text: 'hi' },
+      { type: 'private', to: bob.participantId, text: 42 },
+      { type: 'private', to: bob.participantId, text: '' },
+      { type: 'private', to: bob.participantId, text: '   ' },
+      { type: 'private', to: bob.participantId, text: 'a\u0007b' },
+      { type: 'private', to: bob.participantId, text: 'x'.repeat(PRIVATE_MAX_CODE_POINTS + 1) },
+      // Text is checked before the recipient: bad text to nobody is still invalid-message.
+      { type: 'private', to: 999, text: '' },
+    ];
+    for (const msg of bad) {
+      a.send(msg);
+      assert.equal((await a.next((m) => m.type === 'error')).code, 'invalid-message', JSON.stringify(msg));
+    }
+    await settle(50);
+    assert.equal(b.messages.filter((m) => m.type === 'private').length, 0);
+    done();
+  });
+
+  it('exactly 200 code points, including emoji, is delivered', async () => {
+    const { bob, a, b, done } = await roomWithTwo();
+    const text = '😀'.repeat(PRIVATE_MAX_CODE_POINTS);
+    a.send({ type: 'private', to: bob.participantId, text });
+    assert.equal((await b.next((m) => m.type === 'private')).text, text);
+    done();
+  });
+
+  it('leaves no trace in snapshots, sequence numbers, or live lines', async () => {
+    const { alice, bob, a, b, done } = await roomWithTwo();
+    a.send(key(1, 'char', 'z'));
+    await b.next((m) => m.type === 'live' && m.seq === 1);
+    a.send({ type: 'private', to: bob.participantId, text: 'psst' });
+    await b.next((m) => m.type === 'private');
+    b.ws.close();
+    await b.closed;
+    const again = await connect(wsUrl, bob);
+    assert.ok(!JSON.stringify(again.snapshot).includes('psst'));
+    assert.equal(again.snapshot.you.nextSeq, 1);
+    const ownLine = again.snapshot.liveLines.find((l) => l.participantId === alice.participantId);
+    assert.equal(ownLine.text, 'z');
+    assert.equal(rooms.get(alice.roomId).participants.get(alice.participantId).nextSeq, 2);
+    again.ws.close();
     done();
   });
 });

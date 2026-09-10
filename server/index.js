@@ -20,6 +20,7 @@ const PARTICIPANT_COLORS = ["#A6D854","#FFD92F","#FC8D62","#8080FF","#00FFFF",
   "#66C2A5","#867924","#926D75","#00A600","#108A92",
   "#D70082","#9E59BA","#CABE9A","#E3CAFF","#BE5900"];
 const HEARTBEAT_TIMEOUT_MS = 40000;
+const PRIVATE_MAX_CODE_POINTS = 200;
 
 function isValidChar(char){
   if(typeof char !== 'string') return false;
@@ -292,6 +293,20 @@ function handlePresence(participant, room, msg){
   broadcast(room, rosterMessage(room));
 }
 
+// One line to one person, delivered once and never stored. Validation order:
+// shape, text, then recipient. Unreachable covers another room, the sender,
+// a departed participant, and a participant without an open socket.
+function handlePrivate(participant, room, msg){
+  if(typeof msg.to !== 'number' || typeof msg.text !== 'string') return sendTo(participant, {type:'error', code:'invalid-message'});
+  const text = msg.text.trim();
+  const points = Array.from(text);
+  if(points.length < 1 || points.length > PRIVATE_MAX_CODE_POINTS || !points.every(isValidChar)) return sendTo(participant, {type:'error', code:'invalid-message'});
+  const recipient = room.participants.get(msg.to);
+  if(!recipient || recipient.id === participant.id || !recipient.socket || recipient.socket.readyState !== 1) return sendTo(participant, {type:'error', code:'unknown-recipient', to:msg.to});
+  sendTo(recipient, {type:'private', from:participant.id, handle:participant.handle, color:participant.color, text});
+  sendTo(participant, {type:'private-sent', to:recipient.id, handle:recipient.handle});
+}
+
 // The single exit path for HTTP leave, the q command, and stale cleanup.
 // Nonempty live text is preserved as a committed line stamped `preservedAt`:
 // leave time for a deliberate leave, last activity for stale cleanup.
@@ -470,6 +485,7 @@ wss.on('connection', (ws)=>{
     switch(msg && msg.type){
       case 'key': return handleKey(participant, ws.room, msg);
       case 'presence': return handlePresence(participant, ws.room, msg);
+      case 'private': return handlePrivate(participant, ws.room, msg);
       default: return sendWs(ws, {type:'error', code:'invalid-message'});
     }
   });
@@ -514,6 +530,7 @@ export {
   rooms,
   PARTICIPANT_COLORS,
   HEARTBEAT_TIMEOUT_MS,
+  PRIVATE_MAX_CODE_POINTS,
   isValidChar,
   getRoom,
   listRooms,
@@ -523,6 +540,7 @@ export {
   globalHandleExists,
   handleKey,
   handlePresence,
+  handlePrivate,
   editLive,
   commitLive,
   liveMessage,

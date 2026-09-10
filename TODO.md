@@ -15,24 +15,23 @@ Describe implemented behavior there; keep future proposals in these tasks.
 
 ## Recommended implementation order
 
-Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 22, 23, 24, 25,
-26, 27, 28, 29, 30, 31, 32, 33, 34, 35, and 39 are done and tasks 8, 9, and 20 are
+Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 18, 19, 21, 22, 23, 24,
+25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, and 39 are done and tasks 8, 9, and 20 are
 closed; see their checkboxes.
 Keep task numbers stable; the table below lists only the open tasks, in
 the order to execute them:
 
 | Order | Task | Reason |
 | --- | --- | --- |
-| 1 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 2 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
-| 3 | 36 — Delay AFK by five minutes of invisibility | Client-side timer; found while testing task 31. |
-| 4 | 42 — Limit handles to mentionable shapes | Found reviewing task 17: names with spaces or punctuation can never be mentioned. |
-| 5 | 37 — Stop remembering the Join sound checkbox | Small client cleanup; the box starts on every load. |
-| 6 | 38 — Drop the > marker from the handle list | Small client cleanup; the background already marks the selection. |
-| 7 | 40 — Drive the lobby in the browser check instead of ?name= | Lets the ?name= override go if nothing else needs it. |
-| 8 | 41 — Add ?silent=1 and make the browser check silent | Small client change plus the check's URLs; hover text documents it. |
-| 9 | 43 — Cap the size of a socket frame | Found reviewing task 18: one server option; nothing a user can notice. |
-| 10 | 44 — Protect the server from floods | Found reviewing task 18: per-socket and per-address rate limits; after 43. |
+| 1 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
+| 2 | 36 — Delay AFK by five minutes of invisibility | Client-side timer; found while testing task 31. |
+| 3 | 42 — Limit handles to mentionable shapes | Found reviewing task 17: names with spaces or punctuation can never be mentioned. |
+| 4 | 37 — Stop remembering the Join sound checkbox | Small client cleanup; the box starts on every load. |
+| 5 | 38 — Drop the > marker from the handle list | Small client cleanup; the background already marks the selection. |
+| 6 | 40 — Drive the lobby in the browser check instead of ?name= | Lets the ?name= override go if nothing else needs it. |
+| 7 | 41 — Add ?silent=1 and make the browser check silent | Small client change plus the check's URLs; hover text documents it. |
+| 8 | 43 — Cap the size of a socket frame | Found reviewing task 18: one server option; nothing a user can notice. |
+| 9 | 44 — Protect the server from floods | Found reviewing task 18: per-socket and per-address rate limits; after 43. |
 
 ## Working a task
 
@@ -651,7 +650,7 @@ Close the GitHub issue when the task is done.
 
 ## 18. Private messages from the roster
 
-- [ ] **Requested feature**
+- [x] **Requested feature** (done: click a roster name, type one line, Enter sends it to that person alone; the recipient gets a popup outside the transcript; nothing is stored or replayed. Sender feedback uses the sidebar notice slot because the chat-area feedback row the spec named no longer exists; the input stays open when the addressee leaves so typed text cannot reach the shared line)
 - **Spec and plan:** [docs/superpowers/specs/2026-09-09-private-messages-design.md](docs/superpowers/specs/2026-09-09-private-messages-design.md),
   [docs/superpowers/plans/2026-09-09-private-messages.md](docs/superpowers/plans/2026-09-09-private-messages.md).
   Where the plan and this task disagree, the spec records the approved decision.

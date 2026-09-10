@@ -22,6 +22,15 @@ html, body, #root { width:100%; height:100%; min-height:0; margin:0; overflow:hi
 .roster-entry { display:flex; min-width:0; align-items:center; gap:0.45rem; overflow:hidden; font-size:0.82rem; line-height:1.4rem; white-space:nowrap; }
 .roster-color-dot { display:inline-block; width:8px; height:8px; flex:0 0 8px; margin-right:6px; vertical-align:middle; }
 .roster-handle { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+button.roster-entry { width:100%; border:0; padding:0; background:none; font-family:inherit; text-align:left; cursor:pointer; }
+button.roster-entry:focus-visible { outline:1px solid var(--accent); outline-offset:1px; }
+.roster-private { display:flex; align-items:center; gap:0.3rem; margin:0.15rem 0 0.35rem; }
+.roster-private-label { flex:0 0 auto; color:var(--dim); font-size:0.72rem; }
+.roster-private input { min-width:0; flex:1; border:1px solid var(--accent); border-radius:0; padding:0.15rem 0.3rem; background:var(--surface); color:var(--text); font:inherit; font-size:0.82rem; outline:none; }
+.private-stack { position:fixed; top:8px; right:176px; z-index:8; display:grid; gap:0.5rem; width:min(320px, calc(100vw - 200px)); max-height:calc(var(--app-height, 100dvh) - 16px); overflow-y:auto; }
+.private-popup { display:block; width:100%; border:1px solid #555; padding:0.5rem 0.65rem; background:#000; color:var(--text); font-family:var(--mono); font-size:0.82rem; line-height:1.4; text-align:left; cursor:pointer; white-space:normal; overflow-wrap:anywhere; }
+.private-from { display:block; margin-bottom:0.2rem; }
+.private-text { display:block; }
 .roster-afk { flex:0 0 auto; color:#888; font-size:0.68rem; }
 .join-form { display:grid; width:min(26rem,100%); gap:0.6rem; color:var(--text); white-space:normal; }
 .join-form label { color:var(--dim); }
@@ -48,7 +57,7 @@ html, body, #root { width:100%; height:100%; min-height:0; margin:0; overflow:hi
 @keyframes blink { 50%{opacity:0;} }
 @keyframes blink-underline { 50%{border-bottom-color:transparent;} }
 @media (prefers-reduced-motion:reduce){ .caret,.caret-char{animation:none;} }
-@media (max-width:420px){ #chat-area{padding:6px;} #roster{width:128px; flex-basis:128px; padding:6px;} .roster-heading{letter-spacing:0.03em;} .typing-hint{display:block;} }
+@media (max-width:420px){ #chat-area{padding:6px;} #roster{width:128px; flex-basis:128px; padding:6px;} .roster-heading{letter-spacing:0.03em;} .typing-hint{display:block;} .private-stack{right:136px; left:6px; width:auto;} }
 .roster-footer { display:grid; gap:0.45rem; margin-top:auto; }
 .paste-warning { color:#ffb000; font-size:0.72rem; line-height:1.3; overflow-wrap:anywhere; white-space:normal; }
 .report-link { color:var(--dim); font-size:0.72rem; line-height:1.25; text-align:right; text-decoration:underline; justify-self:end; }
