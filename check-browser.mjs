@@ -222,6 +222,21 @@ async function main() {
   await show(bob, [alice]);
   check('Bob in front: the marker moves from Bob to Alice', await alice.waitFor(expectAfk(['Alice'])), JSON.stringify(await alice.eval(rosterAfk)));
 
+  // Task 18: a private line reaches one popup and never the transcript.
+  const committedBeforePrivate = JSON.stringify(await bob.eval(text('.committed-line')));
+  await alice.eval(`document.querySelector('button[aria-label="Message Bob"]').click()`);
+  check('Alice opens the private input under Bob',
+    await alice.waitFor(`document.activeElement?.getAttribute('aria-label') === 'Private message to Bob'`));
+  await alice.type('lunch?'); await alice.key('Enter', ENTER);
+  check("Bob sees the popup with Alice's text", await bob.waitFor(`${text('.private-text')}.includes('lunch?')`), JSON.stringify(await bob.eval(text('.private-text'))));
+  check('the popup names Alice', await bob.eval(`${text('.private-from')}.includes('Alice')`));
+  check('Alice sees "sent to Bob"', await alice.waitFor(has('sent to Bob')));
+  check('neither transcript gained a line',
+    JSON.stringify(await bob.eval(text('.committed-line'))) === committedBeforePrivate && !(await alice.eval(`${text('.committed-line')}.some((l) => l.includes('lunch?'))`)));
+  check("Alice's keyboard is focused again", await alice.eval(`document.activeElement?.classList.contains('keyboard-capture')`));
+  await bob.focus(); await bob.key('Escape', ESCAPE);
+  check("Escape dismisses Bob's popup", await bob.waitFor(`!document.querySelector('.private-popup')`));
+
   // A reload sends no leave: the reloaded page reconnects with the stored
   // session and keeps its participant, live text, and sequence position,
   // and the observer sees no leave/join lines. Same for a plain-URL load.
