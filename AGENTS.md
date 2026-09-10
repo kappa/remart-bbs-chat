@@ -40,6 +40,8 @@ docs as part of the relevant change.
   helpers for handle autocomplete.
 - `client/src/MentionList.tsx`: the floating handle list rendered next to
   the caret.
+- `client/src/PrivateMessages.tsx`: the stack of private-message popups over
+  the chat area, kept outside room state.
 - `client/src/theme.css`: terminal appearance and responsive layout.
 - `client/src/main.tsx`: React entry point and QueryClient provider.
 - `client/src/testing/`: FakeWebSocket and shared room fixtures for tests.

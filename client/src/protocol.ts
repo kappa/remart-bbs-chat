@@ -15,7 +15,8 @@ export type ServerMessage =
   | { type: 'command'; name: CommandName }
   | { type: 'private'; from: number; handle: string; color: string; text: string }
   | { type: 'private-sent'; to: number; handle: string }
-  | { type: 'error'; code: ErrorCode; expected?: number; to?: number };
+  | { type: 'error'; code: 'unknown-recipient'; to: number }
+  | { type: 'error'; code: Exclude<ErrorCode, 'unknown-recipient'>; expected?: number };
 
 export type KeyInput =
   | { kind: 'char'; char: string }
@@ -30,5 +31,5 @@ export type KeyInput =
   | { kind: 'delete' };
 export type KeyMessage = { type: 'key'; seq: number } & KeyInput;
 export type PresenceMessage = { type: 'presence'; hidden: boolean };
-export type PrivateMessageOut = { type: 'private'; to: number; text: string };
-export type ClientMessage = { type: 'hello'; roomId: number; participantId: number; token: string } | KeyMessage | PresenceMessage | PrivateMessageOut;
+export type PrivateMessage = { type: 'private'; to: number; text: string };
+export type ClientMessage = { type: 'hello'; roomId: number; participantId: number; token: string } | KeyMessage | PresenceMessage | PrivateMessage;

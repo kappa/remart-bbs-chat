@@ -303,7 +303,9 @@ are never replayed on reconnect. The sender receives `private-sent` on
 delivery, or `error unknown-recipient` (with `to`) when the recipient is
 not in the sender's room, is the sender, or has no open socket at that
 moment; a `to` that is not a number or a `text` that fails the rule above
-is `error invalid-message`. The socket stays open in every case.
+is `error invalid-message`. The checks run in that order: shape, then
+text, then recipient, so bad text addressed to nobody is
+`invalid-message`. The socket stays open in every case.
 
 ### Server to everyone in the room
 

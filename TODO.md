@@ -15,8 +15,8 @@ Describe implemented behavior there; keep future proposals in these tasks.
 
 ## Recommended implementation order
 
-Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 22, 23, 24, 25,
-26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 39, and 18 are done and tasks 8, 9, and 20 are
+Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 18, 19, 21, 22, 23, 24,
+25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, and 39 are done and tasks 8, 9, and 20 are
 closed; see their checkboxes.
 Keep task numbers stable; the table below lists only the open tasks, in
 the order to execute them:
@@ -650,7 +650,7 @@ Close the GitHub issue when the task is done.
 
 ## 18. Private messages from the roster
 
-- [ ] **Requested feature**
+- [x] **Requested feature** (done: click a roster name, type one line, Enter sends it to that person alone; the recipient gets a popup outside the transcript; nothing is stored or replayed. Sender feedback uses the sidebar notice slot because the chat-area feedback row the spec named no longer exists; the input stays open when the addressee leaves so typed text cannot reach the shared line)
 - **Spec and plan:** [docs/superpowers/specs/2026-09-09-private-messages-design.md](docs/superpowers/specs/2026-09-09-private-messages-design.md),
   [docs/superpowers/plans/2026-09-09-private-messages.md](docs/superpowers/plans/2026-09-09-private-messages.md).
   Where the plan and this task disagree, the spec records the approved decision.

@@ -141,13 +141,20 @@ automatically; no command refreshes it.
 - Click a name in the roster and a one-line input opens under it. Type,
   press Enter, and that person alone receives it. Escape closes the input
   without sending. Either way you are back on the chat afterwards.
-- The recipient sees it as a small popup in the top-right corner with your
-  name in your color. It goes away when they click it, press Escape, or
-  after fifteen seconds. Several messages stack.
-- You see "sent to Bob" under the transcript when it arrives, or "Bob is
+- If that person leaves while the box is open, the sidebar tells you and
+  the box stays where it is with your text, so nothing you type for them
+  can land on the shared line. Enter then reports that they are not
+  reachable.
+- The recipient sees it as a small popup at the top right of the chat
+  area, next to the sidebar, with your name in your color. It goes away
+  when they click it, press Escape, or after fifteen seconds. Several
+  messages stack, newest at the bottom; only the five newest are kept.
+- You see "sent to Bob" in the sidebar, below the names, for a few seconds
+  once the server has handed the message to Bob's connection, or "Bob is
   not reachable" if Bob has left or is between connections.
 - Private messages are never part of the transcript, are not saved, and are
-  not shown again after a reload. They are limited to 200 characters.
+  not shown again after a reload. They are limited to 200 characters and
+  follow the same character rule as the chat.
 
 ## Scrollback and history
 

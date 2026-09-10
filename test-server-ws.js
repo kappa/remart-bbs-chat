@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import WebSocket from 'ws';
 import { serverModule, startServer, closeAllSockets, post, newRoom, join, openSocket, connect, settle } from './test-support.js';
 
-const { resetForTests, rooms } = serverModule;
+const { resetForTests, rooms, PRIVATE_MAX_CODE_POINTS } = serverModule;
 let baseUrl, wsUrl, closeServer;
 
 before(async () => { ({ baseUrl, wsUrl, close: closeServer } = await startServer()); });
@@ -332,6 +332,16 @@ describe('Private messages (task 18)', () => {
     done();
   });
 
+  it('a participant who left is unknown-recipient', async () => {
+    const { alice, carol, a, c, done } = await roomWithThree();
+    await post(baseUrl, '/api/leave', { roomId: alice.roomId, participantId: carol.participantId, token: carol.token });
+    await c.closed;
+    await a.next((m) => m.type === 'roster');
+    a.send({ type: 'private', to: carol.participantId, text: 'still there?' });
+    assert.deepEqual(await a.next((m) => m.type === 'error'), { type: 'error', code: 'unknown-recipient', to: carol.participantId });
+    done();
+  });
+
   it('bad shape and bad text are invalid-message and deliver nothing', async () => {
     const { bob, a, b, done } = await roomWithTwo();
     const bad = [
@@ -340,7 +350,9 @@ describe('Private messages (task 18)', () => {
       { type: 'private', to: bob.participantId, text: '' },
       { type: 'private', to: bob.participantId, text: '   ' },
       { type: 'private', to: bob.participantId, text: 'a\u0007b' },
-      { type: 'private', to: bob.participantId, text: 'x'.repeat(201) },
+      { type: 'private', to: bob.participantId, text: 'x'.repeat(PRIVATE_MAX_CODE_POINTS + 1) },
+      // Text is checked before the recipient: bad text to nobody is still invalid-message.
+      { type: 'private', to: 999, text: '' },
     ];
     for (const msg of bad) {
       a.send(msg);
@@ -353,7 +365,7 @@ describe('Private messages (task 18)', () => {
 
   it('exactly 200 code points, including emoji, is delivered', async () => {
     const { bob, a, b, done } = await roomWithTwo();
-    const text = '😀'.repeat(200);
+    const text = '😀'.repeat(PRIVATE_MAX_CODE_POINTS);
     a.send({ type: 'private', to: bob.participantId, text });
     assert.equal((await b.next((m) => m.type === 'private')).text, text);
     done();

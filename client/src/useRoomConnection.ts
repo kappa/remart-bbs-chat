@@ -4,7 +4,7 @@ import type { CommandName, KeyInput, ServerMessage } from './protocol';
 import { applyServerMessage, emptyRoom, type RoomState } from './roomState';
 
 export type RoomSession = { roomId: number; participantId: number; token: string; joinedAt: number; historyFromRow: number };
-export type PrivateIncoming = { from: number; handle: string; color: string; text: string };
+export type PrivateIncoming = Omit<Extract<ServerMessage, { type: 'private' }>, 'type'>;
 export type PrivateResult = { ok: true; to: number; handle: string } | { ok: false; to: number };
 export type RoomEvents = {
   onCommand: (name: CommandName) => void;
@@ -47,7 +47,7 @@ export function useRoomConnection(session: RoomSession | null, events: RoomEvent
         if (msg.type === 'private-sent') return eventsRef.current.onPrivateResult({ ok: true, to: msg.to, handle: msg.handle });
         if (msg.type === 'command') return eventsRef.current.onCommand(msg.name);
         if (msg.type === 'error') {
-          if (msg.code === 'unknown-recipient') return eventsRef.current.onPrivateResult({ ok: false, to: msg.to ?? -1 });
+          if (msg.code === 'unknown-recipient') return eventsRef.current.onPrivateResult({ ok: false, to: msg.to });
           if (msg.code === 'unknown-participant' || msg.code === 'unauthorized') eventsRef.current.onSessionEnded();
           return;
         }

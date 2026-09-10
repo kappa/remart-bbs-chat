@@ -224,7 +224,10 @@ async function main() {
 
   // Task 18: a private line reaches one popup and never the transcript.
   const committedBeforePrivate = JSON.stringify(await bob.eval(text('.committed-line')));
-  await alice.eval(`document.querySelector('button[aria-label="Message Bob"]').click()`);
+  check('roster names share one font size whether or not they are buttons',
+    await alice.eval(`(() => { const sizes = Array.from(document.querySelectorAll('.roster-entry'), (e) => getComputedStyle(e).fontSize); return sizes.length > 1 && sizes.every((s) => s === sizes[0] && s !== '16px'); })()`),
+    JSON.stringify(await alice.eval(`Array.from(document.querySelectorAll('.roster-entry'), (e) => getComputedStyle(e).fontSize)`)));
+  await alice.eval(`Array.from(document.querySelectorAll('button.roster-entry')).find((b) => b.textContent.trim() === 'Bob').click()`);
   check('Alice opens the private input under Bob',
     await alice.waitFor(`document.activeElement?.getAttribute('aria-label') === 'Private message to Bob'`));
   await alice.type('lunch?'); await alice.key('Enter', ENTER);
