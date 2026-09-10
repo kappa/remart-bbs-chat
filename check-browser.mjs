@@ -174,6 +174,10 @@ async function main() {
   await bob.focus(); await bob.type('@');
   check('Bob "@": the handle list opens with Alice and Carol',
     await bob.waitFor(`${text('[role="option"]')}.join('|') === 'Alice|Carol'`), JSON.stringify(await bob.eval(text('[role="option"]'))));
+  // Without a no-wrap rule the list would inherit the chat line's wrapping and
+  // break handles longer than seven characters across rows.
+  check('the handle list keeps each handle on one row',
+    await bob.eval(`getComputedStyle(document.querySelector('.mention-list')).whiteSpace === 'nowrap' && Array.from(document.querySelectorAll('[role="option"]')).every((o) => o.getClientRects().length === 1)`));
   await bob.type('c');
   check('Bob "@c": the list narrows to Carol', await bob.waitFor(`${text('[role="option"]')}.join('|') === 'Carol'`));
   await bob.key('Enter', ENTER);

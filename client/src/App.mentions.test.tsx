@@ -191,7 +191,9 @@ describe('Handle autocomplete list', () => {
     const { user } = await typingAt('@');
     await screen.findByRole('listbox');
     await user.keyboard('{ArrowDown}');
-    expect((await screen.findAllByRole('option')).map((o) => o.textContent)).toEqual(['Bob', 'Carol']);
+    const options = await screen.findAllByRole('option');
+    expect(options.map((o) => o.textContent)).toEqual(['Bob', 'Carol']);
+    expect(options.map((o) => o.getAttribute('aria-selected'))).toEqual(['false', 'true']);
   });
 
   it('clicking an entry picks it and keeps keyboard focus', async () => {
