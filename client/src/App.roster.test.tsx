@@ -10,7 +10,7 @@ vi.mock('./api', () => ({
 
 beforeEach(() => { localStorage.clear(); sessionStorage.clear(); vi.clearAllMocks(); (api.listRooms as any).mockResolvedValue({ rooms: [] }); });
 
-const carol = { participantId: 30, handle: 'Carol', color: '#f0f', slot: 2 };
+const carol = { participantId: 30, handle: 'Carol', color: '#f0f', slot: 2, afk: false };
 
 describe('Roster', () => {
   it('lists participants by slot with color dots', async () => {
@@ -122,7 +122,7 @@ describe('Roster', () => {
   });
 
   it('a later join replaces the current title notice', async () => {
-    const dave = { participantId: 40, handle: 'Dave', color: '#0f0', slot: 3 };
+    const dave = { participantId: 40, handle: 'Dave', color: '#0f0', slot: 3, afk: false };
     const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
     vi.useFakeTimers();
     try {
@@ -156,7 +156,7 @@ describe('Roster', () => {
   });
 
   it('rotates an emoji handle by code point without splitting surrogates', async () => {
-    const emoji = { participantId: 50, handle: 'Bo😀b', color: '#ff0', slot: 4 };
+    const emoji = { participantId: 50, handle: 'Bo😀b', color: '#ff0', slot: 4, afk: false };
     const { ws } = await renderJoined(snapshot({ liveLines: [idle(alice), idle(bob)], roster: [alice, bob] }));
     vi.useFakeTimers();
     try {
@@ -239,7 +239,7 @@ describe('Roster', () => {
       serverSend(second.ws, { type: 'roster', roster: [alice, bob, carol] });
       expect(spy).not.toHaveBeenCalled();
       await user.click(screen.getByRole('checkbox', { name: 'Join sound' }));
-      const dave = { participantId: 40, handle: 'Dave', color: '#0f0', slot: 3 };
+      const dave = { participantId: 40, handle: 'Dave', color: '#0f0', slot: 3, afk: false };
       serverSend(second.ws, { type: 'roster', roster: [alice, bob, carol, dave] });
       expect(spy).toHaveBeenCalledTimes(1);
     } finally {

@@ -11,6 +11,8 @@ export type ConnectionOptions = { url?: string; reconnectDelayMs?: number; maxPe
 export type RoomConnection = {
   // Numbers and queues a keystroke; false means the queue is full and it was dropped.
   send: (key: KeyInput) => boolean;
+  // Reports tab visibility. Sent at once when open, and again after every snapshot.
+  setHidden: (hidden: boolean) => void;
   close: () => void;
 };
 
@@ -41,10 +43,15 @@ export function openRoomConnection(credentials: ConnectionCredentials, handlers:
   let nextSeq = 1;
   let pending: { key: KeyMessage; sent: boolean }[] = [];
   let reconnectTimer: number | null = null;
+  let hidden: boolean | null = null;
 
   const transmit = (msg: ClientMessage) => {
     try { socket?.send(JSON.stringify(msg)); } catch { /* the close handler reconnects */ }
   };
+
+  // Presence is not a keystroke: no number, no queue, no replay. The last
+  // value is re-sent after every snapshot so reconnect reports current visibility.
+  const sendPresence = () => { if (hidden != null && ready) transmit({ type: 'presence', hidden }); };
 
   const scheduleReconnect = () => {
     if (closed) return;
@@ -61,6 +68,7 @@ export function openRoomConnection(credentials: ConnectionCredentials, handlers:
         transmit(entry.key);
       }
       ready = true;
+      sendPresence();
       handlers.onStatus('open');
     } else if ((msg.type === 'live' || msg.type === 'committed') && msg.participantId === credentials.participantId && msg.seq != null) {
       const acked = msg.seq;
@@ -104,6 +112,10 @@ export function openRoomConnection(credentials: ConnectionCredentials, handlers:
       pending.push({ key: msg, sent: ready });
       if (ready) transmit(msg);
       return true;
+    },
+    setHidden(next) {
+      hidden = next;
+      sendPresence();
     },
     close() {
       closed = true;

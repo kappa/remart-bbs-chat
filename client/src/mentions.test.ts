@@ -2,10 +2,10 @@ import { describe, it, expect } from 'vitest';
 import { mentionTokenBefore, mentionCandidates, mentionCompletion } from './mentions';
 import type { RosterEntry } from './protocol';
 
-const alice: RosterEntry = { participantId: 10, handle: 'Alice', color: '#fff', slot: 0 };
-const bob: RosterEntry = { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1 };
-const carol: RosterEntry = { participantId: 30, handle: 'Carol', color: '#f0f', slot: 2 };
-const zhenya: RosterEntry = { participantId: 40, handle: 'Женя', color: '#ff0', slot: 3 };
+const alice: RosterEntry = { participantId: 10, handle: 'Alice', color: '#fff', slot: 0, afk: false };
+const bob: RosterEntry = { participantId: 20, handle: 'Bob', color: '#0ff', slot: 1, afk: false };
+const carol: RosterEntry = { participantId: 30, handle: 'Carol', color: '#f0f', slot: 2, afk: false };
+const zhenya: RosterEntry = { participantId: 40, handle: 'Женя', color: '#ff0', slot: 3, afk: false };
 const roster = [alice, bob, carol, zhenya];
 
 describe('mentionTokenBefore', () => {
