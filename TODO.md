@@ -30,6 +30,7 @@ the order to execute them:
 | 5 | 34 — Investigate the shared-session socket takeover | Investigation only; explains the afk flicker seen with duplicated tabs. |
 | 6 | 35 — Fix the join-order race in the browser check | Small script fix; removes a flaky failure of the first checks. |
 | 7 | 36 — Delay AFK by five minutes of invisibility | Client-side timer; found while testing task 31. |
+| 8 | 37 — Stop remembering the Join sound checkbox | Small client cleanup; the box starts on every load. |
 
 ## Working a task
 
@@ -1452,9 +1453,9 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 
 ## Review issues 2026-09-09
 
-Tasks 34 and 35 come from the goblin review of the day's merges, and task
-36 from testing the merged build; none has a GitHub issue. Keep their
-numbers stable.
+Tasks 34 and 35 come from the goblin review of the day's merges, and tasks
+36 and 37 from testing the merged build; none has a GitHub issue. Keep
+their numbers stable.
 
 ## 34. Investigate the socket takeover between tabs that share a session
 
@@ -1557,3 +1558,28 @@ numbers stable.
 - **Docs:** `docs/PROTOCOL.md` client behavior (when `presence` is sent),
   `docs/USER_EXPERIENCE.md` roster section, the AFK bullet in `AGENTS.md`,
   and a note in `docs/superpowers/specs/2026-09-09-afk-presence-design.md`.
+
+## 37. Stop remembering the Join sound checkbox
+
+- [ ] **Requested change, sidebar**
+- **Source:** Manual testing on 2026-09-09.
+- **Location:** `SOUND_KEY`, the `soundOn` state, and the checkbox
+  `onChange` in `client/src/App.tsx`; the sound tests in
+  `client/src/App.roster.test.tsx` that seed and read
+  `remart-bbs-chat.sound` in `localStorage`.
+- **Requested behavior:** The Join sound checkbox starts on every time the
+  page loads and is not remembered between loads. Unticking it lasts for
+  the current page only. Nothing about the sound is written to or read from
+  browser storage.
+- **Implementation:** Initialise `soundOn` to `true`, drop `SOUND_KEY`, the
+  `storageGet` in the initialiser, and the `storageSet` in `onChange`. The
+  remembered handle in `localStorage` is unrelated and stays.
+- **Acceptance:** A browser that had the sound switched off before shows the
+  box ticked after the change and after every reload. Unticking it silences
+  the join chirp until the next reload.
+- **Tests:** Replace the tests that seed `remart-bbs-chat.sound` with one that
+  asserts the box is ticked on a fresh render even when that key holds
+  `off`, and keep the test that unticking suppresses the chirp. Assert that
+  toggling writes nothing to `localStorage`.
+- **Docs:** Drop any mention of the remembered sound setting from
+  `docs/USER_EXPERIENCE.md` and `AGENTS.md` if present.
