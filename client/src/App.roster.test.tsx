@@ -58,7 +58,8 @@ describe('Roster', () => {
       ['Enter', 'Send your message'],
       ['Backspace', 'Delete the character before the cursor'],
       ['Delete', 'Delete the character under the cursor'],
-      ['Left / Right', 'Move the cursor one character; with Ctrl, jump one word at a time (Alt+Arrow on macOS)'],
+      ['Left / Right', 'Move the cursor one character'],
+      ['Ctrl+Left / Ctrl+Right', 'Jump one word at a time (Alt+Arrow on macOS)'],
       ['Home / End', 'Jump to the start or end of the line'],
       ['@', 'Mention someone. Type @ and start typing a name, then use Up/Down to choose, Tab or Enter to pick, Esc to close'],
     ]);

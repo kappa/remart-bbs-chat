@@ -872,7 +872,8 @@ export function App() {
               <div><dt>Enter</dt><dd>Send your message</dd></div>
               <div><dt>Backspace</dt><dd>Delete the character before the cursor</dd></div>
               <div><dt>Delete</dt><dd>Delete the character under the cursor</dd></div>
-              <div><dt>Left / Right</dt><dd>Move the cursor one character; with Ctrl, jump one word at a time (Alt+Arrow on macOS)</dd></div>
+              <div><dt>Left / Right</dt><dd>Move the cursor one character</dd></div>
+              <div><dt>Ctrl+Left / Ctrl+Right</dt><dd>Jump one word at a time (Alt+Arrow on macOS)</dd></div>
               <div><dt>Home / End</dt><dd>Jump to the start or end of the line</dd></div>
               <div><dt>@</dt><dd>Mention someone. Type @ and start typing a name, then use Up/Down to choose, Tab or Enter to pick, Esc to close</dd></div>
             </dl>
