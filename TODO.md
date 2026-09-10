@@ -16,22 +16,20 @@ Describe implemented behavior there; keep future proposals in these tasks.
 ## Recommended implementation order
 
 Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 19, 21, 22, 23, 24, 25,
-26, 27, 28, 29, 30, and 31 are done and tasks 8, 9, and 20 are closed; see
-their checkboxes.
+26, 27, 28, 29, 30, 31, 32, 33, and 39 are done and tasks 8, 9, and 20 are
+closed; see their checkboxes.
 Keep task numbers stable; the table below lists only the open tasks, in
 the order to execute them:
 
 | Order | Task | Reason |
 | --- | --- | --- |
-| 1 | 32 — Remove the Type button | Small, isolated client cleanup. |
-| 2 | 33 — Clean up the help dialog | Small client content change; reflect the controls left after task 32. |
-| 3 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
-| 4 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
-| 5 | 34 — Investigate the shared-session socket takeover | Investigation only; explains the afk flicker seen with duplicated tabs. |
-| 6 | 35 — Fix the join-order race in the browser check | Small script fix; removes a flaky failure of the first checks. |
-| 7 | 36 — Delay AFK by five minutes of invisibility | Client-side timer; found while testing task 31. |
-| 8 | 37 — Stop remembering the Join sound checkbox | Small client cleanup; the box starts on every load. |
-| 9 | 38 — Drop the > marker from the handle list | Small client cleanup; the background already marks the selection. |
+| 1 | 18 — Private messages | First message type outside the transcript; brainstorm and spec first. |
+| 2 | 17 — Mentions | Row rendering and a second sound; after 15, 16, and 25. |
+| 3 | 34 — Investigate the shared-session socket takeover | Investigation only; explains the afk flicker seen with duplicated tabs. |
+| 4 | 35 — Fix the join-order race in the browser check | Small script fix; removes a flaky failure of the first checks. |
+| 5 | 36 — Delay AFK by five minutes of invisibility | Client-side timer; found while testing task 31. |
+| 6 | 37 — Stop remembering the Join sound checkbox | Small client cleanup; the box starts on every load. |
+| 7 | 38 — Drop the > marker from the handle list | Small client cleanup; the background already marks the selection. |
 
 ## Working a task
 
@@ -1103,7 +1101,7 @@ GitHub issue numbers and these task numbers stable.
 
 ## 25. Autocomplete participant handles after `@`
 
-- [x] **Requested feature** (done: server-echoed mention tokens open a roster-ordered handle list at the caret, with keyboard and pointer completion sent as ordinary character keystrokes)
+- [x] **Requested feature** (done: server-echoed mention tokens open a roster-ordered handle list at the caret, with keyboard and pointer completion sent as ordinary character keystrokes; picks made while keystrokes are in flight are parked until they echo; GitHub issue #13 closed)
 - **Spec and plan:** [docs/superpowers/specs/2026-09-09-mention-autocomplete-design.md](docs/superpowers/specs/2026-09-09-mention-autocomplete-design.md),
   [docs/superpowers/plans/2026-09-09-mention-autocomplete.md](docs/superpowers/plans/2026-09-09-mention-autocomplete.md).
   Where the plan and this task disagree, the spec records the approved decision.
@@ -1332,7 +1330,7 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 
 ## 31. Show AFK status for participants in background tabs
 
-- [x] **Requested feature, presence** (done: server-owned AFK follows reported tab visibility, survives reconnect until the next report, and appears as a dim roster marker without changing liveness or participant state)
+- [x] **Requested feature, presence** (done: server-owned AFK follows reported tab visibility, survives reconnect until the next report, and appears as a dim roster marker without changing liveness or participant state; GitHub issue #19 closed)
 - **Spec and plan:** [docs/superpowers/specs/2026-09-09-afk-presence-design.md](docs/superpowers/specs/2026-09-09-afk-presence-design.md),
   [docs/superpowers/plans/2026-09-09-afk-presence.md](docs/superpowers/plans/2026-09-09-afk-presence.md).
   Where the plan and this task disagree, the spec records the approved decision.
@@ -1374,7 +1372,7 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 
 ## 32. Remove the sidebar Type button
 
-- [x] **Requested UI cleanup**
+- [x] **Requested UI cleanup** (done: button and its styles removed, focus through the chat surface; verified in the browser check, GitHub issue #20 closed)
 - **Source:** [GitHub issue #20](https://github.com/kappa/remart-bbs-chat/issues/20).
 - **Location:** `client/src/App.tsx` roster footer;
   `.keyboard-button` rules in `client/src/theme.css`;
@@ -1402,7 +1400,7 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 
 ## 33. Remove the roster command and clean up Help
 
-- [x] **Requested command removal and UI cleanup**
+- [x] **Requested command removal and UI cleanup** (done: l is ordinary chat, help rows corrected and later reworded in task 39; verified in the browser check, GitHub issue #21 closed)
 - **Source:** [GitHub issue #21](https://github.com/kappa/remart-bbs-chat/issues/21).
 - **Location:** Command recognition in `server/index.js`; command types in
   `client/src/protocol.ts`; command handling and Help in `client/src/App.tsx`;
