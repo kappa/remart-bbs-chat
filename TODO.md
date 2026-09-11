@@ -21,6 +21,7 @@ The table below lists only the open tasks, in the order to execute them:
 | 2 | 40 — Drive the lobby in the browser check instead of ?name= | Lets the ?name= override go if nothing else needs it. |
 | 3 | 43 — Cap the size of a socket frame | Found reviewing task 18: one server option; nothing a user can notice. |
 | 4 | 44 — Protect the server from floods | Found reviewing task 18: per-socket and per-address rate limits; after 43. |
+| 5 | 45 — Deploy to Fly.io with one local command | Removes a manual click from every release; tooling only, so it can wait for a quiet moment. |
 
 ## Working a task
 
@@ -197,3 +198,72 @@ numbers stable.
   and the room cap; `docs/DESIGN.md`: one paragraph on why limits are per
   socket and per address and why the numbers are far above human speed;
   AGENTS.md rule list: one line naming the limits.
+
+## New tooling requests 2026-09-10
+
+Task 45 comes from Alex on 2026-09-10; it has no GitHub issue. Keep its
+number stable.
+
+## 45. Deploy to Fly.io with one local command
+
+- [ ] **Requested change, deployment tooling**
+- **Source:** Alex, 2026-09-10: today every deploy is a click on the Fly.io
+  dashboard after a push; the release order is manual test locally, push,
+  deploy, then close the GitHub issues. The automation runs on Alex's
+  machine. No GitHub Actions or any other hosted CI, now or later.
+- **Location:** `fly.toml` (app `remart-bbs-chat`, region `sjc`, builds the
+  `Dockerfile`); `Dockerfile` (client build stage plus the server image);
+  `package.json` scripts at the repository root (`check:browser` shows how
+  a root-level `.mjs` script is wired); `check-browser.mjs` for the style
+  of such a script; `README.md` "Testing deployment"; `AGENTS.md`
+  "Branches, worktrees, and landing" (the line "Push only when asked.
+  Never deploy; Alex deploys to Fly.io himself").
+- **Requested behavior:** Alex runs one command from the repository root,
+  `npm run deploy`, and the commit checked out in his working tree goes
+  live on the existing Fly.io app. Nothing about the app, its region, its
+  single Machine, or its address changes. The command refuses, with one
+  plain sentence each, when the working tree has uncommitted changes, when
+  the checked-out branch is not `master`, or when `master` is not the same
+  commit as `origin/master` after a fetch (deploy what is pushed). It runs
+  the full validation list first, browser check included, since Chrome is
+  on Alex's machine, and stops on the first red. It ends by printing the
+  deployed commit and the app address. What a user sees in the chat is
+  unchanged.
+- **Implementation:** A root-level `deploy.mjs` run by a `deploy` script in
+  `package.json`, in the style of `check-browser.mjs`: plain Node, no new
+  dependencies. It shells out to `git` for the three guards, runs the five
+  validation commands in order, then runs `flyctl deploy --remote-only`
+  so the image is built on Fly's builder from the existing `Dockerfile`
+  and no Docker is needed locally. `flyctl` is installed and logged in on
+  Alex's machine already; the script checks that `flyctl` is on the path
+  and says how to install it if not, and otherwise leaves authentication
+  to `flyctl` itself. The exact guard wording, the order of the guards,
+  and whether `--remote-only` is spelled as a flag or via `fly.toml` are
+  the agent's choices.
+- **Known limit:** The deploy step cannot be exercised from a task branch
+  or by an agent: agents never deploy, and the branch guard refuses
+  anything but `master`. Test the guards and the validation run; the
+  first real `npm run deploy` by Alex is the test of the last step. Do
+  not add a dry-run flag that skips the guards, and do not make the
+  script push: pushing stays a separate, deliberate step before it.
+- **Acceptance:** Alex, on `master` with a clean tree that matches
+  `origin/master`, runs `npm run deploy`, watches the five checks pass and
+  the Fly build finish, and sees https://remart-bbs-chat.fly.dev/ serve
+  the new commit (the Help dialog or a change he knows is in it). With a
+  stray edit in the tree, or on a `task-NN` branch, the command stops
+  before running any check and says why in one sentence.
+- **Tests:** A Node test-runner file `test-deploy.js` that runs
+  `deploy.mjs` as a child process in a temporary git repository (the
+  pattern in `test-server-harness.js`) and asserts each guard: dirty tree,
+  wrong branch, and master ahead of or behind its origin, each exiting 1
+  with the sentence; and that a fake `flyctl` on the path is invoked with
+  the expected arguments only after the guards pass, with the validation
+  commands stubbed through an environment variable the script honours for
+  tests only. Add the file to `npm test` if the script glob does not pick
+  it up.
+- **Docs:** `README.md` "Testing deployment" says `npm run deploy` deploys
+  the pushed master and names the three guards; `AGENTS.md` landing rules
+  change the deploy line to "Never deploy and never run `npm run deploy`;
+  Alex deploys from his machine"; `docs/DESIGN.md` gets one bullet on why
+  the deploy is a local command gated on the pushed master and not hosted
+  CI. `docs/PROTOCOL.md` and `docs/USER_EXPERIENCE.md` do not change.
