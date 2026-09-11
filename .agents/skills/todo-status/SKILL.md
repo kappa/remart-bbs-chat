@@ -15,7 +15,8 @@ sent back to read the section.
 ## Steps
 
 1. Read the "Recommended implementation order" table in `TODO.md`. It lists
-   only open tasks. The sentence above it names done and closed tasks.
+   only open tasks. The sentence above it names done and closed tasks, whose
+   text lives in `docs/TODO_ARCHIVE.md` once they have been moved there.
 2. For each open task, read its heading and first bullet to get the title,
    the kind (bug, feature, requested change) and the **Source** issue.
 3. Run `git branch --list 'task-*'` and `git worktree list` to see which

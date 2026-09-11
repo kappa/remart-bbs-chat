@@ -13,8 +13,9 @@ the final arbiter when docs and code disagree — and then the docs get fixed.
 
 ## Pending work
 
-`TODO.md` is the ordered list of review findings and approved future changes.
-It describes intent, not implemented behavior.
+`TODO.md` is the ordered list of open review findings and approved future
+changes. It describes intent, not implemented behavior. Finished tasks are
+kept in `docs/TODO_ARCHIVE.md` as a record of what was decided.
 
 ## Active specs and plans
 

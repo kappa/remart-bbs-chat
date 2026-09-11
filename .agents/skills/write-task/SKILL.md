@@ -40,7 +40,8 @@ The final commit of the task ticks the checkbox and says what was decided.
 
 ## Numbering and placement
 
-- Numbers are stable and never reused. Take the next number.
+- Numbers are stable and never reused. Take the number after the highest
+  one in `TODO.md` or `docs/TODO_ARCHIVE.md`, whichever is higher.
 - New issues go under a dated heading (`## New product issues imported
   YYYY-MM-DD` or `## Review issues YYYY-MM-DD`).
 - Add the task to the "Recommended implementation order" table with a

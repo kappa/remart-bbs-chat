@@ -227,9 +227,12 @@ in plain, friendly language, not robotic lists; ask Alex to read new copy.
 
 ## Working a task from TODO.md
 
-`TODO.md` numbers every task and keeps the open ones in a "Recommended
-implementation order" table. Task descriptions are written for an agent that
-has only that file, this file, and the repository.
+`TODO.md` holds the open tasks and their "Recommended implementation order"
+table; done and closed tasks live in `docs/TODO_ARCHIVE.md` with their full
+text, and a ticked task moves there when `TODO.md` is next tidied. Task
+numbers are stable and never reused: a new task takes the number after the
+highest one in either file. Task descriptions are written for an agent that
+has only `TODO.md`, this file, and the repository.
 
 - Read this file first, then the task. The task's **Location** names the
   code to read; read it before changing anything. If the code disagrees with
