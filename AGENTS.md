@@ -36,6 +36,8 @@ docs as part of the relevant change.
 - `client/src/protocol.ts`: wire message types.
 - `client/src/api.ts`: REST client for rooms, join, leave, and roster.
 - `client/src/documentLines.ts`: document row ordering and character helpers.
+- `client/src/handles.ts`: the handle shape rule shared with the lobby,
+  aligned with the server's copy.
 - `client/src/mentions.ts`: pure mention token, candidate, and completion
   helpers for handle autocomplete and committed-text mention detection.
 - `client/src/notifications.ts`: typed join and mention notifications with
@@ -152,8 +154,10 @@ The following describes the current implementation and its regression baseline.
   Reloads and closed tabs never leave deliberately: the stored session
   reconnects as the same participant with live state intact, while a truly
   closed tab lingers until the stale sweep (up to about a minute).
-- Handles are unique case-insensitively across all rooms; rooms allow up to
-  ten participants. Browser storage is prototype session convenience. The
+- Handles are one word of Unicode letters, marks, digits, and `_` (no
+  whitespace or punctuation, so never a leading `@`), checked by the same
+  rule in the lobby and in `/api/join`, and unique case-insensitively across
+  all rooms; rooms allow up to ten participants. Browser storage is prototype session convenience. The
   `?name=` override must not overwrite the remembered default handle.
 - One tab per session: the client claims a Web Lock per participant before
   connecting and releases it when the session ends. A duplicated tab starts

@@ -78,6 +78,40 @@ describe('Lobby rendering', ()=>{
     expect(await screen.findByRole('button', {name:/create first room|new room/i})).toBeInTheDocument();
   });
 
+  it('a name with a space, punctuation, or a leading @ disables joining and says why', async ()=>{
+    const user = userEvent.setup();
+    (api.listRooms as any).mockResolvedValue({rooms:[{id:1, name:'lobby', occupancy:1, max:10, isLobby:true}]});
+    renderApp();
+    const input = await screen.findByLabelText(/handle/i);
+    const joinBtn = await screen.findByRole('button', {name:/join/i});
+    for (const bad of ['Alex K', 'Bob!', '@alex']) {
+      await user.clear(input);
+      await user.type(input, bad);
+      expect(screen.getByText('Names are one word: letters, digits and _ only')).toBeInTheDocument();
+      expect(screen.getByRole('button', {name:/use name/i})).toBeDisabled();
+      expect(joinBtn).toBeDisabled();
+      expect(screen.getByRole('button', {name:/new room/i})).toBeDisabled();
+    }
+    await user.clear(input);
+    await user.type(input, 'Женя');
+    expect(screen.queryByText('Names are one word: letters, digits and _ only')).toBeNull();
+    expect(screen.getByRole('button', {name:/use name/i})).toBeEnabled();
+    expect(joinBtn).toBeEnabled();
+  });
+
+  it('a bad ?name= never joins and shows the sentence', async ()=>{
+    history.pushState({}, '', '/?name=Alex%20K&room=1');
+    try {
+      renderApp();
+      expect(await screen.findByText('Names are one word: letters, digits and _ only')).toBeInTheDocument();
+      await new Promise((r)=>setTimeout(r, 20));
+      expect(api.joinRoom).not.toHaveBeenCalled();
+      expect(api.getOrCreateRoom).not.toHaveBeenCalled();
+    } finally {
+      history.pushState({}, '', '/');
+    }
+  });
+
   it('remembers handle from localStorage', async ()=>{
     localStorage.setItem('remart-bbs-chat.handle','Bob');
     renderApp();

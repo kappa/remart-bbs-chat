@@ -16,7 +16,9 @@ name prefixes on ordinary lines because the color tells you who is who.
 - Opening the app shows a lobby of rooms. Join an existing room or create a
   new one. Rooms are ephemeral: they exist while people are in them.
 - You pick a display name the first time. It is remembered, so on later visits
-  you go straight in.
+  you go straight in. A name is one word of letters, digits and `_`, in any
+  script; with a space, punctuation, or a leading `@` the lobby says so under
+  the input and the buttons stay off, so `@name` in chat can always reach you.
 - Opening the app in a second tab with `?name=Alice` in the URL joins that tab
   as Alice without touching your remembered default name.
 - A tab is one participant. Duplicating a room tab does not carry the session

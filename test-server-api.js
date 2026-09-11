@@ -124,11 +124,19 @@ describe('Join semantics', () => {
     assert.equal(json.participant.liveRow, null);
   });
 
-  it('rejects missing, empty, and overlong handles', async () => {
+  it('rejects missing, empty, overlong, and multi-word or punctuated handles', async () => {
     const roomId = await newRoom(baseUrl);
     assert.equal((await post(baseUrl, '/api/join', { roomId })).status, 400);
     assert.equal((await post(baseUrl, '/api/join', { roomId, handle: '   ' })).status, 400);
     assert.equal((await post(baseUrl, '/api/join', { roomId, handle: 'x'.repeat(33) })).status, 400);
+    for (const handle of ['Alex K', 'Bob!', '@alex', 'J.']) {
+      const res = await post(baseUrl, '/api/join', { roomId, handle });
+      assert.equal(res.status, 400, handle);
+      assert.equal(res.json.error, 'Names are one word: letters, digits and _ only', handle);
+    }
+    for (const handle of ['alex_k', 'Женя', 'bob2']) {
+      assert.equal((await post(baseUrl, '/api/join', { roomId, handle })).status, 200, handle);
+    }
     assert.equal((await post(baseUrl, '/api/join', { roomId: 9999, handle: 'nobody' })).status, 404);
   });
 });

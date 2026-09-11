@@ -16,7 +16,7 @@ Describe implemented behavior there; keep future proposals in these tasks.
 ## Recommended implementation order
 
 Tasks 1, 4, 6, 7, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 21, 22, 23,
-24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 37, 38, 39, and 41 are done
+24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 37, 38, 39, 41, and 42 are done
 and tasks 8, 9, and 20 are closed; see their checkboxes.
 Keep task numbers stable; the table below lists only the open tasks, in
 the order to execute them:
@@ -24,10 +24,9 @@ the order to execute them:
 | Order | Task | Reason |
 | --- | --- | --- |
 | 1 | 36 — Delay AFK by five minutes of invisibility | Client-side timer; found while testing task 31. |
-| 2 | 42 — Limit handles to mentionable shapes | Found reviewing task 17: names with spaces or punctuation can never be mentioned. |
-| 3 | 40 — Drive the lobby in the browser check instead of ?name= | Lets the ?name= override go if nothing else needs it. |
-| 4 | 43 — Cap the size of a socket frame | Found reviewing task 18: one server option; nothing a user can notice. |
-| 5 | 44 — Protect the server from floods | Found reviewing task 18: per-socket and per-address rate limits; after 43. |
+| 2 | 40 — Drive the lobby in the browser check instead of ?name= | Lets the ?name= override go if nothing else needs it. |
+| 3 | 43 — Cap the size of a socket frame | Found reviewing task 18: one server option; nothing a user can notice. |
+| 4 | 44 — Protect the server from floods | Found reviewing task 18: per-socket and per-address rate limits; after 43. |
 
 ## Working a task
 
@@ -1654,7 +1653,7 @@ their numbers stable.
 
 ## 42. Limit handles to mentionable shapes
 
-- [ ] **Review finding, joining**
+- [x] **Review finding, joining** (done: one word of letters, marks, digits and `_`, checked by the same rule in the lobby and in `/api/join`; emoji stay rejected pending Alex's call)
 - **Source:** Review of task 17 on 2026-09-09. The server accepts any
   trimmed handle of up to 32 characters, so `Alex K`, `Bob!`, `J.`, and
   `@alex` are all legal names. The mention rule from task 17 reads `@` plus

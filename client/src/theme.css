@@ -85,6 +85,7 @@ button.roster-entry:focus-visible { outline:1px solid var(--accent); outline-off
 .handle-row { display:grid; grid-template-columns:minmax(0,1fr) auto; gap:8px; }
 .handle-row input { min-width:0; }
 .handle-row button { padding-inline:12px; }
+.handle-hint { color:var(--dim); white-space:normal; }
 .lobby-rooms { display:flex; flex-direction:column; gap:8px; }
 .lobby-room { display:flex; min-width:0; align-items:center; justify-content:space-between; gap:12px; border:1px solid #333; padding:8px; }
 .lobby-room.full { opacity:0.5; }

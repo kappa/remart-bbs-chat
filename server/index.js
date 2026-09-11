@@ -22,6 +22,14 @@ const PARTICIPANT_COLORS = ["#A6D854","#FFD92F","#FC8D62","#8080FF","#00FFFF",
 const HEARTBEAT_TIMEOUT_MS = 40000;
 const PRIVATE_MAX_CODE_POINTS = 200;
 
+// One word: letters, combining marks, digits, and _ from any script, so that
+// @handle in chat can always find it. Aligned with client/src/handles.ts.
+const HANDLE_PATTERN = /^[\p{L}\p{M}\p{N}_]+$/u;
+const HANDLE_RULE = 'Names are one word: letters, digits and _ only';
+function isValidHandle(handle){
+  return HANDLE_PATTERN.test(handle);
+}
+
 function isValidChar(char){
   if(typeof char !== 'string') return false;
   const arr = Array.from(char);
@@ -353,6 +361,7 @@ app.post('/api/join', (req,res)=>{
   if(!roomId || !handle) return res.status(400).json({error:'roomId and handle required'});
   const cleanHandle = String(handle).trim();
   if(!cleanHandle) return res.status(400).json({error:'handle required'});
+  if(!isValidHandle(cleanHandle)) return res.status(400).json({error:HANDLE_RULE});
   if(cleanHandle.length>32) return res.status(400).json({error:'handle too long'});
 
   let room = getRoom(roomId);

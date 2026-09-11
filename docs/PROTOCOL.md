@@ -165,8 +165,10 @@ Example response (timestamps illustrative):
 }
 ```
 
-The server converts a truthy handle to a string, trims it, and limits it to 32
-UTF-16 code units. Handles are unique case-insensitively across all rooms.
+The server converts a truthy handle to a string, trims it, requires one word
+of Unicode letters, marks, digits, and `_` (no whitespace, no punctuation, so
+no leading `@`), and limits it to 32 UTF-16 code units, in that order.
+Handles are unique case-insensitively across all rooms.
 The target room is cleaned of stale participants before duplicate/capacity
 checks. The server assigns a free color, slot, and secret participant token,
 initializes the sequence at 1, creates a join announcement, and sends
@@ -186,6 +188,7 @@ order, unlike the sorted roster endpoint.
 | --- | --- |
 | 400 | `roomId and handle required` (either field falsy) |
 | 400 | `handle required` (empty after trimming) |
+| 400 | `Names are one word: letters, digits and _ only` (whitespace, punctuation, or other symbols) |
 | 400 | `handle too long` |
 | 404 | `room not found` |
 | 409 | `Handle already active` |

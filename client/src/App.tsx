@@ -13,6 +13,7 @@ import {
 } from "react";
 import { api } from "./api";
 import { computeDocumentLines, isValidChar } from "./documentLines";
+import { HANDLE_RULE, isValidHandle } from "./handles";
 import { splitLinks } from "./links";
 import { MentionList } from "./MentionList";
 import { mentionCandidates, mentionCompletion, mentionTokenBefore, mentionsHandle, splitMentions } from "./mentions";
@@ -400,8 +401,14 @@ export function App() {
     setSession(nextSession);
   };
 
-  const joinListedRoom = async (room: { id: number; name: string }) => {
+  // The trimmed handle when it is a name the server accepts, else "".
+  const usableHandle = () => {
     const cleanHandle = handle.trim();
+    return isValidHandle(cleanHandle) ? cleanHandle : "";
+  };
+
+  const joinListedRoom = async (room: { id: number; name: string }) => {
+    const cleanHandle = usableHandle();
     if (!cleanHandle || joining) return;
 
     setJoining(true);
@@ -420,7 +427,7 @@ export function App() {
   };
 
   const createAndJoin = async (forceNew: boolean, preferredId?: number) => {
-    const cleanHandle = handle.trim();
+    const cleanHandle = usableHandle();
     if (!cleanHandle || joining) return;
 
     setJoining(true);
@@ -444,7 +451,7 @@ export function App() {
 
   const saveHandle = (event: FormEvent) => {
     event.preventDefault();
-    const cleanHandle = handle.trim();
+    const cleanHandle = usableHandle();
     if (!cleanHandle) return;
     rememberHandle(cleanHandle);
     setHandle(cleanHandle);
@@ -454,7 +461,7 @@ export function App() {
     if (session || joining) return;
     const params = new URLSearchParams(window.location.search);
     const preferredId = Number(params.get("room"));
-    const cleanHandle = handle.trim();
+    const cleanHandle = usableHandle();
     if (!Number.isInteger(preferredId) || preferredId <= 0 || !cleanHandle) {
       return;
     }
@@ -628,7 +635,9 @@ export function App() {
 
   if (!session) {
     const rooms = lobbyRooms.data?.rooms ?? [];
-    const hasHandle = handle.trim().length > 0;
+    const cleanHandle = usableHandle();
+    const handleProblem = handle.trim() && !cleanHandle ? HANDLE_RULE : "";
+    const hasHandle = cleanHandle.length > 0;
     return (
       <main id="container" aria-label="Remart BBS Chat">
         <section id="chat-area" className="lobby-shell" aria-label="Room lobby">
@@ -653,6 +662,7 @@ export function App() {
                   Use name
                 </button>
               </div>
+              {handleProblem ? <div className="handle-hint">{handleProblem}</div> : null}
             </form>
 
             <div className="lobby-heading">ROOMS</div>
