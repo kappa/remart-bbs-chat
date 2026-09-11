@@ -18,7 +18,8 @@ introduced what.
    each `task-NN` branch (or each merge into master) separately.
 2. For each stack, read the diff commit by commit, then the whole stack
    against master. Read the TODO task and any spec in
-   `docs/superpowers/specs/` it came from.
+   `docs/superpowers/specs/` it came from (or `docs/archive/superpowers/`
+   once the work has landed).
 3. Report findings grouped by commit or task, most severe first, each with
    file, function, the failing input, and the fix. Say what was refuted too.
 4. Fixes go in as new commits. Put a fix right after the commit it fixes

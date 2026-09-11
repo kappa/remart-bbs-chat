@@ -12,11 +12,13 @@ their state. There is no database or authentication service.
 Read `docs/USER_EXPERIENCE.md` for behavior and `docs/DESIGN.md` for rationale.
 Together with `README.md` and the wire reference `docs/PROTOCOL.md`, these are
 the maintained product docs. Follow
-`docs/SPECS_STATUS.md`: everything under `docs/archive/` is historical. Do not
-execute the archived plan or restore its superseded ASCII-only, 80-column, or
-typing-throttle requirements. `docs/superpowers/` holds active specs and plans;
-the WebSocket server-echo plan there is implemented. Finished review
-documents and superseded specs move to `docs/archive/`. When docs and
+`docs/SPECS_STATUS.md`: everything under `docs/archive/` is historical,
+including the executed superpowers specs and plans. Do not execute an
+archived plan or restore the superseded ASCII-only, 80-column, or
+typing-throttle requirements. `docs/superpowers/` exists only while a spec
+or plan is being worked; once its work lands and the rationale is in
+`docs/DESIGN.md`, the spec, the plan, and any review move to
+`docs/archive/`. When docs and
 implementation disagree, inspect the code and tests and correct the maintained
 docs as part of the relevant change.
 
@@ -315,7 +317,8 @@ he says so or before the session ends. Never leave a server running. The
 - After a context condensation or summary, re-read `TODO.md`, `git status`,
   and `git log --oneline -10` before touching code; summaries have carried
   wrong field names before.
-- Executing a plan from `docs/superpowers/plans/`: one commit per plan task,
+- Executing a plan from `docs/superpowers/plans/` (created by the
+  brainstorming and writing-plans skills): one commit per plan task,
   run the plan's tests after each, and report the plan's status by task number
   when asked.
 

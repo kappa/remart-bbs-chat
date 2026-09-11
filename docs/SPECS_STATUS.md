@@ -19,16 +19,10 @@ kept in `docs/TODO_ARCHIVE.md` as a record of what was decided.
 
 ## Active specs and plans
 
-`docs/superpowers/` holds only active superpowers specs and plans. Anything
-found there is current.
-
-- `docs/superpowers/specs/2026-09-05-websocket-server-echo-design.md` —
-  approved design for TODO tasks 11, 10, and 7 (WebSocket chat transport,
-  server echo, no Vite dev server), absorbing issues 2 and 3; implemented
-  2026-09-05, kept as the design record.
-- `docs/superpowers/plans/2026-09-05-websocket-server-echo.md` — the
-  implementation plan for that spec; executed and merged into master on
-  2026-09-06 (the commit before it is tagged `before-websocket-server-echo`).
+`docs/superpowers/` holds specs and plans for work in progress and is empty
+between such work. Anything found there is current. When the work lands and
+its rationale is in `docs/DESIGN.md`, the spec and plan move to
+`docs/archive/superpowers/`.
 
 ## Archive (historical, not authoritative)
 
@@ -38,6 +32,23 @@ superseded on 2026-09-03/04 (Unicode, no 80-cell limit, no typing throttle,
 deferred ownership on first char, live socket updates, seq-ordered ops,
 viewer-accumulated scrollback). Do not execute the archived plan and do not
 update the archived files; update the authoritative docs instead.
+
+`docs/archive/superpowers/` holds the executed specs and plans, kept as
+the record of what was approved:
+
+- `2026-09-05-websocket-server-echo` — WebSocket chat transport, server
+  echo, no Vite dev server (tasks 11, 10, and 7, absorbing issues 2 and 3);
+  merged 2026-09-06, the commit before it tagged
+  `before-websocket-server-echo`.
+- `2026-09-09-afk-presence` — AFK by tab visibility (task 31).
+- `2026-09-09-mention-autocomplete` — the handle list after `@` (task 25).
+- `2026-09-09-mentions` — colored mentions, the bell, and the notification
+  library (task 17).
+- `2026-09-09-private-messages` — private messages from the roster
+  (task 18).
+
+Where a landed change departed from its spec, the TODO archive entry for
+the task says so; the code and the maintained docs are right.
 
 `docs/archive/2026-09-06-websocket-server-echo-review.md` is the review of
 the `websocket-server-echo` branch against its spec and plan. Its findings

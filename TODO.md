@@ -78,7 +78,7 @@ numbers stable.
   timing to the unit tests and assert only the immediate clear.
 - **Docs:** `docs/PROTOCOL.md` client behavior (when `presence` is sent),
   `docs/USER_EXPERIENCE.md` roster section, the AFK bullet in `AGENTS.md`,
-  and a note in `docs/superpowers/specs/2026-09-09-afk-presence-design.md`.
+  and the "Away, not gone" section of `docs/DESIGN.md`.
 
 ## 40. Drive the lobby in the browser check instead of `?name=`
 

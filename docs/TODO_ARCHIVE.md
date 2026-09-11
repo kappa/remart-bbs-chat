@@ -592,8 +592,8 @@ Close the GitHub issue when the task is done.
 ## 17. Ring a bell and highlight `@nickname` mentions
 
 - [x] **Requested feature** (done: committed roster mentions render in the mentioned participant's color; first-seen mentions notify the recipient with a bell and title notice through one Sounds switch; manually verified, GitHub issue #6 closed)
-- **Spec and plan:** [docs/superpowers/specs/2026-09-09-mentions-design.md](superpowers/specs/2026-09-09-mentions-design.md),
-  [docs/superpowers/plans/2026-09-09-mentions.md](superpowers/plans/2026-09-09-mentions.md).
+- **Spec and plan:** [docs/archive/superpowers/specs/2026-09-09-mentions-design.md](archive/superpowers/specs/2026-09-09-mentions-design.md),
+  [docs/archive/superpowers/plans/2026-09-09-mentions.md](archive/superpowers/plans/2026-09-09-mentions.md).
   Where the plan and this task disagree, the spec records the approved decision.
 - **Source:** [GitHub issue #6](https://github.com/kappa/remart-bbs-chat/issues/6).
 - **Location:** `client/src/App.tsx` transcript row rendering;
@@ -623,8 +623,8 @@ Close the GitHub issue when the task is done.
 ## 18. Private messages from the roster
 
 - [x] **Requested feature** (done: click a roster name, type one line, Enter sends it to that person alone; the recipient gets a popup outside the transcript; nothing is stored or replayed. Sender feedback uses the sidebar notice slot because the chat-area feedback row the spec named no longer exists; the input stays open when the addressee leaves so typed text cannot reach the shared line; manually verified, GitHub issue #7 closed)
-- **Spec and plan:** [docs/superpowers/specs/2026-09-09-private-messages-design.md](superpowers/specs/2026-09-09-private-messages-design.md),
-  [docs/superpowers/plans/2026-09-09-private-messages.md](superpowers/plans/2026-09-09-private-messages.md).
+- **Spec and plan:** [docs/archive/superpowers/specs/2026-09-09-private-messages-design.md](archive/superpowers/specs/2026-09-09-private-messages-design.md),
+  [docs/archive/superpowers/plans/2026-09-09-private-messages.md](archive/superpowers/plans/2026-09-09-private-messages.md).
   Where the plan and this task disagree, the spec records the approved decision.
 - **Source:** [GitHub issue #7](https://github.com/kappa/remart-bbs-chat/issues/7).
 - **Location:** `client/src/App.tsx` roster and session view;
@@ -1046,8 +1046,8 @@ GitHub issue numbers and these task numbers stable.
 ## 25. Autocomplete participant handles after `@`
 
 - [x] **Requested feature** (done: server-echoed mention tokens open a roster-ordered handle list at the caret, with keyboard and pointer completion sent as ordinary character keystrokes; picks made while keystrokes are in flight are parked until they echo; GitHub issue #13 closed)
-- **Spec and plan:** [docs/superpowers/specs/2026-09-09-mention-autocomplete-design.md](superpowers/specs/2026-09-09-mention-autocomplete-design.md),
-  [docs/superpowers/plans/2026-09-09-mention-autocomplete.md](superpowers/plans/2026-09-09-mention-autocomplete.md).
+- **Spec and plan:** [docs/archive/superpowers/specs/2026-09-09-mention-autocomplete-design.md](archive/superpowers/specs/2026-09-09-mention-autocomplete-design.md),
+  [docs/archive/superpowers/plans/2026-09-09-mention-autocomplete.md](archive/superpowers/plans/2026-09-09-mention-autocomplete.md).
   Where the plan and this task disagree, the spec records the approved decision.
 - **Source:** [GitHub issue #13](https://github.com/kappa/remart-bbs-chat/issues/13).
 - **Location:** `client/src/App.tsx` echoed own-line rendering and shared key
@@ -1275,8 +1275,8 @@ previous import. Keep the GitHub issue numbers and these task numbers stable.
 ## 31. Show AFK status for participants in background tabs
 
 - [x] **Requested feature, presence** (done: server-owned AFK follows reported tab visibility, survives reconnect until the next report, and appears as a dim roster marker without changing liveness or participant state; GitHub issue #19 closed)
-- **Spec and plan:** [docs/superpowers/specs/2026-09-09-afk-presence-design.md](superpowers/specs/2026-09-09-afk-presence-design.md),
-  [docs/superpowers/plans/2026-09-09-afk-presence.md](superpowers/plans/2026-09-09-afk-presence.md).
+- **Spec and plan:** [docs/archive/superpowers/specs/2026-09-09-afk-presence-design.md](archive/superpowers/specs/2026-09-09-afk-presence-design.md),
+  [docs/archive/superpowers/plans/2026-09-09-afk-presence.md](archive/superpowers/plans/2026-09-09-afk-presence.md).
   Where the plan and this task disagree, the spec records the approved decision.
 - **Source:** [GitHub issue #19](https://github.com/kappa/remart-bbs-chat/issues/19).
 - **Location:** `server/index.js` participant state, socket handshake and
