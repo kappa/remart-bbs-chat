@@ -220,8 +220,10 @@ installation artifacts in a change.
 Update the maintained docs in the same commit as the code: `docs/PROTOCOL.md`
 for anything on the wire (endpoints, payloads, ordering, transport,
 session/history behavior), `docs/USER_EXPERIENCE.md` for anything a user
-notices, `docs/DESIGN.md` for a changed rationale, and the "Behavior to
-preserve" list above for a changed rule. Document implemented behavior, not
+notices, `docs/DESIGN.md` for the why of anything new or changed (it is kept
+current with the code exactly like the other two, one short section or
+bullet per decision), and the "Behavior to preserve" list above for a
+changed rule. Document implemented behavior, not
 planned behavior. User-facing copy (help text, labels, hover text) is written
 in plain, friendly language, not robotic lists; ask Alex to read new copy.
 

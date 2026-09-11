@@ -113,11 +113,47 @@ are not a design input.
 - Duplicate display names are rejected case-insensitively. There is no
   name-reclaim flow: holding a name is holding it.
 
+## Away, not gone
+
+- AFK follows tab visibility, nothing else. A hidden tab is a fact the
+  browser reports; idle time and lost focus are guesses about attention,
+  and a guess shown to the whole room is worse than no marker.
+- The server owns the flag. The client only reports `hidden` after every
+  snapshot and on every change, so everyone sees the same value, a
+  reconnect keeps the stored one until the tab reports again, and a
+  stale sweep never has to reason about it.
+- AFK and staleness are two different questions and stay apart: pongs
+  keep a socket alive but never clear AFK, and AFK never speeds up
+  cleanup. A changed value broadcasts a roster and nothing more: no
+  announcement line, because presence is not conversation.
+
+## One tab per session
+
+- A duplicated browser tab copies the stored session, so two tabs once
+  held the same participant and traded the socket back and forth every
+  second, flickering the AFK marker for the whole room.
+- The fix is client-side: a Web Lock named after the participant is claimed
+  before the socket opens and released when the session ends or the page
+  unloads. The copy finds it taken, drops its stored session, and starts in
+  the lobby like a pasted URL. A reload resumes because the old document
+  released the lock first. The server is unchanged and never learns about
+  tabs.
+- A server-side answer (close the older socket with a code the client
+  understands) was rejected: it would keep one tab and kill the other,
+  while a duplicated tab should let the person join as someone else.
+
 ## Names
 
 - The default display name is remembered across rooms and visits.
 - `?name=` is a per-tab override for testing and never overwrites the
   remembered default.
+- A name is one word: letters, marks, and digits from any script, joined
+  with `_` if wanted, and never a leading `@`. The shape is the inverse of
+  the mention rule, so `@name` in chat can always find its person; a name
+  with a space or punctuation could be offered by the handle list and still
+  never be colored or ring. The lobby and the server apply the same rule,
+  written once on each side like the character rule. Emoji are rejected
+  for now; whether to allow them is an open call.
 
 ## Rooms
 
@@ -135,6 +171,69 @@ are not a design input.
   the shared stream that the whole design is built around.
 - Backspace at column zero is a no-op. A line backspaced to empty keeps its
   identity and position — emptiness is not deletion.
+- The server owns the caret as it owns the live line. Arrows, Home, End,
+  Delete, and word jumps are keystrokes like any other, applied in sequence
+  and echoed as a caret position, so a lagging screen can never insert at
+  the wrong place. Movement is a no-op echo that never claims a row: moving
+  around an empty line is not typing. Only the author's client draws the
+  caret, because everyone else is watching text appear, not a cursor.
+- Units are code points everywhere (typing, deleting, moving), so a lone
+  surrogate can never be left behind.
+
+## Handle autocomplete
+
+- The list reads the echoed live line only, like everything else on screen.
+  A pick goes over the wire as ordinary `char` keystrokes, so the server has
+  no notion of autocomplete and the single rendering path stays single.
+- Tab or Enter pressed while keystrokes are still in flight is parked
+  until the pending count is zero and then resolved against the fresh echo.
+  Resolving it against the stale screen would complete a token the server
+  no longer has (`@bob` plus a fast Enter became `@bobb`).
+- A pick sends only the missing letters, no trailing space. When the token
+  already spells a handle in full, the pick closes the list and sends
+  nothing; the next Enter commits. Enter never means two things at once.
+- The list floats next to the caret, not in the roster and not as a
+  transcript row, because that is where the eyes are.
+
+## Mentions
+
+- Mentions are decided at render time on the client from the current
+  roster. The wire carries plain text and the server stores plain text: no
+  markup, no server-side parsing, and colors follow whoever holds the name
+  now.
+- The rule is `@` plus the exact handle, not a prefix: `@Al` with Alice in
+  the room is plain text. Trailing punctuation is stripped before matching
+  and stays plain, the way the link splitter treats URLs.
+- Only committed lines are colored and only a line first seen as a
+  `committed` message by someone else can ring. Live lines never ring
+  (typing is not saying), own lines never ring, and nothing that arrives
+  with a snapshot rings, because a reconnect is recovery, not news.
+- Title and sound go through one small notification library with
+  isolated channels, so a failing channel cannot silence the other and a
+  browser notification channel can be added later without touching the
+  app.
+
+## Private messages
+
+- A private message is delivered once over the socket to one recipient and
+  then forgotten: never stored, never in a snapshot, never a transcript
+  row. The room is ephemeral and the transcript is the shared thing; a
+  side channel with history would be a different product.
+- The client keeps received messages in their own list outside room state,
+  so they cannot reach the reducer, the document rows, or any transcript
+  element by accident. They show as popups over the chat area that go away
+  on click, on Escape, or after fifteen seconds; only the newest five are
+  kept, so a flood cannot cover the screen.
+- The input opens under the clicked roster name, and its keystrokes never
+  reach the shared live line. If the addressee leaves while it is open, the
+  box stays where it is with its text: closing it would drop the next
+  keystrokes onto the shared line, which is the one leak that must not
+  happen.
+- Every failure (left, another room, oneself, no open socket) gets the same
+  "not reachable" answer. Distinguishing them would let anyone probe who is
+  where.
+- The 200-character cap and the character rule match the chat's own limits,
+  so the private path cannot carry anything the public one cannot.
 
 ## The caret
 
