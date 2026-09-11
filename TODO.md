@@ -618,7 +618,7 @@ Close the GitHub issue when the task is done.
 
 ## 17. Ring a bell and highlight `@nickname` mentions
 
-- [x] **Requested feature** (done: committed roster mentions render in the mentioned participant's color; first-seen mentions notify the recipient with a bell and title notice through one Sounds switch)
+- [x] **Requested feature** (done: committed roster mentions render in the mentioned participant's color; first-seen mentions notify the recipient with a bell and title notice through one Sounds switch; manually verified, GitHub issue #6 closed)
 - **Spec and plan:** [docs/superpowers/specs/2026-09-09-mentions-design.md](docs/superpowers/specs/2026-09-09-mentions-design.md),
   [docs/superpowers/plans/2026-09-09-mentions.md](docs/superpowers/plans/2026-09-09-mentions.md).
   Where the plan and this task disagree, the spec records the approved decision.
@@ -649,7 +649,7 @@ Close the GitHub issue when the task is done.
 
 ## 18. Private messages from the roster
 
-- [x] **Requested feature** (done: click a roster name, type one line, Enter sends it to that person alone; the recipient gets a popup outside the transcript; nothing is stored or replayed. Sender feedback uses the sidebar notice slot because the chat-area feedback row the spec named no longer exists; the input stays open when the addressee leaves so typed text cannot reach the shared line)
+- [x] **Requested feature** (done: click a roster name, type one line, Enter sends it to that person alone; the recipient gets a popup outside the transcript; nothing is stored or replayed. Sender feedback uses the sidebar notice slot because the chat-area feedback row the spec named no longer exists; the input stays open when the addressee leaves so typed text cannot reach the shared line; manually verified, GitHub issue #7 closed)
 - **Spec and plan:** [docs/superpowers/specs/2026-09-09-private-messages-design.md](docs/superpowers/specs/2026-09-09-private-messages-design.md),
   [docs/superpowers/plans/2026-09-09-private-messages.md](docs/superpowers/plans/2026-09-09-private-messages.md).
   Where the plan and this task disagree, the spec records the approved decision.
